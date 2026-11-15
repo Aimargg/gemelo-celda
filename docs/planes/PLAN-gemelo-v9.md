@@ -68,7 +68,7 @@ Todo con pruebas automáticas y sin perder las escenas guardadas.
 | D3 | Arnés de pruebas: Node (`node:test`) para el código puro y Playwright + Chromium con SwiftShader para la página. three@0.160.0 (y roslib en F3) se sirven desde `node_modules`. Firestore y claude.ai, siempre simulados. Cualquier petición externa no interceptada hace fallar el test | Vitest con jsdom | jsdom no tiene WebGL; el patrón ya está probado en `tests/legacy/shot2.js` | sí |
 | D4 | Refactor mínimo: se extrae a ficheros nuevos de `src/` solo lo que hace falta probar o aislar (RNG, cinemática por robot, exportadores, cliente ROS, métricas de cámara). Se concatenan con el mismo mecanismo de marcadores `@@…@@` del build. Sin módulos ES ni bundler | Migrar a ESM con bundler | El artefacto tiene que ser un único HTML; reescribir 156 KB generados es el mayor riesgo de regresión | sí (deuda DT1) |
 | D5 | Semilla por petición: se deriva de un hash de la entrada del plan (q inicial, objetivo, obstáculos, perfil). Se elimina `SEMILLA` global | Reiniciar `SEMILLA` en cada caso | El veredicto de una escena no debe depender de qué se calculó antes | sí |
-| D6 | Dos perfiles de movimiento: «gemelo» (el actual) y «curso». El perfil «curso» usa aceleración 5 rad/s², escala 0,1, cartesiano con `max_step` 0,01 m, y un arranque en contacto cuenta como fallo. Las escenas nuevas usan «curso»; las escenas v8 migran con «gemelo» y conservan su veredicto (decidido 2026-11-15) | Un único perfil por defecto para todas | Más fiel a la simulación del curso sin romper las escenas guardadas | sí |
+| D6 | Dos perfiles de movimiento que conviven en un flujo «explorar → validar». «Gemelo» (el actual) es rápido y se usa al arrastrar objetos y en la búsqueda de disposiciones. «Curso» usa aceleración 5 rad/s², escala 0,1, cartesiano con `max_step` 0,01 m y trata el arranque en contacto como fallo; valida antes de guardar y para el desarrollo contra la simulación del curso. Cada escena guarda el veredicto de los dos perfiles (en `estado`, sin cambiar las reglas). Las escenas v8 conservan su veredicto «gemelo» y calculan el de «curso» al abrirlas (decidido 2026-11-15) | Un único perfil por defecto | El usuario necesita los dos: explorar rápido y saber si funcionará en la simulación | sí |
 | D7 | Selector de robot (nominal, 203, 204, 205, 206). FK calibrada con los `calibration_<id>.yaml` del curso, guardados como datos con su atribución. IK: la analítica nominal más un refinamiento numérico sobre la FK calibrada (→ moveit «replicar MoveIt», INFERIDO). Con el 204, aviso visible de calibración sospechosa | Solo nominal; IK numérica pura | Así se replica de forma determinista lo que hace MoveIt (→ moveit) y se conservan las 8 ramas de la IK | sí |
 | D8 | Exportar solo **datos**: `ros__parameters`, `CollisionObject` en YAML, `.scene`, TF estáticas por YAML y comandos, `camera_info` nominal y parámetros de `usb_cam`. Cada valor lleva comentado su origen: MEDIDO, FABRICANTE o SUPUESTO. Formato determinista | Generar launch y nodos | Regla de código explicable (→ generacion-config) | sí |
 | D9 | Conexión con ROS por rosbridge con roslib 2.1.0, a través de un **adaptador único de solo lectura** (`rosEspejo`) que solo puede suscribirse. Import map a mano (roslib y eventemitter3 desde `dist/`, versión exacta) | foxglove_bridge (acciones solo como topics ocultos, cliente JS deprecado) | Es la vía en producción y la superficie de riesgo se reduce a leer (→ puente-ros) | sí |
@@ -141,6 +141,7 @@ Estados: pendiente · en curso · entregada · aceptada · correcciones · bloqu
 | T1.5 | 1 | `world`↔`base_link` por robot en la conversión y en la exportación | Claude Code | T1.4 | medio | pendiente | |
 | T1.6 | 1 | Perfil de movimiento «curso» | Claude Code | T1.2 | medio | pendiente | |
 | T1.7 | 1 | Modelo de sensor de la ELP por modo | Claude Code | T1.1 | bajo | pendiente | |
+| T1.8 | 1 | Flujo «explorar → validar» con los dos perfiles | Claude Code | T1.6 | medio | pendiente | |
 | T2.1 | 2 | Origen de cada valor (MEDIDO, FABRICANTE, SUPUESTO) unificado para exportar | Claude Code | F1 | bajo | pendiente | |
 | T2.2 | 2 | YAML `ros__parameters` de poses | Claude Code | T2.1 | medio | pendiente | |
 | T2.3 | 2 | Escena: `CollisionObject` en YAML y `.scene` | Claude Code | T2.1 | medio | pendiente | |
@@ -366,6 +367,20 @@ Estados: pendiente · en curso · entregada · aceptada · correcciones · bloqu
 - **Verificación:** tests y captura del selector.
 - **Invariantes afectadas:** I1, I6 e I8.
 
+### T1.8 — Flujo «explorar → validar» con los dos perfiles
+
+- **Objetivo:** que el grupo explore disposiciones rápido y sepa, antes de guardarlas o de desarrollar contra la simulación, si funcionarían con MoveIt del curso (D6).
+- **Alcance:** toca la barra de cálculo (`CALC`, `calcularPlanes`), la búsqueda de disposiciones (`buscarAlternativa`), el guardado de escenas (`estado`) y la miniatura de cada escena. No toca las reglas de Firestore: `estado` ya admite un objeto.
+- **Criterios de aceptación:**
+  1. Arrastrar o mover objetos recalcula con «gemelo». El botón **Validar con perfil curso** recalcula la disposición actual con «curso» y muestra los dos veredictos a la vez.
+  2. Si los dos veredictos difieren («pasa en gemelo, falla en curso»), se muestra el motivo concreto: arranque en contacto, ruta cartesiana incompleta o tiempo de ciclo.
+  3. La búsqueda de disposiciones ordena los candidatos con «gemelo» y confirma con «curso» los 3 mejores antes de proponerlos; si ninguno pasa en «curso», lo dice.
+  4. Al guardar, `estado` conserva `ok`, `n` y `txt` del perfil de la escena (compatibilidad con la v8) y añade `porPerfil: {gemelo, curso}`. La miniatura muestra dos puntos (gemelo y curso) y, si falta uno, «sin validar».
+  5. El tiempo de ciclo de la demo se muestra con los dos perfiles, para que se vea la diferencia de velocidad.
+  6. Abrir una escena v8 no cambia su veredicto «gemelo» (I1); el de «curso» se calcula al pulsar **Validar** y solo se guarda si el usuario guarda la escena.
+- **Verificación:** test e2e con una disposición que pasa en los dos perfiles, otra que solo pasa en «gemelo» (arranque en contacto) y la búsqueda de disposiciones; captura de la barra.
+- **Invariantes afectadas:** I1, I2 e I6.
+
 ### T1.7 — Modelo de sensor de la ELP
 
 - **Objetivo:** calcular el campo de visión y los mm/px con el sensor que declara la ELP (D10).
@@ -475,5 +490,6 @@ Estas fichas se revisan y se detallan al cerrar la fase anterior, con lo aprendi
 | Fecha | Cambio | Motivo |
 |---|---|---|
 | 2026-11-15 | Creación del plan | Estudio gemelo-ros y petición del usuario de un plan para agentes autónomos |
+| 2026-11-15 | D6 reescrita y T1.8 añadida: los dos perfiles conviven en un flujo «explorar (gemelo) → validar (curso)» | Petición del usuario, 16:18 |
 | 2026-11-15 | Q1–Q5 respondidas: robot B desconocido (nominal), perfil «curso» para escenas nuevas y «gemelo» para las v8, web como herramienta principal, calibraciones del curso con atribución, agentes en la nube | Mensaje del usuario, 16:13 |
 | 2026-11-15 | Ejecución autónoma aprobada: el coordinador fusiona fases en `main` (P1), publica el artefacto al cerrar F4 (P2) y puede aprobar dependencias imprescindibles (P6); Q1–Q5 con valores por defecto; prioridad del usuario: tener la herramienta lista cuanto antes | Mensaje del usuario, 16:09 |
