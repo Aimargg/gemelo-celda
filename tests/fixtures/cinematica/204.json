@@ -1,0 +1,260 @@
+{
+  "formato": "gemelo-celda/cinematica-referencia v1",
+  "robot": "204",
+  "generado_por": "tools/fixtures/fk_desde_xacro.py (no editar a mano; ver tools/fixtures/LEEME.md)",
+  "versiones": {
+    "python": "3.13.17",
+    "numpy": "2.5.4",
+    "pyyaml": "6.0.3",
+    "xacro": "2.1.1",
+    "curso": {
+      "repo": "ignacioDeusto/ros2_mucsi_26_27",
+      "commit": "4e4e1a74fe5ab81c3e1279120b33e9b235be198f"
+    },
+    "ur_description": {
+      "repo": "UniversalRobots/Universal_Robots_ROS2_Description",
+      "rama": "jazzy",
+      "commit": "3852128295499b52f38f82171f5ff3f21ecdfa22",
+      "version": "3.6.1"
+    },
+    "ur_robot_driver": {
+      "repo": "UniversalRobots/Universal_Robots_ROS2_Driver",
+      "rama": "jazzy",
+      "commit": "4754149af313e29ad4625f4d2d420c6cfbbf87ba",
+      "version": "3.11.0"
+    },
+    "ur_client_library": "sustituto: xacro solo usa su ruta como texto (script_filename); no afecta a la cinemática",
+    "ament_index_python": "sustituto mínimo del script (mapa de paquetes a carpetas)"
+  },
+  "fuentes": {
+    "xacro_individual": "ros_workspace/src/launcher_robots_lab_robotica/urdf/ur3e_rg2_204.urdf.xacro",
+    "argumentos_xacro": {
+      "name": "ur3e",
+      "ur_type": "ur3e",
+      "tf_prefix": "",
+      "use_mock_hardware": "true",
+      "joint_limit_params": "ur_description/config/ur3e/joint_limits.yaml",
+      "physical_params": "ur_description/config/ur3e/physical_parameters.yaml",
+      "visual_params": "ur_description/config/ur3e/visual_parameters.yaml",
+      "kinematics_params": "ros_workspace/src/launcher_robots_lab_robotica/calibration/calibration_204.yaml"
+    },
+    "calibracion": "ros_workspace/src/launcher_robots_lab_robotica/calibration/calibration_204.yaml",
+    "hash_calibracion": "calib_18117822752032744163"
+  },
+  "convenciones": "metros y radianes; T = matriz 4x4 por filas en 16 valores (como src/kin.js); rpy de URDF: R = Rz(yaw)·Ry(pitch)·Rx(roll); valores redondeados a 1e-12",
+  "mount_yaw": 2.502802148,
+  "world_base_link": {
+    "individual": {
+      "xyz": [0.0, 0.0, 0.0],
+      "rpy": [0.0, 0.0, -0.63879050559],
+      "T": [0.802817475573, 0.596224874452, 0.0, 0.0, -0.596224874452, 0.802817475573, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0]
+    },
+    "doble": {
+      "fichero": "ros_workspace/src/launcher_robots_lab_robotica/urdf/doble_ur3e_203_204.urdf.xacro",
+      "frame": "204_base_link",
+      "xyz": [0.0051, -0.9, 0.0],
+      "rpy": [0.0, 0.0, -0.63879050559],
+      "T": [0.802817475573, 0.596224874452, 0.0, 0.0051, -0.596224874452, 0.802817475573, 0.0, -0.9, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0]
+    }
+  },
+  "articulaciones": [
+    "shoulder_pan_joint",
+    "shoulder_lift_joint",
+    "elbow_joint",
+    "wrist_1_joint",
+    "wrist_2_joint",
+    "wrist_3_joint"
+  ],
+  "configuraciones": [
+    [0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
+    [0.0, -1.57, 0.0, -1.57, 0.0, 0.0],
+    [0.0, -1.5707, 0.0, -1.5707, 0.0, 0.0],
+    [0.0, -1.5708, 1.5708, -1.5708, -1.5708, 0.0],
+    [0.0119, -1.1217, 0.5459, -1.2571, 1.2407, -0.6946],
+    [-0.5249, 0.3314, 2.9409, -1.1455, 0.6517, 1.748],
+    [1.5703, 0.6938, -1.6132, 0.0891, 1.5286, 1.1801],
+    [2.5752, 3.1039, -0.5458, -1.7968, -0.5, -2.7069],
+    [0.3965, 1.1046, -2.436, -0.769, -3.0903, 1.1286],
+    [2.2971, -0.8019, -2.3215, 2.4014, -0.6884, 1.2828],
+    [-1.1225, -0.7394, -0.248, -0.0888, -0.3368, 0.8117],
+    [-1.2803, 1.7249, -2.8692, 0.9141, -1.7848, -1.9195],
+    [-1.9736, 2.6264, -1.9969, 0.0059, 1.6465, 2.3958],
+    [-0.1327, -0.9181, -1.9367, -1.4711, 1.703, 0.822],
+    [-0.4786, 2.6948, -1.1373, -1.6418, -1.9939, 2.0856],
+    [2.9285, -1.9973, -2.0974, -0.2366, -0.7739, 0.9517],
+    [-2.5036, -2.2335, 3.0634, -2.9354, 0.5856, 1.038],
+    [-1.7653, 2.2656, -2.252, 0.2187, 1.1162, 2.6498],
+    [3.3677, -0.1743, -1.872, -1.1978, 1.5367, -5.2044],
+    [-1.4417, 1.7885, 0.2155, -4.4, 0.0, -2.424]
+  ],
+  "tool0_en_base_link": [
+    [-0.999997873388, -1.6464452e-05, 0.002062268009, 0.03090737211, 0.002062326785, -0.005387976675, 0.999983358119, 0.224233658574, -5.352727e-06, 0.999985484613, 0.005387999172, 0.066717121112, 0.0, 0.0, 0.0, 1.0],
+    [0.999992102756, -0.001581697254, -0.003645910015, 0.000332539843, 0.003647921023, 0.001270407803, 0.99999253934, 0.223650422378, -0.001577053661, -0.999997942147, 0.001276167677, 0.26826733011, 0.0, 0.0, 0.0, 1.0],
+    [0.999993338332, -0.000181703347, -0.003645582975, 0.000191563302, 0.003645811381, 0.001272960696, 0.999992543787, 0.223650204637, -0.000177061308, -0.999999173277, 0.001273614672, 0.268267400797, 0.0, 0.0, 0.0, 1.0],
+    [-0.001295460547, -0.999997930482, -0.001568697955, -0.128052502858, -0.999985185359, 0.001287147355, 0.005288885874, 0.131790350464, -0.005286855783, 0.001575526258, -0.999984783321, 0.303469417474, 0.0, 0.0, 0.0, 1.0],
+    [0.673505069878, -0.695418431087, -0.250567608747, -0.014891402446, 0.735861221976, 0.598683923638, 0.31636343273, 0.160699372439, -0.069994162901, -0.397455362628, 0.914948114309, 0.361914439721, 0.0, 0.0, 0.0, 1.0],
+    [0.604979462446, -0.786967232901, 0.121171054127, 0.39711724556, -0.477195714252, -0.236526035939, 0.846368527665, 0.006289364514, -0.637404189128, -0.569857884619, -0.518630784874, 0.042646295641, 0.0, 0.0, 0.0, 1.0],
+    [-0.378355837529, 0.924757116768, -0.040879520484, -0.135395794835, -0.694642331651, -0.254462915724, 0.67284519438, 0.183885264057, 0.61181606001, 0.282971552473, 0.738652969401, -0.163452515658, 0.0, 0.0, 0.0, 1.0],
+    [-0.472995364699, 0.862596540962, -0.179450808003, 0.018140995217, -0.211870778612, -0.30905591196, -0.9271435792, -0.263310655698, -0.855211177513, -0.400514232958, 0.328941014552, 0.229437947754, 0.0, 0.0, 0.0, 1.0],
+    [-0.909733499815, 0.061063845572, 0.410677691236, 0.110170635084, -0.405812730692, 0.078286948035, -0.910597156473, 0.088904149401, -0.087755267214, -0.995058973394, -0.046439773308, -0.234490493957, 0.0, 0.0, 0.0, 1.0],
+    [0.664304814921, -0.701071745556, -0.259224845367, -0.414002276555, -0.476699496664, -0.130247904093, -0.869363602504, 0.16160679715, 0.575722765533, 0.70109478037, -0.420724858055, 0.221240998951, 0.0, 0.0, 0.0, 1.0],
+    [-0.616553890635, 0.089752452229, 0.782180156525, 0.251094676398, 0.753590681449, 0.35492070751, 0.553292306303, -0.016568426937, -0.227952593264, 0.930578201281, -0.286464354719, 0.071226230605, 0.0, 0.0, 0.0, 1.0],
+    [0.361786317778, -0.800134870636, -0.478429565413, 0.051739049066, -0.039364790827, -0.525846371298, 0.849668174664, 0.217387252763, -0.931429585912, -0.288565040477, -0.221741164205, -0.387189651866, 0.0, 0.0, 0.0, 1.0],
+    [-0.814957335903, -0.433494102753, -0.384613316899, 0.256285923531, -0.039571462645, 0.703751267401, -0.709343536642, 0.283966247938, 0.578168349187, -0.56286500736, -0.590681253713, 0.034002206586, 0.0, 0.0, 0.0, 1.0],
+    [0.727750119307, 0.566607402723, -0.386439924216, 0.25336860103, 0.584145682016, -0.807326870806, -0.083648944146, 0.085971538234, -0.359379445755, -0.164861684007, -0.918513494248, 0.233589019957, 0.0, 0.0, 0.0, 1.0],
+    [-0.033864695608, 0.087437303173, -0.995594244863, -0.223111347704, 0.525935596675, 0.848636261247, 0.056641365152, 0.221401954517, 0.849849945897, -0.521700310629, -0.074725198885, 0.168191534198, 0.0, 0.0, 0.0, 1.0],
+    [-0.802441802033, -0.435409457736, -0.408051171379, -0.009785532175, 0.591064921597, -0.485945513715, -0.643816135367, -0.19980825111, 0.082032998284, -0.75780971346, 0.647298250714, 0.640106965379, 0.0, 0.0, 0.0, 1.0],
+    [0.590159393926, 0.362640580819, 0.721251481041, 0.321813382834, 0.08420003761, 0.860903316622, -0.501752760925, -0.019592475276, -0.802883704796, 0.356843507118, 0.477535829023, 0.58945524669, 0.0, 0.0, 0.0, 1.0],
+    [-0.872177874787, -0.412975514223, 0.26221552087, 0.228454818913, -0.322090123801, 0.081351822942, -0.94320720579, 0.269457027576, 0.368189770203, -0.907101485809, -0.203968594546, -0.134834498935, 0.0, 0.0, 0.0, 1.0],
+    [0.002256668192, -0.21842460283, 0.975851218336, -0.201997383815, -0.484256405504, 0.853560541423, 0.19217215161, -0.184160784949, -0.874923220161, -0.47299587208, -0.103847310116, 0.080339871428, 0.0, 0.0, 0.0, 1.0],
+    [-0.009748660424, 0.126626386979, 0.991902576739, 0.234260449472, 0.10704217543, -0.986117754728, 0.1269399326, -0.065069326166, 0.994206686911, 0.107412903926, -0.0039410368, 0.17046340759, 0.0, 0.0, 0.0, 1.0]
+  ],
+  "T_tool0_onrobot_rg2_base_link": [0.0, 1.0, 0.0, 0.0, -1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0],
+  "frames": {
+    "individual": {
+      "prefijo": "",
+      "links": [
+        "base",
+        "base_link",
+        "base_link_inertia",
+        "flange",
+        "forearm_link",
+        "ft_frame",
+        "left_inner_finger",
+        "left_inner_knuckle",
+        "left_outer_knuckle",
+        "onrobot_rg2_base_link",
+        "right_inner_finger",
+        "right_inner_knuckle",
+        "right_outer_knuckle",
+        "shoulder_link",
+        "tool0",
+        "upper_arm_link",
+        "world",
+        "wrist_1_link",
+        "wrist_2_link",
+        "wrist_3_link"
+      ],
+      "articulaciones_brazo": [
+        "shoulder_pan_joint",
+        "shoulder_lift_joint",
+        "elbow_joint",
+        "wrist_1_joint",
+        "wrist_2_joint",
+        "wrist_3_joint"
+      ],
+      "articulaciones_moviles": [
+        "elbow_joint",
+        "finger_joint",
+        "left_inner_finger_joint",
+        "left_inner_knuckle_joint",
+        "right_inner_finger_joint",
+        "right_inner_knuckle_joint",
+        "right_outer_knuckle_joint",
+        "shoulder_lift_joint",
+        "shoulder_pan_joint",
+        "wrist_1_joint",
+        "wrist_2_joint",
+        "wrist_3_joint"
+      ]
+    },
+    "doble": {
+      "fichero": "ros_workspace/src/launcher_robots_lab_robotica/urdf/doble_ur3e_203_204.urdf.xacro",
+      "prefijo": "204_",
+      "links": [
+        "world",
+        "204_base",
+        "204_base_link",
+        "204_base_link_inertia",
+        "204_flange",
+        "204_forearm_link",
+        "204_ft_frame",
+        "204_left_inner_finger",
+        "204_left_inner_knuckle",
+        "204_left_outer_knuckle",
+        "204_onrobot_rg2_base_link",
+        "204_right_inner_finger",
+        "204_right_inner_knuckle",
+        "204_right_outer_knuckle",
+        "204_shoulder_link",
+        "204_tool0",
+        "204_upper_arm_link",
+        "204_wrist_1_link",
+        "204_wrist_2_link",
+        "204_wrist_3_link"
+      ],
+      "articulaciones_brazo": [
+        "204_shoulder_pan_joint",
+        "204_shoulder_lift_joint",
+        "204_elbow_joint",
+        "204_wrist_1_joint",
+        "204_wrist_2_joint",
+        "204_wrist_3_joint"
+      ],
+      "articulaciones_moviles": [
+        "204_elbow_joint",
+        "204_finger_joint",
+        "204_left_inner_finger_joint",
+        "204_left_inner_knuckle_joint",
+        "204_right_inner_finger_joint",
+        "204_right_inner_knuckle_joint",
+        "204_right_outer_knuckle_joint",
+        "204_shoulder_lift_joint",
+        "204_shoulder_pan_joint",
+        "204_wrist_1_joint",
+        "204_wrist_2_joint",
+        "204_wrist_3_joint"
+      ]
+    }
+  },
+  "frente_al_nominal": {
+    "desplazamiento_tool0_mm": [425.844062, 425.682744, 425.68291, 426.602623, 425.927155, 427.165286, 426.22733, 426.498427, 426.850182, 427.13949, 425.664884, 426.870993, 426.85674, 426.925023, 426.925529, 427.323346, 427.54179, 426.692174, 426.566091, 426.539512],
+    "desplazamiento_tool0_max_mm": 427.54179,
+    "desplazamiento_tool0_medio_mm": 426.576315,
+    "giro_tool0_max_grados": 0.330552,
+    "origenes_articulaciones": {
+      "shoulder": {
+        "dif_posicion_mm": 0.277945,
+        "dif_giro_grados": 1e-06
+      },
+      "upper_arm": {
+        "dif_posicion_mm": 0.126491,
+        "dif_giro_grados": 0.027312
+      },
+      "forearm": {
+        "dif_posicion_mm": 0.300514,
+        "dif_giro_grados": 179.999595
+      },
+      "wrist_1": {
+        "dif_posicion_mm": 0.689071,
+        "dif_giro_grados": 179.9999
+      },
+      "wrist_2": {
+        "dif_posicion_mm": 0.132795,
+        "dif_giro_grados": 0.018155
+      },
+      "wrist_3": {
+        "dif_posicion_mm": 0.229339,
+        "dif_giro_grados": 0.090658
+      }
+    }
+  },
+  "comprobaciones": {
+    "world_base_link_inertia_yaw_menos_mount_yaw_rad": 0.0,
+    "tool0_individual_frente_a_doble_max_m": 0.0
+  },
+  "sospechoso": true,
+  "hipotesis": {
+    "descripcion": "FK_204(q) frente a FK_nominal(q + offset_q)",
+    "offset_q": [0.0, 0.0, 3.14159265359, -3.14159265359, 0.0, 0.0],
+    "residuo_posicion_max_mm": 1.362036,
+    "residuo_giro_max_grados": 0.330552
+  },
+  "motivo": "tool0 queda a 426.6 mm de media (máx. 427.5 mm) del nominal; el umbral es 50 mm. Orígenes girados >90° respecto al nominal: forearm (elbow_joint, 180.0°), wrist_1 (wrist_1_joint, 180.0°). La FK equivale a la nominal con elbow_joint + pi y wrist_1_joint - pi (residuo máx. 1.4 mm y 0.33°, campo hipotesis): el antebrazo queda girado media vuelta y la muñeca pasa al otro lado del codo. Se reproduce tal cual sale del xacro del curso, sin corregir. SIN VALIDAR en ROS.",
+  "validacion_ros": [
+    "1. En el contenedor del curso: ros2 launch launcher_robots_lab_robotica sim_204.launch.py (el hardware simulado arranca en configuraciones[1], la de initial_positions.yaml).",
+    "2. Sin mover el robot: ros2 run tf2_ros tf2_echo base_link tool0. Este fichero predice (0.3, 223.7, 268.3) mm; el nominal, (0.5, 223.2, 693.9) mm. En RViz, el antebrazo sale plegado hacia abajo en vez de seguir recto hacia arriba.",
+    "3. Si tf2_echo da lo que predice este fichero, ROS ve el mismo desplazamiento: el gemelo reproduce ROS y la anomalía está en calibration_204.yaml.",
+    "4. Para saber si el YAML describe el robot real: con robot_204.launch.py y el robot real en cualquier pose, comparar ros2 run tf2_ros tf2_echo base tool0 con la pose de la herramienta que da el pendant en Base, con un TCP de offset cero. Una diferencia de ≈427 mm confirma que el YAML no corresponde al robot: preguntar al profesor antes de usar el 204."
+  ]
+}
