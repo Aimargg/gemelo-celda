@@ -134,8 +134,8 @@ Estados: pendiente · en curso · entregada · aceptada · correcciones · bloqu
 | T0.3 | 0 | Línea base medida (informe, sin cambiar código) | Claude Code | T0.2 | bajo | aceptada | 5d7ba13, dac4587 |
 | T0.4 | 0 | `CLAUDE.md`, `tools/check.sh` y plantilla de pull request | Claude Code | T0.2 | bajo | aceptada | e8940d3, dac4587 |
 | U3 | 0 | Responder Q1–Q5 | Usuario | — | — | aceptada | — |
-| T1.1 | 1 | Versionar el layout y migrarlo al cargar | Claude Code | T0.3 | medio | pendiente | |
-| T1.2 | 1 | Semilla por petición en el RRT | Claude Code | T1.1 | medio | pendiente | |
+| T1.1 | 1 | Versionar el layout y migrarlo al cargar | Claude Code | T0.3 | medio | entregada | 4cabe6c |
+| T1.2 | 1 | Semilla por petición en el RRT | Claude Code | T1.1 | medio | entregada | 0cde036, 46bd547 |
 | T1.3 | 1 | Ficheros de referencia de cinemática generados con el xacro del curso | Claude Code | T0.2, Q4 | bajo | aceptada | cce7601 |
 | T1.4 | 1 | Selector de robot con FK calibrada e IK refinada | Claude Code | T1.1, T1.3 | alto | pendiente | |
 | T1.5 | 1 | `world`↔`base_link` por robot en la conversión y en la exportación | Claude Code | T1.4 | medio | pendiente | |
