@@ -1,6 +1,6 @@
 {
-  "descripcion": "Caracterización de la v8: 8 casos fijos de __g.ensayo, en este orden y en una página recién cargada (tras el primer calcularPlanes), con la fase de la bandeja al empezar cada ensayo (ensayo() la descuenta de simT desde T1.2) y la semilla del RRT por petición. El test compara fin, choques, roces y pausas; el resto es informativo (en T0.2 también salió igual en 6 ejecuciones).",
-  "fuente_src": "4cabe6c",
+  "descripcion": "Caracterización de la v8: 8 casos fijos de __g.ensayo, en este orden y en una página recién cargada (tras el primer calcularPlanes), con la fase de la bandeja al empezar cada ensayo (ensayo() empieza con simT = 0 desde T1.2) y la semilla del RRT por petición. El test compara fin, choques, roces y pausas; el resto es informativo (en T0.2 también salió igual en 6 ejecuciones).",
+  "fuente_src": "0cde036",
   "comando": "npm run caracterizar",
   "casos": [
     {

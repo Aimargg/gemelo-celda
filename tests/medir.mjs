@@ -16,7 +16,7 @@ export async function ensayar(page, casos) {
   const out = [];
   for (const c of casos) {
     const t = Date.now();
-    // cfg.fase es la fase de la bandeja al empezar el ensayo: ensayo() descuenta simT (H3, T1.2)
+    // cfg.fase es la fase de la bandeja al empezar el ensayo: ensayo() empieza con simT = 0 (H3, T1.2)
     const r = await page.evaluate(c => window.__g.ensayo({ ...c }).then(r => { delete r.cfg; r.fallo = r.fallo.replace(/\s+/g, ' ').slice(0, 200); return r; }), c);
     out.push({ caso: nombreCaso(c), cfg: c, ...r, ms: Date.now() - t });
   }
