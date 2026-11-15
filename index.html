@@ -660,6 +660,31 @@ const LAYOUT = (() => {
 
   return { VERSION, MAX_TXT, ROBOT_IDS, PERFILES, SENSORES, NUEVA, MIGRADA, validarLayout, migrarLayout, soloLectura, noGuardable };
 })();
+// Generador pseudoaleatorio sembrado y semilla por petición del planificador (T1.2, D5, I6). Sin navegador ni three:
+// se prueba con node:test (tests/unit/rng.test.mjs) y se concatena en app.js con el marcador @@RNG@@ (D4).
+const RNG = (() => {
+  // xorshift32, el mismo de la v8 (texturas, modelo de colisión y RRT): la misma semilla da siempre la misma serie
+  function aleat(seed) { let s = seed >>> 0 || 1; return () => { s ^= s << 13; s ^= s >>> 17; s ^= s << 5; return ((s >>> 0) % 100000) / 100000; }; }
+  // FNV-1a de 32 bits sobre los códigos del texto (en ASCII coincide con el de los bytes)
+  function fnv1a(txt) { let h = 0x811c9dc5; for (let i = 0; i < txt.length; i++) { h ^= txt.charCodeAt(i); h = Math.imul(h, 0x01000193); } return h >>> 0; }
+  const n6 = v => String(Math.round(v * 1e6)); // redondeo a 1e-6 (−0 sale «0»)
+  const lista = a => a ? Array.from(a, n6).join(',') : '-';
+  // Un obstáculo en texto: todas sus claves en orden alfabético (números a 1e-6), así vale para cualquier tipo de obstáculo
+  function obstaculo(o) {
+    let s = ''; for (const k of Object.keys(o).sort()) { const v = o[k]; if (v === undefined) continue; s += `${k}=${typeof v === 'number' ? n6(v) : typeof v === 'boolean' ? +v : v}|`; }
+    return s;
+  }
+  // Entrada canónica de una petición de plan: q inicial y objetivo, contexto (apertura de la pinza, carga, etiquetas
+  // permitidas y opciones) y obstáculos, más el perfil de movimiento. Los obstáculos se ordenan: su orden en la lista no
+  // cambia si un tramo choca, así que tampoco cambia la semilla.
+  function canonico(p) {
+    return ['plan1', `qa:${lista(p.qa)}`, `qb:${lista(p.qb)}`, `w:${n6(p.w)}`, `carga:${lista(p.carga)}`,
+      `permitir:${(p.permitir || []).slice().sort().join(',')}`, `op:${[p.conBlandos, p.sinEntorno, p.sinAuto].map(b => b ? 1 : 0).join('')}`,
+      `perfil:${p.perfil}`, `obst:${p.obst ? p.obst.map(obstaculo).sort().join(';') : '-'}`].join('\n');
+  }
+  const semillaPlan = p => fnv1a(canonico(p));
+  return { aleat, fnv1a, canonico, semillaPlan };
+})();
 
 function layoutDefecto() {
   return {
@@ -707,7 +732,7 @@ function guardarLocal() { if (ESC.cur || soloLectura()) return; clearTimeout(sav
   saveT = setTimeout(() => { try { localStorage.setItem(CLAVE, JSON.stringify(L)); } catch (e) { } }, 400); }
 
 // ======================= Texturas procedurales =======================
-function aleat(seed) { let s = seed >>> 0 || 1; return () => { s ^= s << 13; s ^= s >>> 17; s ^= s << 5; return ((s >>> 0) % 100000) / 100000; }; }
+const aleat = RNG.aleat; // xorshift32 sembrado (src/rng.js): texturas y modelo de colisión
 function lienzo(w, h, dibujar, { color = true, rep = null } = {}) {
   const c = document.createElement('canvas'); c.width = w; c.height = h; dibujar(c.getContext('2d'), w, h);
   const t = new THREE.CanvasTexture(c); if (color) t.colorSpace = THREE.SRGBColorSpace; t.wrapS = t.wrapT = THREE.RepeatWrapping; t.anisotropy = 8; if (rep) t.repeat.set(...rep); return t;
@@ -1368,11 +1393,19 @@ function atajar(ruta, ctx, rnd) {
   for (let it = 0; it < 80 && ruta.length > 2; it++) { const i = Math.floor(rnd() * (ruta.length - 2)), j = i + 2 + Math.floor(rnd() * (ruta.length - i - 2)); if (j < ruta.length && tramoLibre(ruta[i], ruta[j], ctx)) ruta.splice(i + 1, j - i - 1); }
   return ruta;
 }
-let SEMILLA = 1;
+// Perfil de movimiento con el que planifica el gemelo; entra en la semilla (D5). Hoy solo existe «gemelo»: el campo
+// `perfil` del layout aún no tiene efecto (T1.1). T1.6 pondrá aquí el perfil de la petición.
+const PERFIL_PLAN = 'gemelo';
+// Semilla por petición (T1.2, D5, I6): hash de la entrada canónica del plan (src/rng.js) con los mismos valores por
+// defecto que choqueEn. La misma petición da el mismo plan, se calcule en el orden que se calcule.
+function semillaDe(qa, qb, ctx) {
+  return RNG.semillaPlan({ qa, qb, w: ctx.w ?? pinza.w, carga: ctx.carga === undefined ? D.carga : ctx.carga, obst: ctx.sinEntorno ? null : (ctx.obst || obstaculos()),
+    permitir: ctx.permitir, conBlandos: ctx.conBlandos, sinEntorno: ctx.sinEntorno, sinAuto: ctx.sinAuto, perfil: PERFIL_PLAN });
+}
 function planificar(qa, qb, ctx) {
   if (D.sinPlanificador || tramoLibre(qa, qb, ctx)) return { ruta: [qa, qb], plan: false };
   if (choqueEn(qb, ctx)) return null;
-  const rnd = aleat(SEMILLA++ * 7919);
+  const rnd = RNG.aleat(semillaDe(qa, qb, ctx)); // una sola semilla: si con ella no hay camino, no hay plan (sin reintentos)
   for (const [h, it] of [[PI / 2, 1500], [PI, 3000]]) { const r = rrtConnect(qa, qb, ctx, rnd, h, it); if (r) return { ruta: atajar(r, ctx, rnd), plan: true }; }
   return null;
 }
@@ -2862,7 +2895,11 @@ function tamano() { const r = view.getBoundingClientRect(); renderer.setSize(r.w
 new ResizeObserver(tamano).observe(view);
 const CAL = { ema: 16, lento: 0, bajado: false };
 function bucle(now) {
-  requestAnimationFrame(bucle); const dtr = (now - last) / 1000; const dt = Math.min(0.1, dtr); last = now; frame++;
+  // Mientras corre ensayo() (banco de pruebas y búsqueda de alternativas) el fotograma no toca el gemelo ni dibuja: ensayo()
+  // avanza simT y la bandeja por su cuenta, y un fotograma que caía en una de sus pausas según el reloj cambiaba el resultado
+  // (T1.2, criterio 6: bajo carga, 2 de 5 páginas daban otro t_sim y otras pausas)
+  requestAnimationFrame(bucle); if (D.banco) { last = now; return; }
+  const dtr = (now - last) / 1000; const dt = Math.min(0.1, dtr); last = now; frame++;
   // calidad adaptativa: si el equipo va lento, menos píxeles y sombras más simples
   CAL.ema = CAL.ema * 0.95 + Math.min(dtr * 1000, 500) * 0.05; if (!CAL.bajado && frame > 120) { CAL.lento = CAL.ema > 45 ? CAL.lento + 1 : 0; if (CAL.lento > 90) { CAL.bajado = true; renderer.setPixelRatio(1); renderer.shadowMap.type = THREE.PCFShadowMap; tamano(); } }
   if (D.playing && !D.banco) { let tot = dt * D.rate; while (tot > 1e-9) { const h = Math.min(tot, 1 / 60); simT += h; aplicarBandeja(simT); tickDemo(h); tot -= h; } }
@@ -2894,7 +2931,11 @@ function render() {
 
 // ======================= Banco de pruebas (solo con ?prueba) =======================
 async function ensayo(cfg = {}) {
-  D.sinRender = !!cfg.sinRender;
+  // El ensayo empieza con simT = 0 (H3 y criterio 6 de T1.2). La bandeja se mueve con BALANCEO(simT + D.fase), así que
+  // cfg.fase es la fase de la bandeja al empezar. Y el resultado no depende de cuánto llevaba la página abierta (simT
+  // sigue al reloj mientras espera) ni de lo ensayado antes: con simT absoluto, el redondeo de simT + fase y de los
+  // tiempos de las animaciones cambiaba de un ensayo a otro (la matriz en orden inverso daba otros t_sim y planes).
+  simT = 0; D.sinRender = !!cfg.sinRender;
   if (cfg.pedido) { L.pedido = cfg.pedido; aplicarPedido(); }
   reiniciarDemo(); if (cfg.caja !== undefined) L.caja.on = cfg.caja; if (cfg.cajaH) L.caja.h = cfg.cajaH; actualizarPlatos(); pintarCaja();
   D.modo = cfg.modo || 'M0'; D.amp = cfg.amp ?? 0.02; D.vel = cfg.vel ?? 0.25;

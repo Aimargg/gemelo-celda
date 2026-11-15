@@ -1,6 +1,6 @@
 {
-  "descripcion": "Caracterización de la v8: 8 casos fijos de __g.ensayo, en este orden y en una página recién cargada (tras el primer calcularPlanes), con la fase de la bandeja relativa al inicio de cada ensayo (tests/medir.mjs). El test compara fin, choques, roces y pausas; el resto es informativo (en T0.2 también salió igual en 6 ejecuciones).",
-  "fuente_src": "41dd4d5",
+  "descripcion": "Caracterización de la v8: 8 casos fijos de __g.ensayo, en este orden y en una página recién cargada (tras el primer calcularPlanes), con la fase de la bandeja al empezar cada ensayo (ensayo() la descuenta de simT desde T1.2) y la semilla del RRT por petición. El test compara fin, choques, roces y pausas; el resto es informativo (en T0.2 también salió igual en 6 ejecuciones).",
+  "fuente_src": "4cabe6c",
   "comando": "npm run caracterizar",
   "casos": [
     {
@@ -17,8 +17,8 @@
       "fin": "ok",
       "estado": "HECHO",
       "paso": 8,
-      "t_sim": 138.7,
-      "t_mov": 124.8,
+      "t_sim": 138.8,
+      "t_mov": 124.9,
       "errores_mm": [
         0,
         0
@@ -45,15 +45,15 @@
       "fin": "ok",
       "estado": "HECHO",
       "paso": 8,
-      "t_sim": 144.4,
-      "t_mov": 127.5,
+      "t_sim": 147.6,
+      "t_mov": 127.3,
       "errores_mm": [
-        4,
-        23
+        5,
+        22
       ],
       "choques": 0,
       "roces": 0,
-      "pausas": 2,
+      "pausas": 3,
       "autocol": 0,
       "planes": 3,
       "sust": 0,
@@ -73,8 +73,8 @@
       "fin": "ok",
       "estado": "HECHO",
       "paso": 8,
-      "t_sim": 138.4,
-      "t_mov": 124.4,
+      "t_sim": 138.8,
+      "t_mov": 124.9,
       "errores_mm": [
         0,
         0
@@ -101,8 +101,8 @@
       "fin": "ok",
       "estado": "HECHO",
       "paso": 8,
-      "t_sim": 147.3,
-      "t_mov": 133.4,
+      "t_sim": 141.6,
+      "t_mov": 127.1,
       "errores_mm": [
         4,
         6
@@ -111,7 +111,7 @@
       "roces": 0,
       "pausas": 0,
       "autocol": 0,
-      "planes": 5,
+      "planes": 4,
       "sust": 0,
       "fallo": ""
     },

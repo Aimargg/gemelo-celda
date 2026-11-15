@@ -18,11 +18,11 @@ import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
 THREE.Object3D.DEFAULT_UP.set(0, 0, 1);
 IM
 sed -n '/^const KIN/,/^})();/p' "$S/kin.js"
-# Cada marcador // @@NOMBRE@@ de app.js se sustituye por src/<nombre>.js. De layout.js se omite la exportación para
-# node:test («if (typeof module …»), como de kin.js (D4: sin módulos ni bundler).
-awk -v F="$S/colision.js" -v G="$S/fallos.js" -v E="$S/escenas.js" -v LY="$S/layout.js" '
+# Cada marcador // @@NOMBRE@@ de app.js se sustituye por src/<nombre>.js. De layout.js y rng.js se omite la exportación
+# para node:test («if (typeof module …»), como de kin.js (D4: sin módulos ni bundler).
+awk -v F="$S/colision.js" -v G="$S/fallos.js" -v E="$S/escenas.js" -v LY="$S/layout.js" -v RG="$S/rng.js" '
 function incluir(f,  l) { while ((getline l < f) > 0) if (l !~ /^if \(typeof module/) print l; close(f) }
-/@@COLISION@@/{incluir(F); next} /@@FALLOS@@/{incluir(G); next} /@@ESCENAS@@/{incluir(E); next} /@@LAYOUT@@/{incluir(LY); next}1' "$S/app.js"
+/@@COLISION@@/{incluir(F); next} /@@FALLOS@@/{incluir(G); next} /@@ESCENAS@@/{incluir(E); next} /@@LAYOUT@@/{incluir(LY); next} /@@RNG@@/{incluir(RG); next}1' "$S/app.js"
 echo '</script>'
 } > "$R/dist/gemelo-celda.html"
 echo "dist/gemelo-celda.html: $(wc -c < "$R/dist/gemelo-celda.html") bytes"
