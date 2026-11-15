@@ -1,0 +1,21 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Una escena válida: solo estos campos y con tamaños razonables
+    function esEscena(d) {
+      return d.keys().hasOnly(['nombre', 'nota', 'autor', 'editadoPor', 'creado', 'editado', 'layout', 'ajustes', 'vista', 'estado', 'borrado', 'borradoPor'])
+        && d.nombre is string && d.nombre.size() > 0 && d.nombre.size() <= 60
+        && d.nota is string && d.nota.size() <= 500
+        && d.autor is string && d.autor.size() <= 40
+        && d.layout is string && d.layout.size() <= 50000
+        && d.borrado is bool;
+    }
+    // Solo quien tenga la clave del grupo (la parte #g=... del enlace) puede leer y escribir.
+    // Borrar para siempre solo se puede desde la papelera.
+    match /grupos/{grupo}/escenas/{escena} {
+      allow read: if grupo == '@@CLAVE@@';
+      allow create, update: if grupo == '@@CLAVE@@' && esEscena(request.resource.data);
+      allow delete: if grupo == '@@CLAVE@@' && resource.data.borrado == true;
+    }
+  }
+}

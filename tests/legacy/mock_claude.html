@@ -1,0 +1,14 @@
+<script>
+(function(){
+ const store = {}; const subs = [];
+ const snapOf = () => { const ids = Object.keys(store); return { docs: ids.map(id => ({ id, exists: true, data: () => JSON.parse(JSON.stringify(store[id])), metadata: {} })), size: ids.length, empty: !ids.length, docChanges: () => [] }; };
+ const notify = () => setTimeout(() => subs.forEach(cb => cb(snapOf())), 20);
+ const db = { collection: path => ({ onSnapshot: (cb, err) => { subs.push(cb); setTimeout(() => cb(snapOf()), 30); return () => {}; },
+   doc: id => ({ id, path: path + '/' + id, get: async () => ({ id, exists: id in store, data: () => store[id] ? JSON.parse(JSON.stringify(store[id])) : undefined, metadata: {} }),
+     set: async d => { if (window.__soloLectura || (id !== window.__yo && !window.__dueno)) throw { code: 'invalid_argument', message: 'no' }; store[id] = JSON.parse(JSON.stringify(d)); notify(); } }) }) };
+ const user = { id: async () => window.__yo, isOwner: async () => !!window.__dueno, can: async () => window.__soloLectura ? false : true,
+   profiles: async ids => Object.fromEntries(ids.map(i => [i, { id: i, name: { A: 'Aimar', B: 'Bea' }[i] || '' }])) };
+ window.__yo = 'A'; window.__store = store;
+ window.claude = { use: async n => n === 'db' ? db : n === 'user' ? user : null };
+})();
+</script>
