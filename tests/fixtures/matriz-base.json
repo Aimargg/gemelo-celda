@@ -1,0 +1,219 @@
+{
+  "descripcion": "Caracterización de la v8: 8 casos fijos de __g.ensayo, en este orden y en una página recién cargada (tras el primer calcularPlanes), con la fase de la bandeja relativa al inicio de cada ensayo (tests/medir.mjs). El test compara fin, choques, roces y pausas; el resto es informativo (en T0.2 también salió igual en 6 ejecuciones).",
+  "fuente_src": "41dd4d5",
+  "comando": "npm run build && node tests/fixtures/generar.mjs matriz",
+  "casos": [
+    {
+      "caso": "caja M0 balanceo 0 cm vel 25 %",
+      "cfg": {
+        "vel": 0.25,
+        "fase": 0,
+        "sinRender": true,
+        "limite": 400,
+        "caja": true,
+        "modo": "M0",
+        "amp": 0
+      },
+      "fin": "ok",
+      "estado": "HECHO",
+      "paso": 8,
+      "t_sim": 138.7,
+      "t_mov": 124.8,
+      "errores_mm": [
+        0,
+        0
+      ],
+      "choques": 0,
+      "roces": 0,
+      "pausas": 0,
+      "autocol": 0,
+      "planes": 4,
+      "sust": 0,
+      "fallo": ""
+    },
+    {
+      "caso": "caja M0 balanceo 2 cm vel 25 %",
+      "cfg": {
+        "vel": 0.25,
+        "fase": 0,
+        "sinRender": true,
+        "limite": 400,
+        "caja": true,
+        "modo": "M0",
+        "amp": 0.02
+      },
+      "fin": "ok",
+      "estado": "HECHO",
+      "paso": 8,
+      "t_sim": 144.4,
+      "t_mov": 127.5,
+      "errores_mm": [
+        4,
+        23
+      ],
+      "choques": 0,
+      "roces": 0,
+      "pausas": 2,
+      "autocol": 0,
+      "planes": 3,
+      "sust": 0,
+      "fallo": ""
+    },
+    {
+      "caso": "caja M1 balanceo 0 cm vel 25 %",
+      "cfg": {
+        "vel": 0.25,
+        "fase": 0,
+        "sinRender": true,
+        "limite": 400,
+        "caja": true,
+        "modo": "M1",
+        "amp": 0
+      },
+      "fin": "ok",
+      "estado": "HECHO",
+      "paso": 8,
+      "t_sim": 138.4,
+      "t_mov": 124.4,
+      "errores_mm": [
+        0,
+        0
+      ],
+      "choques": 0,
+      "roces": 0,
+      "pausas": 0,
+      "autocol": 0,
+      "planes": 4,
+      "sust": 0,
+      "fallo": ""
+    },
+    {
+      "caso": "caja M1 balanceo 2 cm vel 25 %",
+      "cfg": {
+        "vel": 0.25,
+        "fase": 0,
+        "sinRender": true,
+        "limite": 400,
+        "caja": true,
+        "modo": "M1",
+        "amp": 0.02
+      },
+      "fin": "ok",
+      "estado": "HECHO",
+      "paso": 8,
+      "t_sim": 147.3,
+      "t_mov": 133.4,
+      "errores_mm": [
+        4,
+        6
+      ],
+      "choques": 0,
+      "roces": 0,
+      "pausas": 0,
+      "autocol": 0,
+      "planes": 5,
+      "sust": 0,
+      "fallo": ""
+    },
+    {
+      "caso": "mesa M0 balanceo 0 cm vel 25 %",
+      "cfg": {
+        "vel": 0.25,
+        "fase": 0,
+        "sinRender": true,
+        "limite": 400,
+        "caja": false,
+        "modo": "M0",
+        "amp": 0
+      },
+      "fin": "previo",
+      "estado": "NO INICIADO",
+      "paso": 0,
+      "t_sim": 0,
+      "t_mov": 0,
+      "errores_mm": [],
+      "choques": 0,
+      "roces": 0,
+      "pausas": 0,
+      "autocol": 0,
+      "planes": 0,
+      "sust": 0,
+      "fallo": "La demo no puede empezar con esta disposición. Por quéAntes de mover nada, el coordinador ensaya en seco cada paso (coger, soltar, levantar, llevar nivelado y dejar) y alguno no es posible:Plato 1º: e"
+    },
+    {
+      "caso": "mesa M0 balanceo 2 cm vel 25 %",
+      "cfg": {
+        "vel": 0.25,
+        "fase": 0,
+        "sinRender": true,
+        "limite": 400,
+        "caja": false,
+        "modo": "M0",
+        "amp": 0.02
+      },
+      "fin": "previo",
+      "estado": "NO INICIADO",
+      "paso": 0,
+      "t_sim": 0,
+      "t_mov": 0,
+      "errores_mm": [],
+      "choques": 0,
+      "roces": 0,
+      "pausas": 0,
+      "autocol": 0,
+      "planes": 0,
+      "sust": 0,
+      "fallo": "La demo no puede empezar con esta disposición. Por quéAntes de mover nada, el coordinador ensaya en seco cada paso (coger, soltar, levantar, llevar nivelado y dejar) y alguno no es posible:Plato 1º: e"
+    },
+    {
+      "caso": "mesa M1 balanceo 0 cm vel 25 %",
+      "cfg": {
+        "vel": 0.25,
+        "fase": 0,
+        "sinRender": true,
+        "limite": 400,
+        "caja": false,
+        "modo": "M1",
+        "amp": 0
+      },
+      "fin": "previo",
+      "estado": "NO INICIADO",
+      "paso": 0,
+      "t_sim": 0,
+      "t_mov": 0,
+      "errores_mm": [],
+      "choques": 0,
+      "roces": 0,
+      "pausas": 0,
+      "autocol": 0,
+      "planes": 0,
+      "sust": 0,
+      "fallo": "La demo no puede empezar con esta disposición. Por quéAntes de mover nada, el coordinador ensaya en seco cada paso (coger, soltar, levantar, llevar nivelado y dejar) y alguno no es posible:Plato 1º: e"
+    },
+    {
+      "caso": "mesa M1 balanceo 2 cm vel 25 %",
+      "cfg": {
+        "vel": 0.25,
+        "fase": 0,
+        "sinRender": true,
+        "limite": 400,
+        "caja": false,
+        "modo": "M1",
+        "amp": 0.02
+      },
+      "fin": "previo",
+      "estado": "NO INICIADO",
+      "paso": 0,
+      "t_sim": 0,
+      "t_mov": 0,
+      "errores_mm": [],
+      "choques": 0,
+      "roces": 0,
+      "pausas": 0,
+      "autocol": 0,
+      "planes": 0,
+      "sust": 0,
+      "fallo": "La demo no puede empezar con esta disposición. Por quéAntes de mover nada, el coordinador ensaya en seco cada paso (coger, soltar, levantar, llevar nivelado y dejar) y alguno no es posible:Plato 1º: e"
+    }
+  ]
+}
