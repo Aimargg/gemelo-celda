@@ -24,15 +24,22 @@ describe('artefacto: dist/gemelo-celda.html envuelto con doctype y ?prueba', () 
     comprobar(s.reg);
   });
 
-  test('una petición externa no interceptada (Firestore, Realtime DB u otro dominio) hace fallar la comprobación', { timeout: 60000 }, async () => {
+  test('una petición externa no interceptada (Firestore, Realtime DB, WebSocket u otro dominio) se corta y hace fallar la comprobación', { timeout: 60000 }, async () => {
     await s.page.evaluate(() => Promise.allSettled([
       fetch('https://firestore.googleapis.com/v1/projects/gemelo-prueba/databases/(default)/documents/grupos'),
       fetch('https://gemelo-prueba-default-rtdb.firebaseio.com/x.json'),
       fetch('https://example.com/'),
     ]));
-    assert.equal(s.reg.externas.length, 3, s.reg.externas.join('\n'));
+    // WebSocket externo (el canal de Realtime DB): ctx.routeWebSocket lo cierra sin conectar con el servidor
+    const w = await s.page.evaluate(() => new Promise(r => {
+      const ws = new WebSocket('wss://gemelo-prueba-default-rtdb.firebaseio.com/.ws?v=5'); let mensajes = 0;
+      ws.onmessage = () => mensajes++; ws.onclose = e => r({ code: e.code, mensajes }); setTimeout(() => r({ code: 'sin cerrar', mensajes }), 10000);
+    }));
+    assert.deepEqual(w, { code: 1008, mensajes: 0 });
+    assert.equal(s.reg.externas.length, 4, s.reg.externas.join('\n'));
     assert.throws(() => comprobar(s.reg), err => /externa no interceptada: GET https:\/\/firestore\.googleapis\.com/.test(err.message)
-      && /firebaseio\.com/.test(err.message) && /example\.com/.test(err.message));
+      && /GET https:\/\/gemelo-prueba-default-rtdb\.firebaseio\.com/.test(err.message) && /example\.com/.test(err.message)
+      && /externa no interceptada: WS wss:\/\/gemelo-prueba-default-rtdb\.firebaseio\.com/.test(err.message));
   });
 });
 

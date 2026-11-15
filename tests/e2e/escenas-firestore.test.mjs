@@ -12,8 +12,14 @@ after(async () => { await srv?.cerrar(); });
 const docs = p => p.evaluate(() => [...globalThis.__fsStore.values()]);
 const hasta = (p, fn, arg) => p.waitForFunction(fn, arg, { timeout: 60000, polling: 50 });
 const abrirPapelera = async p => { await p.locator('#escPapelera').waitFor(); if (!(await p.evaluate(() => document.getElementById('escPapelera').open))) await p.click('#escPapelera summary'); };
-// Dos pulsaciones (confirmar() de escenas.js); devuelve la hora de la primera, que arma un temporizador de 4 s
-const dosVeces = async (p, sel, texto) => { const t = Date.now(); await p.click(sel); await p.locator(sel, { hasText: texto }).first().waitFor(); await p.click(sel); return t; };
+// Dos pulsaciones (confirmar() de escenas.js) dentro de la página y seguidas: la confirmación caduca a los 4 s y, con la
+// página ocupada por SwiftShader, dos clics de Playwright pueden tardar más (falló así en check.sh). Comprueba el texto
+// intermedio y devuelve la hora de la primera pulsación, que arma ese temporizador.
+const dosVeces = async (p, sel, texto) => {
+  await p.locator(sel).first().waitFor(); const t = Date.now();
+  const medio = await p.evaluate(sel => { const b = () => document.querySelector(sel); b().click(); const m = b().textContent; b().click(); return m; }, sel);
+  assert.equal(medio, texto, `texto tras la primera pulsación en ${sel}`); return t;
+};
 // Espera justificada (no a una condición): el temporizador de 4 s de una confirmación anterior de la misma escena
 // anula la siguiente (hallazgo fijado abajo); no hay nada observable que indique que ha vencido.
 const vencido = (p, t) => p.waitForTimeout(Math.max(0, 4300 - (Date.now() - t)));

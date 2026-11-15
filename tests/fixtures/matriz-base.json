@@ -1,7 +1,7 @@
 {
   "descripcion": "Caracterización de la v8: 8 casos fijos de __g.ensayo, en este orden y en una página recién cargada (tras el primer calcularPlanes), con la fase de la bandeja relativa al inicio de cada ensayo (tests/medir.mjs). El test compara fin, choques, roces y pausas; el resto es informativo (en T0.2 también salió igual en 6 ejecuciones).",
   "fuente_src": "41dd4d5",
-  "comando": "npm run build && node tests/fixtures/generar.mjs matriz",
+  "comando": "npm run caracterizar",
   "casos": [
     {
       "caso": "caja M0 balanceo 0 cm vel 25 %",

@@ -2,7 +2,7 @@
   "nombre": "Disposición por defecto",
   "descripcion": "layoutDefecto() de la v8 sin tocar: dos platos sobre la caja de 10 cm",
   "fuente_src": "41dd4d5",
-  "comando": "npm run build && node tests/fixtures/generar.mjs escenas",
+  "comando": "npm run caracterizar -- --escenas",
   "codigo": "GEMELO1.eyJ2IjoxLCJub21icmUiOiJEaXNwb3NpY2nDs24gcG9yIGRlZmVjdG8iLCJub3RhIjoiIiwibGF5b3V0Ijp7InJvYm90IjoiQiIsInpvbmEiOnsieCI6MC4xMiwieSI6MC4yNywieWF3IjowLCJ3IjowLjIyLCJkIjowLjE2fSwicGxhdG8xIjp7IngiOjAuMjY1LCJ5IjotMC4wNDl9LCJwbGF0bzIiOnsieCI6MC4xMjIsInkiOjAuMDg5fSwiY2FqYSI6eyJvbiI6dHJ1ZSwiaCI6MC4xfSwicGVkaWRvIjoyLCJwZXJzb25hIjp7IngiOjEuMjgsInkiOjAuMzIsInlhdyI6My4xNDE1OTI2NTM1ODk3OTN9LCJiYW5kZWphIjp7ImFsdCI6MSwiYWRlIjowLjR9LCJhcnVjb0UiOlt7IngiOjAuNDgsInkiOjAuMX0seyJ4IjowLjU1LCJ5IjotMC4wNX1dLCJjYW1zIjp7ImNlbml0YWwiOnsiZ3J1cG8iOiJWMiIsIm5vbWJyZSI6IkNlbml0YWwiLCJmIjozLjYsIm1vZG8iOiIxOTIweDEwODAiLCJjbGFtcCI6eyJ4IjowLjE3LCJ5IjotMC40MTV9LCJwb3MiOnsieCI6MC4xNywieSI6LTAuMTcsInoiOjEuMTd9LCJtaXJhIjp7IngiOjAuMTgsInkiOjAuMSwieiI6MC43Nn0sInJvbGwiOjB9LCJlbnRyZWdhIjp7ImdydXBvIjoiVjEiLCJub21icmUiOiJFbnRyZWdhIiwiZiI6My42LCJtb2RvIjoiMTkyMHgxMDgwIiwiY2xhbXAiOnsieCI6MC41NSwieSI6LTAuNDE1fSwicG9zIjp7IngiOjAuNTUsInkiOi0wLjM5NSwieiI6MS4yNX0sIm1pcmEiOnsieCI6MC42OCwieSI6MC4xLCJ6IjowLjl9LCJyb2xsIjowfSwicGVyc29uYSI6eyJncnVwbyI6IlYxIiwibm9tYnJlIjoiUGVyc29uYSIsImYiOjQuNSwibW9kbyI6IjE5MjB4MTA4MCIsImNsYW1wIjp7IngiOjAuMywieSI6LTAuNDE1fSwicG9zIjp7IngiOjAuMywieSI6LTAuMzY1LCJ6IjoxLjI1fSwibWlyYSI6eyJ4IjoxLjIsInkiOjAuMzIsInoiOjEuM30sInJvbGwiOjB9fX0sImFqdXN0ZXMiOnsibW9kbyI6Ik0wIiwiYW1wIjowLjAyLCJ2ZWwiOjAuMjUsInBlZGlkbyI6Mn0sInZpc3RhIjp7InAiOlstMS4xNSwtMS40NSwxLjhdLCJ0IjpbMC40MiwwLjEsMC45XX19",
   "esperado": {
     "abierta": "Tu mesa · copia de «Disposición por defecto»",
@@ -125,5 +125,6 @@
       "roces": 0,
       "pausas": 2
     }
-  }
+  },
+  "esperado_fuente_src": "41dd4d5"
 }

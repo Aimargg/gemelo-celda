@@ -20,13 +20,18 @@ y no es fuente del repo del proyecto de Robótica (invariante I9).
 
 ## Construir y probar
 
-- `npm install` (solo `playwright@1.63.0` y `three@0.160.0`, versión exacta). No ejecutes `playwright install`.
+- `npm install` (solo `playwright@1.63.0` y `three@0.160.0`, versión exacta). Si falta el navegador de Playwright 1.63.0,
+  para y avisa: no ejecutes `playwright install` sin preguntar.
 - `npm run build`: los dos destinos. `index.html` se versiona construido (D1).
 - `npm test`: build + unitarios (`node:test`) + e2e (Playwright + Chromium con SwiftShader, sin GPU ni red).
 - `npm run test:rapido`: build + unitarios + carga de los dos destinos (< 2 min).
-- `bash tools/check.sh`: búsqueda de la clave (I3) + build + `npm test`. Pásalo antes de cada commit de entrega.
-- `npm run caracterizar`: regenera `tests/fixtures/matriz-base.json` y `escenas-v8/` desde el gemelo actual. Solo
-  cuando una tarea cambie el comportamiento a propósito (p. ej. T1.2), con el diff explicado en el informe.
+- `bash tools/check.sh`: búsqueda de la clave (I3) en el árbol y en el índice + build + `npm test`. Pásalo antes de cada
+  commit de entrega. Sin `clave_grupo.txt` la búsqueda es heurística (patrones `#g=`, `grupo ==`, rutas `grupos/…`); la
+  búsqueda exacta de la clave solo se hace en el equipo del usuario, que es quien tiene ese fichero.
+- `npm run caracterizar`: regenera solo `tests/fixtures/matriz-base.json` desde el gemelo actual, y solo cuando la tarea
+  lo pida (p. ej. T1.2), con el diff explicado en el informe.
+- `escenas-v8/` no se regenera: su `codigo` es fijo (I1). `npm run caracterizar -- --escenas` recalcula solo `esperado`
+  (nunca el `codigo`) y exige explicar el diff.
 - `npm run medir`: regenera la línea base (`docs/estado/linea-base-v8.md`).
 
 ## Reglas que no se rompen

@@ -2,7 +2,7 @@
   "nombre": "Un plato, zona desplazada",
   "descripcion": "Pedido de un plato, zona de fruta 3 cm en +x y focal de la cenital a 4,5 mm",
   "fuente_src": "41dd4d5",
-  "comando": "npm run build && node tests/fixtures/generar.mjs escenas",
+  "comando": "npm run caracterizar -- --escenas",
   "codigo": "GEMELO1.eyJ2IjoxLCJub21icmUiOiJVbiBwbGF0bywgem9uYSBkZXNwbGF6YWRhIiwibm90YSI6IiIsImxheW91dCI6eyJyb2JvdCI6IkIiLCJ6b25hIjp7IngiOjAuMTUsInkiOjAuMjcsInlhdyI6MCwidyI6MC4yMiwiZCI6MC4xNn0sInBsYXRvMSI6eyJ4IjowLjI2NSwieSI6LTAuMDQ5fSwicGxhdG8yIjp7IngiOjAuMTIyLCJ5IjowLjA4OX0sImNhamEiOnsib24iOnRydWUsImgiOjAuMX0sInBlZGlkbyI6MSwicGVyc29uYSI6eyJ4IjoxLjI4LCJ5IjowLjMyLCJ5YXciOjMuMTQxNTkyNjUzNTg5NzkzfSwiYmFuZGVqYSI6eyJhbHQiOjEsImFkZSI6MC40fSwiYXJ1Y29FIjpbeyJ4IjowLjQ4LCJ5IjowLjF9LHsieCI6MC41NSwieSI6LTAuMDV9XSwiY2FtcyI6eyJjZW5pdGFsIjp7ImdydXBvIjoiVjIiLCJub21icmUiOiJDZW5pdGFsIiwiZiI6NC41LCJtb2RvIjoiMTkyMHgxMDgwIiwiY2xhbXAiOnsieCI6MC4xNywieSI6LTAuNDE1fSwicG9zIjp7IngiOjAuMTcsInkiOi0wLjE3LCJ6IjoxLjE3fSwibWlyYSI6eyJ4IjowLjE4LCJ5IjowLjEsInoiOjAuNzZ9LCJyb2xsIjowfSwiZW50cmVnYSI6eyJncnVwbyI6IlYxIiwibm9tYnJlIjoiRW50cmVnYSIsImYiOjMuNiwibW9kbyI6IjE5MjB4MTA4MCIsImNsYW1wIjp7IngiOjAuNTUsInkiOi0wLjQxNX0sInBvcyI6eyJ4IjowLjU1LCJ5IjotMC4zOTUsInoiOjEuMjV9LCJtaXJhIjp7IngiOjAuNjgsInkiOjAuMSwieiI6MC45fSwicm9sbCI6MH0sInBlcnNvbmEiOnsiZ3J1cG8iOiJWMSIsIm5vbWJyZSI6IlBlcnNvbmEiLCJmIjo0LjUsIm1vZG8iOiIxOTIweDEwODAiLCJjbGFtcCI6eyJ4IjowLjMsInkiOi0wLjQxNX0sInBvcyI6eyJ4IjowLjMsInkiOi0wLjM2NSwieiI6MS4yNX0sIm1pcmEiOnsieCI6MS4yLCJ5IjowLjMyLCJ6IjoxLjN9LCJyb2xsIjowfX19LCJhanVzdGVzIjp7Im1vZG8iOiJNMCIsImFtcCI6MC4wMiwidmVsIjowLjI1LCJwZWRpZG8iOjF9LCJ2aXN0YSI6eyJwIjpbLTEuMTUsLTEuNDUsMS44XSwidCI6WzAuNDIsMC4xLDAuOV19fQ==",
   "esperado": {
     "abierta": "Tu mesa · copia de «Un plato, zona desplazada»",
@@ -125,5 +125,6 @@
       "roces": 0,
       "pausas": 0
     }
-  }
+  },
+  "esperado_fuente_src": "41dd4d5"
 }

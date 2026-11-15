@@ -3,27 +3,42 @@
 # Uso: bash tools/check.sh   (desde cualquier carpeta). Sale con código distinto de 0 ante cualquier fallo.
 set -euo pipefail
 R=$(cd "$(dirname "$0")/.." && pwd); cd "$R"
+export LC_ALL=C.UTF-8 # «›» y los acentos como un solo carácter en grep y sed
 
-# 1) Clave del grupo (I3). Se miran los ficheros rastreados y los nuevos sin ignorar (los que entrarían en el próximo commit);
-#    dist/ y clave_grupo.txt están ignorados. Dos búsquedas:
-#    a) si existe clave_grupo.txt, su contenido exacto;
-#    b) siempre, los sitios donde aparece la clave (enlace #g=…, reglas grupo == '…', LEEME «Clave del grupo: `…`»)
-#       con un valor que no sea un marcador o una clave de prueba.
-echo "== 1/3 Clave del grupo en los ficheros de git (I3)"
-fallo=0
-buscar() { local rc=0 out; out=$(git grep --untracked -I "$@") || rc=$?; [ "$rc" -le 1 ] || { echo "ERROR: git grep ha fallado ($rc)" >&2; exit 2; }; printf '%s' "$out"; }
-if [ -f clave_grupo.txt ]; then
-  KEY=$(tr -d '[:space:]' < clave_grupo.txt)
-  hits=''; if [ -n "$KEY" ]; then hits=$(buscar -l -F -e "$KEY" -- . ':!clave_grupo.txt'); fi
-  if [ -n "$hits" ]; then echo "ERROR: la clave de clave_grupo.txt aparece en:"; printf '%s\n' "$hits" | sed 's/^/  /'; fallo=1; fi
-fi
+# 1) Clave del grupo (I3), en dos sitios: el árbol de trabajo (ficheros rastreados y nuevos sin ignorar, lo que entraría
+#    en el próximo commit) y el índice (lo ya preparado con git add, aunque se haya borrado del árbol).
+#    a) Exacta: si existe clave_grupo.txt (solo en el equipo del usuario), su contenido.
+#    b) Heurística, siempre: enlaces con g=, reglas que comparan grupo con una cadena, rutas o argumentos con «grupos»
+#       seguidos de un valor de 6 a 80 caracteres, y la línea «Clave del grupo» del LEEME. Falla si el valor no es un
+#       marcador o una clave de prueba de PERMITIDAS. Este fichero no se excluye de la búsqueda.
+echo "== 1/3 Clave del grupo en el árbol y en el índice de git (I3)"
 PERMITIDAS='^(@@CLAVE@@|clave-buena|clave-mala)$'
-hits=$(buscar -n -o -E "#g=[A-Za-z0-9_-]{6,80}|grupo == '[^']*'|Clave del grupo: \`[^\`]*\`" -- . ':!tools/check.sh')
-while IFS= read -r linea; do
-  [ -z "$linea" ] && continue
-  valor=$(printf '%s' "$linea" | sed -E "s/^[^:]*:[0-9]+:(#g=|grupo == '|Clave del grupo: \`)//; s/['\`]$//")
-  if ! printf '%s' "$valor" | grep -Eq "$PERMITIDAS"; then echo "ERROR: posible clave del grupo: $linea"; fallo=1; fi
-done <<< "$hits"
+PAT_ENLACE='[#&]g=[A-Za-z0-9_-]{6,80}'
+PAT_REGLA="grupo[[:space:]]*==[[:space:]]*[\"'][^\"']*[\"']"
+PAT_RUTA="grupos[[:space:]]*[/›\`'\"][/ ›\`'\",]*[A-Za-z0-9_-]{6,80}"
+PAT_LEEME='Clave del grupo:[[:space:]]*`[^`]*`'
+fallo=0
+buscar() { # $1 = --untracked | --cached; el resto, argumentos de git grep. Sale con 2 si git grep falla de verdad.
+  local donde=$1 rc=0 out; shift
+  out=$(git grep "$donde" -I "$@") || rc=$?
+  [ "$rc" -le 1 ] || { echo "ERROR: git grep $donde ha fallado ($rc)" >&2; exit 2; }
+  printf '%s' "$out"
+}
+for donde in --untracked --cached; do
+  sitio=$([ "$donde" = --cached ] && echo 'índice' || echo 'árbol')
+  if [ -f clave_grupo.txt ]; then
+    KEY=$(tr -d '[:space:]' < clave_grupo.txt); hits=''
+    if [ -n "$KEY" ]; then hits=$(buscar "$donde" -l -F -e "$KEY"); fi
+    if [ -n "$hits" ]; then echo "ERROR ($sitio): la clave de clave_grupo.txt aparece en:"; printf '%s\n' "$hits" | sed 's/^/  /'; fallo=1; fi
+  fi
+  hits=$(buscar "$donde" -n -o -E -e "$PAT_ENLACE" -e "$PAT_REGLA" -e "$PAT_RUTA" -e "$PAT_LEEME")
+  while IFS= read -r linea; do
+    [ -z "$linea" ] && continue
+    coincidencia=${linea#*:*:}   # quita «fichero:línea:»
+    valor=$(printf '%s' "$coincidencia" | sed -E "s/[\`'\"]$//; s/.*[=/ \`'\",:›]//")
+    if ! printf '%s' "$valor" | grep -Eq "$PERMITIDAS"; then echo "ERROR ($sitio): posible clave del grupo «$valor» en $linea"; fallo=1; fi
+  done <<< "$hits"
+done
 [ "$fallo" = 0 ] || { echo "check: FALLA (I3)"; exit 1; }
 echo "sin claves reales"
 
