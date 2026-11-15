@@ -7,7 +7,7 @@ function diagnosticarPunto(p, yaw, opts = {}) {
   for (const y of yaws) for (const fl of opts.horiz && !opts.flip ? [1, -1] : [opts.flip]) { const q = ikTCP(p, y, robot.q, { ...opts, flip: fl, sinColision: true }); if (q && !sols.some(s => Math.max(...s.map((v, i) => Math.abs(v - q[i]))) < 0.05)) sols.push(q); }
   if (!sols.length) { // ¿existe postura si se deja bajar la muñeca por debajo del tablero? entonces lo que estorba es la mesa
     const qm = ikTCP(p, yaw, robot.q, { ...opts, minZ: -1, sinColision: true });
-    return qm ? { ...base, causa: 'choque', q: qm, detalleChoque: 'el brazo con la mesa (la muñeca o la pinza tendrían que pasar por debajo del tablero)' } : base;
+    return qm ? { ...base, causa: 'choque', q: qm, detalleChoque: 'el brazo con la mesa (la muñeca o la pinza tendrían que pasar por debajo del tablero)' } : { ...base, causa: causaSinIK(p, yaw, opts) };
   }
   const ctx = ctxDe(opts); const cs = sols.map(q => ({ q, c: choqueEn(q, ctx) }));
   const elegido = cs.find(x => x.c && x.c.tipo !== 'auto') || cs.find(x => x.c) || cs[0];
@@ -49,6 +49,9 @@ function explicar(info) {
       o.porque = `El punto está a ${mm(r)} mm del eje de la base y a ${mm(bp ? bp.z : 0)} mm sobre la mesa. Con la pinza ${info.horiz ? 'horizontal (20 cm por delante de la muñeca)' : 'vertical'} el UR3e no llega ahí${o.dir === 'cerca' ? ': está demasiado pegado a la base' : o.dir === 'lejos' ? ': está demasiado lejos' : ''}.${extra}`;
       o.real = 'No hay solución de cinemática inversa: MoveIt no puede planificar el paso y el coordinador pasa a error.'; break;
     }
+    case 'ik_calibrada': // T1.4-5: hay ramas de la IK analítica nominal, pero ninguna converge con la calibración
+      o.porque = `IK calibrada no converge. La cinemática inversa analítica del UR3e nominal tiene solución para ese punto (a ${mm(r)} mm del eje de la base y ${mm(bp ? bp.z : 0)} mm sobre la mesa), pero ninguna de sus ramas converge con la calibración del robot ${ROB.id}: el gemelo no sabe si el robot calibrado llega.`;
+      o.real = `MoveIt resuelve la cinemática inversa con su propio método sobre el URDF calibrado y puede encontrar una postura o no: compruébalo en sim_${ROB.id} antes de dar el punto por imposible.`; break;
     case 'autocolision':
       o.porque = `Para llegar, el brazo tendría que plegarse sobre sí mismo: chocaría ${textoChoque(info.choque)}. Pasa cuando el objetivo queda muy cerca de la base, muy bajo o la muñeca tiene que doblarse hacia atrás.`;
       o.real = 'MoveIt rechaza la postura por autocolisión; si se forzara, el robot se golpearía a sí mismo.'; break;
@@ -103,8 +106,8 @@ function mostrarFalloInfo(e, titulo, tipo) {
 function verFallo(info) {
   if (info.causa === 'previo' && D.posturaImposible) { verPosturaImposible(); return; }
   if (!info.q) return; D.activo = false; robot.setQ(info.q); sincronizarSliders(); actualizarHUD();
-  const b = BASES[L.robot]; const c = info.choque;
-  if (c) { marcaChoque.position.set(c.p[0] + b.x, c.p[1] + b.y, c.p[2] + MESA.h); marcaChoque.visible = true; D.marcaHasta = simT + 1e9; }
+  const c = info.choque;
+  if (c) { marcaChoque.position.copy(baseAMundo(c.p[0], c.p[1], c.p[2])); marcaChoque.visible = true; D.marcaHasta = simT + 1e9; }
   else if (info.punto) { objetivo.position.copy(info.punto); objetivo.visible = true; objetivo.userData.anillo.material.color.set(css('--bad')); }
   const t = info.punto || tcpMundo(); animarCam(new THREE.Vector3(t.x - 0.5, t.y - 0.6, t.z + 0.4), t.clone());
 }

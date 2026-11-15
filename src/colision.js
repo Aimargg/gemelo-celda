@@ -74,8 +74,9 @@ function iniciarColision() {
   COL.listo = true;
 }
 // Coloca todas las esferas para una postura q (marco base_link). Devuelve cuántas hay activas.
-function colocar(q, w, carga) {
-  const Ls = KIN.fkLinks(q); COL.loc.set(esferasPinza(w), COL.n0 * 4);
+// kin: la cinemática del brazo (la del robot activo, CIN; el brazo «otro» usa la nominal, T1.4)
+function colocar(q, w, carga, kin = CIN) {
+  const Ls = kin.fkLinks(q); COL.loc.set(esferasPinza(w), COL.n0 * 4);
   let nC = 0; if (carga) { nC = Math.min(carga.length / 4, NC_MAX); COL.loc.set(carga.subarray(0, nC * 4), COL.N * 4); }
   const n = COL.N + nC, Lc = COL.loc, X = COL.X, G = COL.grp;
   for (let i = 0; i < n; i++) {
@@ -95,15 +96,19 @@ function colocar(q, w, carga) {
   COL.nAct = n; COL.nC = nC; return n;
 }
 
-// Obstáculos en el marco base_link: mesa, cajas, platos, fruta, bandeja, persona, cámaras y el otro robot
+// Obstáculos en el marco base_link: mesa, cajas, platos, fruta, bandeja, persona, cámaras y el otro robot.
+// Pasan del mundo a base_link con marco() (traslación y giro de la base, T1.4); con el nominal, la misma resta que antes.
 let _obsCache = { key: '', lista: null }, _otroCache = { key: '', lista: null };
 function obstaculos() {
-  const key = `${VERSION_ESCENA}|${L.robot}|${simT.toFixed(4)}`; if (_obsCache.key === key) return _obsCache.lista;
-  const b = BASES[L.robot], bx = b.x, by = b.y, bz = MESA.h, o = [];
-  const esf = (x, y, z, r, tag, m, blando) => o.push({ t: 1, x: x - bx, y: y - by, z: z - bz, r, tag, m, blando, R: r });
-  const cap = (a, c, r, tag, m) => { const ax = a.x - bx, ay = a.y - by, az = a.z - bz, cx = c.x - bx, cy = c.y - by, cz = c.z - bz; o.push({ t: 2, ax, ay, az, cx, cy, cz, r, tag, m, x: (ax + cx) / 2, y: (ay + cy) / 2, z: (az + cz) / 2, R: r + Math.hypot(cx - ax, cy - ay, cz - az) / 2 }); };
-  const obb = (cxw, cyw, czw, hx, hy, hz, yaw, tag, m) => o.push({ t: 3, x: cxw - bx, y: cyw - by, z: czw - bz, hx, hy, hz, c: Math.cos(yaw), s: Math.sin(yaw), tag, m, R: Math.hypot(hx, hy, hz) });
-  o.push({ t: 0, x: -bx, y: -by, z: 0, hx: MESA.w / 2, hy: MESA.d / 2, tag: 'mesa', m: 0.004, R: 9 });
+  const key = `${VERSION_ESCENA}|${L.robot}|${ROB.id}|${simT.toFixed(4)}`; if (_obsCache.key === key) return _obsCache.lista;
+  const mb = marco(), o = [];
+  const esf = (x, y, z, r, tag, m, blando) => { const p = mb.aBase(x, y, z); o.push({ t: 1, x: p[0], y: p[1], z: p[2], r, tag, m, blando, R: r }); };
+  const cap = (a, c, r, tag, m) => { const pa = mb.aBase(a.x, a.y, a.z), pc = mb.aBase(c.x, c.y, c.z); const ax = pa[0], ay = pa[1], az = pa[2], cx = pc[0], cy = pc[1], cz = pc[2]; o.push({ t: 2, ax, ay, az, cx, cy, cz, r, tag, m, x: (ax + cx) / 2, y: (ay + cy) / 2, z: (az + cz) / 2, R: r + Math.hypot(cx - ax, cy - ay, cz - az) / 2 }); };
+  const obb = (cxw, cyw, czw, hx, hy, hz, yaw, tag, m) => { const p = mb.aBase(cxw, cyw, czw), yb = mb.yawABase(yaw); o.push({ t: 3, x: p[0], y: p[1], z: p[2], hx, hy, hz, c: Math.cos(yb), s: Math.sin(yb), tag, m, R: Math.hypot(hx, hy, hz) }); };
+  { // tablero: sus ejes son los del mundo; en base_link giran −yaw de la base. El giro solo se añade si lo hay: todos los
+    // campos de un obstáculo entran en la semilla del RRT (RNG.semillaPlan) y con el nominal no debe cambiar (I8)
+    const p = mb.aBase(0, 0, MESA.h), yb = mb.yawABase(0), mesa = { t: 0, x: p[0], y: p[1], z: p[2], hx: MESA.w / 2, hy: MESA.d / 2, tag: 'mesa', m: 0.004, R: 9 };
+    if (yb !== 0) Object.assign(mesa, { giro: true, c: Math.cos(yb), s: Math.sin(yb) }); o.push(mesa); }
   if (L.caja.on) for (const k of ['1', '2']) { const cj = OBJ['caja' + k]; if (!cj.visible) continue; obb(cj.position.x, cj.position.y, MESA.h + L.caja.h / 2, CAJA_LADO / 2, CAJA_LADO / 2, L.caja.h / 2, cj.rotation.z, 'caja:plato' + k, 0.002); }
   const v = new THREE.Vector3();
   for (const pk of ['plato1', 'plato2']) { const P = OBJ[pk]; if (P.parent === pinza.tcp || !P.visible) continue; const e = esferasObjeto(P, null); const enBandeja = P.parent === bandeja; for (let i = 0; i < e.length; i += 4) esf(e[i], e[i + 1], e[i + 2], e[i + 3], 'plato:' + pk, 0.002, enBandeja); }
@@ -115,7 +120,7 @@ function obstaculos() {
   cap(pw(0, 0, 0.97), pw(0, 0, 1.38), 0.17, 'persona', 0.03); { const h = pw(0, 0, 1.63); esf(h.x, h.y, h.z, 0.12, 'persona', 0.03); }
   for (let k = 0; k < 4; k++) { const m = brazos[k]; const d = new THREE.Vector3(0, 1, 0).applyQuaternion(m.quaternion); const l = m.scale.y / 2; const a = m.position.clone().addScaledVector(d, -l), c = m.position.clone().addScaledVector(d, l); if (k % 2) { c.addScaledVector(d, -0.03); cap(a, c, 0.03, 'manos', 0.005); } else cap(a, c, 0.035, 'persona', 0.03); }
   for (const k in CAMS) { const R = CAMS[k]; R.cam.updateMatrixWorld(true); for (const [z, r] of [[0.008, 0.032], [-0.02, 0.022]]) { const p = new THREE.Vector3(0, 0, z).applyMatrix4(R.cam.matrixWorld); esf(p.x, p.y, p.z, r, 'camara:' + k, 0.01); } for (const s of R.seg) { const d = new THREE.Vector3(0, 1, 0).applyQuaternion(s.quaternion); const l = s.scale.y / 2; cap(s.position.clone().addScaledVector(d, -l), s.position.clone().addScaledVector(d, l), 0.0115, 'camara:' + k, 0.01); } esf(R.codo.position.x, R.codo.position.y, R.codo.position.z, 0.03, 'camara:' + k, 0.01); esf(R.clamp.position.x, R.clamp.position.y, R.clamp.position.z, 0.045, 'camara:' + k, 0.005); }
-  if (otro && otro.root.visible) { const ob = otro.root.position; const kq = `${ob.x}|${ob.y}|${otro.q.join(',')}`; if (_otroCache.key !== kq) { colocar(otro.q, 0.06, null); const l = []; for (let i = 0; i < COL.N; i++) l.push(COL.X[i * 4] + ob.x, COL.X[i * 4 + 1] + ob.y, COL.X[i * 4 + 2] + MESA.h, COL.X[i * 4 + 3]); _otroCache = { key: kq, lista: l }; } const l = _otroCache.lista; for (let i = 0; i < l.length; i += 4) esf(l[i], l[i + 1], l[i + 2], l[i + 3], 'robot A', 0.01); }
+  if (otro && otro.root.visible) { const ob = otro.root.position; const kq = `${ob.x}|${ob.y}|${otro.q.join(',')}`; if (_otroCache.key !== kq) { colocar(otro.q, 0.06, null, KIN.nominal); const l = []; for (let i = 0; i < COL.N; i++) l.push(COL.X[i * 4] + ob.x, COL.X[i * 4 + 1] + ob.y, COL.X[i * 4 + 2] + MESA.h, COL.X[i * 4 + 3]); _otroCache = { key: kq, lista: l }; } const l = _otroCache.lista; for (let i = 0; i < l.length; i += 4) esf(l[i], l[i + 1], l[i + 2], l[i + 3], 'robot A', 0.01); }
   _obsCache = { key, lista: o }; return o;
 }
 const NOM_OBS = t => t === 'mesa' ? 'la mesa' : t.startsWith('caja') ? 'una caja' : t.startsWith('plato') ? 'un plato' : t.startsWith('pieza') ? 'una pieza de fruta' : t === 'bandeja' ? 'la bandeja' : t === 'manos' ? 'las manos de la persona' : t === 'persona' ? 'la persona' : t.startsWith('camara') ? `la cámara ${t.split(':')[1]} o su brazo` : 'el robot A';
@@ -147,7 +152,7 @@ function choqueEn(q, ctx = {}) {
         else if (B[g * 4 + 2] - B[g * 4 + 3] > o.m) continue;
       for (let i = ga; i < ge; i++) {
         const k = i * 4, x = X[k], y = X[k + 1], z = X[k + 2], r = X[k + 3];
-        if (o.t === 0) { if (Math.abs(x - o.x) < o.hx && Math.abs(y - o.y) < o.hy && z - r < o.m) return { tipo: 'entorno', a: G[i], b: o.tag, p: [x, y, z - r] }; continue; }
+        if (o.t === 0) { const dx = x - o.x, dy = y - o.y, lx = o.giro ? dx * o.c + dy * o.s : dx, ly = o.giro ? -dx * o.s + dy * o.c : dy; if (Math.abs(lx) < o.hx && Math.abs(ly) < o.hy && z - r < o.m) return { tipo: 'entorno', a: G[i], b: o.tag, p: [x, y, z - r] }; continue; }
         const dx = x - o.x, dy = y - o.y, dz = z - o.z, lim = o.R + r + o.m; if (dx * dx + dy * dy + dz * dz > lim * lim) continue; // descarte rápido
         if (distObs(o, x, y, z) < r + o.m) return { tipo: 'entorno', a: G[i], b: o.tag, p: [x, y, z] };
       }
@@ -243,7 +248,7 @@ function rutaCartesiana(q0, puntos, opts) {
     const a = puntos[s - 1], b = puntos[s], d = a.p.distanceTo(b.p), dy = angDiff(b.yaw, a.yaw); const n = Math.max(1, Math.ceil(Math.max(d / 0.004, Math.abs(dy) / 0.02)));
     for (let k = 1; k <= n; k++) {
       const prev = ruta[ruta.length - 1], t = k / n; const q = ikTCP(a.p.clone().lerp(b.p, t), a.yaw + dy * t, prev, opts);
-      if (!q) { const pp = a.p.clone().lerp(b.p, t); const q2 = ikTCP(pp, a.yaw + dy * t, prev, { ...opts, sinColision: true }); const c = q2 && choqueEn(q2, ctx); return mal(c ? `chocaría ${textoChoque(c)}` : 'se sale del alcance', { causa: causaDe(c) || 'alcance', choque: c || null, q: q2 || prev, p: pp }); }
+      if (!q) { const pp = a.p.clone().lerp(b.p, t); const q2 = ikTCP(pp, a.yaw + dy * t, prev, { ...opts, sinColision: true }); const c = q2 && choqueEn(q2, ctx); return mal(c ? `chocaría ${textoChoque(c)}` : 'se sale del alcance', { causa: causaDe(c) || (q2 ? 'alcance' : causaSinIK(pp, a.yaw + dy * t, opts)), choque: c || null, q: q2 || prev, p: pp }); }
       if (Math.max(...q.map((v, i) => Math.abs(v - prev[i]))) > 0.15) { const q2 = ikTCP(a.p.clone().lerp(b.p, t), a.yaw + dy * t, prev, { ...opts, sinColision: true }); const c = q2 && Math.max(...q2.map((v, i) => Math.abs(v - prev[i]))) <= 0.15 && choqueEn(q2, ctx); const m = mal(c ? `chocaría ${textoChoque(c)}` : 'la postura salta (cerca de una singularidad)', { causa: causaDe(c) || 'singularidad', choque: c || null, q: q2 || q, p: a.p.clone().lerp(b.p, t) }); m.dbg = { prev: prev.map(v => +(v * R2D).toFixed(1)), q: q.map(v => +(v * R2D).toFixed(1)), p: a.p.clone().lerp(b.p, t), seg: s, n: puntos.length }; return m; }
       if (!tramoLibre(prev, q, ctx)) { const c = choqueEn(q, ctx) || choqueEn(prev.map((v, i) => (v + q[i]) / 2), ctx); return mal(c ? `chocaría ${textoChoque(c)}` : 'chocaría en el camino', { causa: causaDe(c) || 'choque', choque: c, q, p: a.p.clone().lerp(b.p, t) }); }
       ruta.push(q); hecho += d / n;
@@ -251,7 +256,8 @@ function rutaCartesiana(q0, puntos, opts) {
   }
   return { ruta, largo };
 }
-function tcpDeQ(q, w = pinza.w) { const T = KIN.fk(q), tz = pinza.tcpZ(w), b = BASES[L.robot]; return { p: new THREE.Vector3(T[3] + T[2] * tz + b.x, T[7] + T[6] * tz + b.y, T[11] + T[10] * tz + MESA.h), ejeZ: new THREE.Vector3(T[2], T[6], T[10]), ejeX: new THREE.Vector3(T[0], T[4], T[8]) }; }
+// TCP (en el mundo) y ejes de la herramienta para una postura, con la cinemática activa y marco() (T1.4)
+function tcpDeQ(q, w = pinza.w) { const T = CIN.fk(q), tz = pinza.tcpZ(w), mb = marco(); const z = mb.vecAMundo(T[2], T[6], T[10]), x = mb.vecAMundo(T[0], T[4], T[8]); return { p: baseAMundo(T[3] + T[2] * tz, T[7] + T[6] * tz, T[11] + T[10] * tz), ejeZ: new THREE.Vector3(z[0], z[1], z[2]), ejeX: new THREE.Vector3(x[0], x[1], x[2]) }; }
 function yawDeQ(q, horiz) { const t = tcpDeQ(q); return horiz ? Math.atan2(t.ejeZ.y, t.ejeZ.x) : Math.atan2(t.ejeX.y, t.ejeX.x); }
 // Movimiento recto de la pinza; si no es posible, movimiento articular planificado (salvo opts.estricto)
 async function moveL(p, yaw, opts = {}, desc = 'un punto') {
@@ -297,7 +303,7 @@ function servo(qObj, dt, ctx, desc) {
 // Vigilancia independiente de autocolisiones en lo que se ve (debe quedarse en 0)
 function vigilarAuto() {
   const c = choqueEn(robot.q, { sinEntorno: true });
-  if (c && !D.autoAhora) { D.autocol++; $('#dAuto').textContent = D.autocol; pintarCalidad(); const b = BASES[L.robot]; marcaChoque.position.set(c.p[0] + b.x, c.p[1] + b.y, c.p[2] + MESA.h); marcaChoque.visible = true; D.marcaHasta = simT + 2; publicar('/seguridad/autocolision [PROPUESTA]', ['segur'], { fase: D.estado, entre: textoChoque(c) }); }
+  if (c && !D.autoAhora) { D.autocol++; $('#dAuto').textContent = D.autocol; pintarCalidad(); marcaChoque.position.copy(baseAMundo(c.p[0], c.p[1], c.p[2])); marcaChoque.visible = true; D.marcaHasta = simT + 2; publicar('/seguridad/autocolision [PROPUESTA]', ['segur'], { fase: D.estado, entre: textoChoque(c) }); }
   D.autoAhora = !!c;
 }
 // Volúmenes de colisión visibles (capa de la escena)

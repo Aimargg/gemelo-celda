@@ -4,10 +4,10 @@
 const LAYOUT = (() => {
   const VERSION = 9;        // versión que escribe esta página
   const MAX_TXT = 50000;    // reglas de Firestore: el layout es un texto de 50.000 caracteres como máximo (I2)
-  // Campos de la v9. `robotId` es el robot calibrado (T1.4 añadirá '203'–'206'); el campo `robot` sigue siendo la
-  // posición A/B del brazo en la celda. `perfil`: perfil de movimiento (D6). `sensor`: modelo de sensor de las cámaras
-  // (D10). En T1.1 ninguno cambia el comportamiento: T1.4, T1.6 y T1.7 les darán efecto.
-  const ROBOT_IDS = ['nominal'], PERFILES = ['curso', 'gemelo'], SENSORES = ['elp-ficha', 'gemelo-v8'];
+  // Campos de la v9. `robotId` es el robot calibrado: 'nominal' o uno de los UR3e del laboratorio con su calibración del
+  // curso (T1.4, src/datos/calibracion.js); el campo `robot` sigue siendo la posición A/B del brazo en la celda. `perfil`:
+  // perfil de movimiento (D6). `sensor`: modelo de sensor de las cámaras (D10); T1.6 y T1.7 les darán efecto.
+  const ROBOT_IDS = ['nominal', '203', '204', '205', '206'], PERFILES = ['curso', 'gemelo'], SENSORES = ['elp-ficha', 'gemelo-v8'];
   const CAMPOS_V9 = ['version', 'robotId', 'perfil', 'sensor'];
   const NUEVA = { robotId: 'nominal', perfil: 'curso', sensor: 'elp-ficha' };   // escena nueva (layoutDefecto)
   const MIGRADA = { robotId: 'nominal', perfil: 'gemelo', sensor: 'gemelo-v8' }; // escena v8: conserva su comportamiento (I1, D6)

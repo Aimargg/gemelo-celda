@@ -279,6 +279,9 @@ textarea{width:100%;min-height:120px;border:1px solid var(--line);border-radius:
           <h2>Robot del grupo</h2>
           <div class="seg" id="segRobot"><button data-v="A" aria-pressed="false">A · izquierda</button><button data-v="B" aria-pressed="true">B · derecha</button></div>
           <p class="hint">Izquierda y derecha según la foto cenital del 10-11. El otro robot queda como obstáculo de otro puesto.</p>
+          <div class="seg" id="segRobotId" role="group" aria-label="Robot calibrado"><button data-v="nominal" aria-pressed="true">Nominal</button><button data-v="203" aria-pressed="false">203</button><button data-v="204" aria-pressed="false">204</button><button data-v="205" aria-pressed="false">205</button><button data-v="206" aria-pressed="false">206</button></div>
+          <p class="hint" id="robotNota"></p>
+          <div class="card fallo" id="robotAviso" role="alert" hidden></div>
         </div>
         <div class="sec">
           <h2>Pinza OnRobot RG2</h2>

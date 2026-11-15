@@ -108,11 +108,12 @@ const ROTOS = [
   ['v9 sin perfil', l => { Object.assign(l, { version: 9, ...NUEVA }); delete l.perfil; }, 'falta «perfil»'],
   ['v9 con perfil desconocido', l => { Object.assign(l, { version: 9, ...NUEVA, perfil: 'rapido' }); }, '«perfil» desconocido ("rapido")'],
   ['v9 con sensor desconocido', l => { Object.assign(l, { version: 9, ...NUEVA, sensor: 'otro' }); }, '«sensor» desconocido ("otro")'],
-  ['v9 con un robot aún sin calibrar (T1.4)', l => { Object.assign(l, { version: 9, ...NUEVA, robotId: '203' }); }, '«robotId» desconocido ("203")'],
+  ['v9 con un robot sin calibración (T1.4: solo nominal y 203–206)', l => { Object.assign(l, { version: 9, ...NUEVA, robotId: '207' }); }, '«robotId» desconocido ("207")'],
 ];
 test('validarLayout: una disposición v8 válida pasa; cada rotura da su motivo y migrarLayout no devuelve layout', () => {
   for (const { f, layout } of V8) assert.equal(validarLayout(layout, ESQ), null, f);
   assert.equal(validarLayout({ ...copia(V8[0].layout), version: 9, ...NUEVA }, ESQ), null);
+  for (const robotId of ['nominal', '203', '204', '205', '206']) assert.equal(validarLayout({ ...copia(V8[0].layout), version: 9, ...NUEVA, robotId }, ESQ), null, robotId); // T1.4
   for (const [nombre, romper, motivo] of ROTOS) {
     const l = copia(V8[0].layout); romper(l); const antes = structuredClone(l);
     assert.equal(validarLayout(l, ESQ), motivo, nombre);
