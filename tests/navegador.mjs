@@ -27,8 +27,8 @@ const permitido = (tipo, texto) => PERMITIDOS.some(p => p.tipo === tipo && texto
 // Abre un destino del gemelo en un navegador propio y un contexto nuevo (almacenamiento limpio).
 // Navegador por página: tras cerrar un contexto, su renderizado con SwiftShader sigue ocupando la CPU unos segundos
 // y la siguiente carga pasa de ~14 s a ~23 s; cerrar el navegador entero lo evita (medido en T0.2).
-// destino: 'artefacto' | 'artefacto-claude' | 'web'. hash: p. ej. '#g=clave-buena'.
-export async function abrir(base, { destino = 'artefacto', hash = '', prueba = true, esperarCalculo = true } = {}) {
+// destino: 'artefacto' | 'artefacto-claude' | 'web'. hash: p. ej. '#g=clave-buena'. initScripts: funciones para addInitScript.
+export async function abrir(base, { destino = 'artefacto', hash = '', prueba = true, esperarCalculo = true, initScripts = [] } = {}) {
   const browser = await lanzar();
   const ctx = await browser.newContext({ viewport: { width: 1440, height: 900 }, deviceScaleFactor: 1 });
   const reg = { errores: [], avisos: [], externas: [], interceptadas: [] };
@@ -40,6 +40,7 @@ export async function abrir(base, { destino = 'artefacto', hash = '', prueba = t
       new MutationObserver(() => { if (el.textContent) window.__toastsPrueba.push(el.textContent); }).observe(el, { childList: true, characterData: true, subtree: true });
     });
   });
+  for (const f of initScripts) await ctx.addInitScript(f); // instrumentación de medida (T0.3), antes de cargar la página
   await ctx.route('**/*', async route => {
     const req = route.request(); const u = new URL(req.url());
     if (u.protocol === 'data:' || u.protocol === 'blob:') return route.continue();
