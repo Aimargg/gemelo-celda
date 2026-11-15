@@ -555,7 +555,7 @@ const m4 = a => new THREE.Matrix4().set(...a);
 const css = v => getComputedStyle(document.documentElement).getPropertyValue(v).trim();
 const STOP = new Error('stop');
 // Escena del grupo abierta (cur) o «Tu mesa» (cur = null); base = disposición al abrirla, para saber si se ha modificado
-const ESC = { lista: [], papelera: [], cur: null, base: null, basada: null, ultima: null, cargando: true, borrarId: null };
+const ESC = { lista: [], papelera: [], cur: null, base: null, basada: null, ultima: null, cargando: true, borrarId: null, ilegibles: '' };
 let EDITANDO = false; // mientras se arrastra algo no se recalculan los planes (es lo caro); se recalculan al soltar
 let OBS_EXTRA = []; // obstáculos previstos (la fruta que tendrá el plato cuando se coja)
 let VERSION_ESCENA = 0; // sube cada vez que cambia algo del entorno (objetos movidos, cogidos o soltados)
@@ -574,9 +574,121 @@ const H_TR = 0.12, H_AP = 0.06; // altura de traslado sobre la mesa y de aproxim
 const CAJA_LADO = 0.10;
 // ArUco reales del diccionario DICT_4X4_50 (ids 0–15), bits interiores por filas
 const ARUCO = ['1011010100110010', '0000111110011010', '0011001100101101', '1001100101000110', '0101010010011110', '0111100111001101', '1001111000101110', '1100010011110010', '1111111011011010', '1100111101010110', '1111100110010001', '0001000110100111', '0000111010110111', '0010101000001111', '0010010010110001', '0010011000111110'];
+// Versión de la disposición (layout) y su migración al cargar (T1.1, I1, I2). Sin navegador ni three: se prueba con
+// node:test (tests/unit/layout.test.mjs) y se concatena en app.js con el marcador @@LAYOUT@@ (D4).
+// Toda carga de un layout (Tu mesa, escenas del grupo, código de escena, YAML importado) pasa por migrarLayout.
+const LAYOUT = (() => {
+  const VERSION = 9;        // versión que escribe esta página
+  const MAX_TXT = 50000;    // reglas de Firestore: el layout es un texto de 50.000 caracteres como máximo (I2)
+  // Campos de la v9. `robotId` es el robot calibrado (T1.4 añadirá '203'–'206'); el campo `robot` sigue siendo la
+  // posición A/B del brazo en la celda. `perfil`: perfil de movimiento (D6). `sensor`: modelo de sensor de las cámaras
+  // (D10). En T1.1 ninguno cambia el comportamiento: T1.4, T1.6 y T1.7 les darán efecto.
+  const ROBOT_IDS = ['nominal'], PERFILES = ['curso', 'gemelo'], SENSORES = ['elp-ficha', 'gemelo-v8'];
+  const CAMPOS_V9 = ['version', 'robotId', 'perfil', 'sensor'];
+  const NUEVA = { robotId: 'nominal', perfil: 'curso', sensor: 'elp-ficha' };   // escena nueva (layoutDefecto)
+  const MIGRADA = { robotId: 'nominal', perfil: 'gemelo', sensor: 'gemelo-v8' }; // escena v8: conserva su comportamiento (I1, D6)
+  const opcional = ruta => /^cams\.[^.]+\.roll$/.test(ruta); // giro de la imagen: 0 si falta (orientDe, espejo)
+  const tipo = v => v === null ? 'null' : Array.isArray(v) ? 'array' : typeof v;
+  const copia = o => JSON.parse(JSON.stringify(o));
+
+  // ¿Tiene `v` la misma forma que `ref` (la disposición de partida)? Las claves de más se conservan sin comprobarlas.
+  function forma(ref, v, ruta) {
+    const t = tipo(ref), r = ruta || 'disposición';
+    if (v === undefined) return `falta «${r}»`;
+    if (t === 'number') return Number.isFinite(v) ? null : `«${r}» no es un número`;
+    if (t === 'string') return typeof v === 'string' ? null : `«${r}» no es un texto`;
+    if (t === 'boolean') return typeof v === 'boolean' ? null : `«${r}» no es sí o no`;
+    if (t === 'array') {
+      if (!Array.isArray(v)) return `«${r}» no es una lista`;
+      if (v.length !== ref.length) return `«${r}» tiene ${v.length} elementos y debe tener ${ref.length}`;
+      for (let i = 0; i < ref.length; i++) { const e = forma(ref[i], v[i], `${r}[${i}]`); if (e) return e; }
+      return null;
+    }
+    if (tipo(v) !== 'object') return `«${r}» no es un objeto`;
+    for (const k of Object.keys(ref)) {
+      const rk = ruta ? `${ruta}.${k}` : k;
+      if (!ruta && CAMPOS_V9.includes(k)) continue; // se comprueban aparte, según la versión
+      if (v[k] === undefined && opcional(rk)) continue;
+      const e = forma(ref[k], v[k], rk); if (e) return e;
+    }
+    return null;
+  }
+
+  // Devuelve null si el layout se puede aplicar tal cual, o el motivo por el que no (texto para el usuario).
+  // esq: { ref: layoutDefecto(), robots: claves de BASES, modos: claves de MODOS, grupos: grupos de color de las cámaras }
+  function validarLayout(l, esq) {
+    if (tipo(l) !== 'object') return 'no es una disposición';
+    if (l.version !== undefined && !(Number.isInteger(l.version) && l.version >= VERSION)) return `«version» no es válida (${JSON.stringify(l.version)})`;
+    const e = forma(esq.ref, l, ''); if (e) return e;
+    for (const k of Object.keys(l.cams)) if (!Object.hasOwn(esq.ref.cams, k)) return `cámara desconocida «${k}»`; // no vale «toString» ni «__proto__»
+    if (!esq.robots.includes(l.robot)) return `«robot» debe ser ${esq.robots.join(' o ')}`;
+    if (l.pedido !== 1 && l.pedido !== 2) return '«pedido» debe ser 1 o 2 platos';
+    for (const k of Object.keys(l.cams)) {
+      if (!esq.modos.includes(l.cams[k].modo)) return `«cams.${k}.modo» no es un modo de la cámara (${l.cams[k].modo})`;
+      if (!esq.grupos.includes(l.cams[k].grupo)) return `«cams.${k}.grupo» no es un grupo (${l.cams[k].grupo})`;
+    }
+    if (l.version === VERSION) { // una versión más nueva puede tener otros valores: se abre en solo lectura
+      for (const [k, lista] of [['robotId', ROBOT_IDS], ['perfil', PERFILES], ['sensor', SENSORES]]) {
+        if (l[k] === undefined) return `falta «${k}»`;
+        if (!lista.includes(l[k])) return `«${k}» desconocido (${JSON.stringify(l[k])})`;
+      }
+    }
+    return null;
+  }
+
+  // Entrada: el layout como objeto o como texto JSON. Nunca modifica la entrada.
+  // Salida: { layout, soloLectura } si se puede abrir, o { error } con el motivo.
+  //  · Sin `version` (v8 o anterior): se completa como hacía normalizar() (caja y pedido si faltan) y se le añaden
+  //    version 9, robotId 'nominal', perfil 'gemelo' y sensor 'gemelo-v8'. El resto se conserva tal cual.
+  //  · Con una `version` mayor que la de esta página: se abre en solo lectura (no se guarda en local ni en el grupo).
+  function migrarLayout(entrada, esq) {
+    let l = entrada;
+    if (typeof l === 'string') { try { l = JSON.parse(l); } catch (e) { return { error: `el texto no es JSON válido (${e.message})` }; } }
+    if (tipo(l) !== 'object') return { error: 'no es una disposición' };
+    l = copia(l);
+    if (l.version === undefined) {
+      if (!l.caja) l.caja = copia(esq.ref.caja);
+      if (!l.pedido) l.pedido = 2;
+      Object.assign(l, { version: VERSION }, MIGRADA);
+    }
+    const error = validarLayout(l, esq);
+    return error ? { error } : { layout: l, soloLectura: l.version > VERSION };
+  }
+  const soloLectura = l => !!l && l.version > VERSION;
+  // Motivo por el que un layout ya serializado no se puede guardar en el grupo, o null
+  const noGuardable = txt => txt.length > MAX_TXT ? `la disposición ocupa ${txt.length.toLocaleString('es-ES')} caracteres y el máximo es ${MAX_TXT.toLocaleString('es-ES')}` : null;
+
+  return { VERSION, MAX_TXT, ROBOT_IDS, PERFILES, SENSORES, NUEVA, MIGRADA, validarLayout, migrarLayout, soloLectura, noGuardable };
+})();
+// Generador pseudoaleatorio sembrado y semilla por petición del planificador (T1.2, D5, I6). Sin navegador ni three:
+// se prueba con node:test (tests/unit/rng.test.mjs) y se concatena en app.js con el marcador @@RNG@@ (D4).
+const RNG = (() => {
+  // xorshift32, el mismo de la v8 (texturas, modelo de colisión y RRT): la misma semilla da siempre la misma serie
+  function aleat(seed) { let s = seed >>> 0 || 1; return () => { s ^= s << 13; s ^= s >>> 17; s ^= s << 5; return ((s >>> 0) % 100000) / 100000; }; }
+  // FNV-1a de 32 bits sobre los códigos del texto (en ASCII coincide con el de los bytes)
+  function fnv1a(txt) { let h = 0x811c9dc5; for (let i = 0; i < txt.length; i++) { h ^= txt.charCodeAt(i); h = Math.imul(h, 0x01000193); } return h >>> 0; }
+  const n6 = v => String(Math.round(v * 1e6)); // redondeo a 1e-6 (−0 sale «0»)
+  const lista = a => a ? Array.from(a, n6).join(',') : '-';
+  // Un obstáculo en texto: todas sus claves en orden alfabético (números a 1e-6), así vale para cualquier tipo de obstáculo
+  function obstaculo(o) {
+    let s = ''; for (const k of Object.keys(o).sort()) { const v = o[k]; if (v === undefined) continue; s += `${k}=${typeof v === 'number' ? n6(v) : typeof v === 'boolean' ? +v : v}|`; }
+    return s;
+  }
+  // Entrada canónica de una petición de plan: q inicial y objetivo, contexto (apertura de la pinza, carga, etiquetas
+  // permitidas y opciones) y obstáculos, más el perfil de movimiento. Los obstáculos se ordenan: su orden en la lista no
+  // cambia si un tramo choca, así que tampoco cambia la semilla.
+  function canonico(p) {
+    return ['plan1', `qa:${lista(p.qa)}`, `qb:${lista(p.qb)}`, `w:${n6(p.w)}`, `carga:${lista(p.carga)}`,
+      `permitir:${(p.permitir || []).slice().sort().join(',')}`, `op:${[p.conBlandos, p.sinEntorno, p.sinAuto].map(b => b ? 1 : 0).join('')}`,
+      `perfil:${p.perfil}`, `obst:${p.obst ? p.obst.map(obstaculo).sort().join(';') : '-'}`].join('\n');
+  }
+  const semillaPlan = p => fnv1a(canonico(p));
+  return { aleat, fnv1a, canonico, semillaPlan };
+})();
 
 function layoutDefecto() {
   return {
+    version: LAYOUT.VERSION, ...LAYOUT.NUEVA, // escena nueva: robot nominal, perfil «curso» y sensor de la ficha de la ELP (T1.1)
     robot: 'B',
     zona: { x: 0.12, y: 0.27, yaw: 0, w: 0.22, d: 0.16 },
     plato1: { x: 0.265, y: -0.049 }, plato2: { x: 0.122, y: 0.089 }, // a 36 cm de la base, a -118° y -150°: agarre horizontal y fruta desde arriba
@@ -598,16 +710,33 @@ function espejo(L) { // cambia el lado: x → −x
   for (const k in c.cams) { fx(c.cams[k].clamp); fx(c.cams[k].pos); fx(c.cams[k].mira); c.cams[k].roll = -(c.cams[k].roll || 0); }
   return c;
 }
-function normalizar(l) { const d = layoutDefecto(); if (!l || !l.zona || !l.cams) return d; if (!l.caja) l.caja = d.caja; if (!l.pedido) l.pedido = 2; return l; }
+// Toda carga de una disposición pasa por migrarLayout (T1.1, I1): la valida contra la forma de la de partida, migra la
+// de la v8 y dice si es de una versión más nueva (solo lectura). Devuelve { layout, soloLectura } o { error }.
+const ESQ_L = { ref: layoutDefecto(), robots: Object.keys(BASES), modos: Object.keys(MODOS), grupos: ['V1', 'V2', 'ROB'] };
+const migrarLayout = entrada => LAYOUT.migrarLayout(entrada, ESQ_L);
+// Solo lectura: una disposición de una versión más nueva se ve, pero no se guarda en local ni en el grupo
+function soloLectura() { return LAYOUT.soloLectura(L); }
 const CLAVE = 'gemelo-ur3e-v4';
-let L = normalizar(cargarLocal());
-function cargarLocal() { try { const s = localStorage.getItem(CLAVE); return s ? JSON.parse(s) : null; } catch (e) { return null; } }
-let saveT = 0;
-function guardarLocal() { if (ESC.cur) return; clearTimeout(saveT); // una escena del grupo abierta no pisa tu mesa
-  saveT = setTimeout(() => { try { localStorage.setItem(CLAVE, JSON.stringify(L)); } catch (e) { } }, 400); }
+function cargarLocal() { try { return localStorage.getItem(CLAVE); } catch (e) { return null; } } // texto de Tu mesa o null (sin almacenamiento)
+// Tu mesa guardada en este navegador. Si no se puede abrir, la disposición de partida con un aviso (la v8 la descartaba en silencio)
+function mesaLocal() {
+  const s = cargarLocal(); if (s == null) return layoutDefecto();
+  const r = migrarLayout(s);
+  if (r.error) { toast(`Tu mesa guardada no se puede abrir (${r.error}): se usa la disposición de partida`); return layoutDefecto(); }
+  if (r.soloLectura) toast(`Tu mesa es de una versión más nueva del gemelo (v${r.layout.version}): se abre en solo lectura`);
+  return r.layout;
+}
+let L = mesaLocal();
+let saveT = 0, savePend = false;
+// Escribe Tu mesa ya. Nunca con una escena del grupo abierta ni con una disposición de solo lectura (versión más nueva):
+// se comprueba al escribir, no al programar el guardado, porque L puede haber cambiado en esos 400 ms (T1.1, revisión)
+function escribirMesa() { clearTimeout(saveT); savePend = false; if (ESC.cur || soloLectura()) return; try { localStorage.setItem(CLAVE, JSON.stringify(L)); } catch (e) { } }
+function guardarLocal() { clearTimeout(saveT); savePend = !ESC.cur && !soloLectura(); if (savePend) saveT = setTimeout(escribirMesa, 400); } // a los 400 ms del último cambio
+// Antes de sustituir L por otra disposición: lo pendiente de guardar de Tu mesa se escribe ya y no se pierde
+function vaciarGuardado() { if (savePend) escribirMesa(); }
 
 // ======================= Texturas procedurales =======================
-function aleat(seed) { let s = seed >>> 0 || 1; return () => { s ^= s << 13; s ^= s >>> 17; s ^= s << 5; return ((s >>> 0) % 100000) / 100000; }; }
+const aleat = RNG.aleat; // xorshift32 sembrado (src/rng.js): texturas y modelo de colisión
 function lienzo(w, h, dibujar, { color = true, rep = null } = {}) {
   const c = document.createElement('canvas'); c.width = w; c.height = h; dibujar(c.getContext('2d'), w, h);
   const t = new THREE.CanvasTexture(c); if (color) t.colorSpace = THREE.SRGBColorSpace; t.wrapS = t.wrapT = THREE.RepeatWrapping; t.anisotropy = 8; if (rep) t.repeat.set(...rep); return t;
@@ -1268,11 +1397,19 @@ function atajar(ruta, ctx, rnd) {
   for (let it = 0; it < 80 && ruta.length > 2; it++) { const i = Math.floor(rnd() * (ruta.length - 2)), j = i + 2 + Math.floor(rnd() * (ruta.length - i - 2)); if (j < ruta.length && tramoLibre(ruta[i], ruta[j], ctx)) ruta.splice(i + 1, j - i - 1); }
   return ruta;
 }
-let SEMILLA = 1;
+// Perfil de movimiento con el que planifica el gemelo; entra en la semilla (D5). Hoy solo existe «gemelo»: el campo
+// `perfil` del layout aún no tiene efecto (T1.1). T1.6 pondrá aquí el perfil de la petición.
+const PERFIL_PLAN = 'gemelo';
+// Semilla por petición (T1.2, D5, I6): hash de la entrada canónica del plan (src/rng.js) con los mismos valores por
+// defecto que choqueEn. La misma petición da el mismo plan, se calcule en el orden que se calcule.
+function semillaDe(qa, qb, ctx) {
+  return RNG.semillaPlan({ qa, qb, w: ctx.w ?? pinza.w, carga: ctx.carga === undefined ? D.carga : ctx.carga, obst: ctx.sinEntorno ? null : (ctx.obst || obstaculos()),
+    permitir: ctx.permitir, conBlandos: ctx.conBlandos, sinEntorno: ctx.sinEntorno, sinAuto: ctx.sinAuto, perfil: PERFIL_PLAN });
+}
 function planificar(qa, qb, ctx) {
   if (D.sinPlanificador || tramoLibre(qa, qb, ctx)) return { ruta: [qa, qb], plan: false };
   if (choqueEn(qb, ctx)) return null;
-  const rnd = aleat(SEMILLA++ * 7919);
+  const rnd = RNG.aleat(semillaDe(qa, qb, ctx)); // una sola semilla: si con ella no hay camino, no hay plan (sin reintentos)
   for (const [h, it] of [[PI / 2, 1500], [PI, 3000]]) { const r = rrtConnect(qa, qb, ctx, rnd, h, it); if (r) return { ruta: atajar(r, ctx, rnd), plan: true }; }
   return null;
 }
@@ -2254,6 +2391,13 @@ function pintarCaja() {
 }
 function actualizarCheck() { if ($('[data-panel="demo"]').hidden || D.activo || !robot) return; if (sinPlan()) { pintarCheck([{ cls: 'warn', txt: 'Hay cambios sin calcular. Pulsa «Calcular trayectorias» o reproduce la demo, que calcula antes de mover el brazo.' }]); return; } pintarCheck(comprobarPlan()); }
 function toast(t) { const el = $('#toast'); el.textContent = t; el.classList.add('on'); clearTimeout(el._t); el._t = setTimeout(() => el.classList.remove('on'), 2800); }
+// Aviso visible de solo lectura (T1.1), junto a las etiquetas de la cabecera
+$('.chips').insertAdjacentHTML('afterbegin', '<span class="chip" id="chipSoloLectura" role="status" hidden style="border-color:var(--bad);color:var(--bad);font-weight:600"></span>');
+function pintarSoloLectura() {
+  const el = $('#chipSoloLectura'), s = soloLectura(); el.hidden = !s;
+  el.textContent = s ? `SOLO LECTURA · disposición v${L.version}, esta página es la v${LAYOUT.VERSION}` : '';
+  el.title = s ? 'Esta disposición es de una versión más nueva del gemelo: se puede ver, pero no se guarda en Tu mesa ni en el grupo hasta que abras una compatible.' : '';
+}
 
 // Pestañas
 $$('.tabs button').forEach(b => b.addEventListener('click', () => {
@@ -2437,8 +2581,9 @@ function aplicarAjustes(a) {
   if (a.vel != null) { const el = $('#dVel'); el.value = Math.round(a.vel * 100); el.dispatchEvent(new Event('input')); }
   if (a.amp != null) { const el = $('#dAmp'); el.value = Math.round(a.amp * 1000) / 10; el.dispatchEvent(new Event('input')); }
 }
-function guardarMesaYa() { clearTimeout(saveT); ponerLS(CLAVE, jsonL()); }
-function respaldarMesa() { const m = leerLS(CLAVE); if (m) ponerLS(CLAVE_PREV, m); }
+function guardarMesaYa() { escribirMesa(); } // solo lectura: no se guarda (T1.1)
+// La copia anterior nunca recibe una disposición de una versión más nueva (la de Tu mesa solo la habría escrito otra versión)
+function respaldarMesa() { const m = leerLS(CLAVE); if (m && !migrarLayout(m).soloLectura) ponerLS(CLAVE_PREV, m); }
 
 // --- almacén de claude.ai (artefacto) ---
 const almClaude = {
@@ -2501,8 +2646,10 @@ async function iniciarFirestore() {
   ALM.aviso = 'La clave del grupo del enlace no es válida o las reglas de Firestore no están publicadas: no se pueden leer ni guardar escenas.';
   const tmr = setTimeout(() => { ESC.cargando = false; pintarNav(); }, 10000);
   FB.onSnapshot(COL_ESC, snap => {
-    clearTimeout(tmr); const vivas = [], papelera = [];
-    snap.docs.forEach(d => { const v = d.data() || {}; let layout = null; try { layout = JSON.parse(v.layout); } catch (e) { } if (!layout || !layout.cams) return; (v.borrado ? papelera : vivas).push({ ...v, layout, id: d.id }); });
+    clearTimeout(tmr); const vivas = [], papelera = [], ilegibles = [];
+    snap.docs.forEach(d => { const v = d.data() || {}; const r = migrarLayout(v.layout); if (r.error) { ilegibles.push(d.id); return; } (v.borrado ? papelera : vivas).push({ ...v, layout: r.layout, id: d.id }); });
+    // una escena cuya disposición no se puede leer no se lista (como en la v8), pero ahora se avisa, una vez por cambio (T1.1)
+    const k = ilegibles.sort().join(); if (k && k !== ESC.ilegibles) toast(`${ilegibles.length === 1 ? 'Una escena del grupo no se puede abrir' : `${ilegibles.length} escenas del grupo no se pueden abrir`}: su disposición no es válida`); ESC.ilegibles = k;
     ALM.escribir = null; recibirLista(vivas, papelera);
   }, err => { clearTimeout(tmr); ESC.cargando = false; if (err && err.code === 'permission-denied') ALM.escribir = false; pintarNav(); toast(err && err.code === 'permission-denied' ? 'La clave del grupo no es válida' : 'No se pueden leer las escenas del grupo ahora mismo'); });
 }
@@ -2520,14 +2667,15 @@ function abrirEscena(i, opts = {}) {
   if (D.playing || CALC.activo || D.buscando) { toast('Espera a que termine la demo o el cálculo'); return; }
   const actual = idxActual(); if (i === actual && !opts.forzar) return;
   if (i === -1) { // volver a la copia de trabajo
-    const m = cargarLocal(); ESC.cur = null; ESC.base = null; L = normalizar(m || layoutDefecto()); aplicarLayout(); pintarNav(); toast('Tu mesa'); return;
+    ESC.cur = null; ESC.base = null; L = mesaLocal(); aplicarLayout(); pintarNav(); toast('Tu mesa'); return;
   }
   const e = ESC.lista[i]; if (!e || !e.layout) return;
+  const r = migrarLayout(e.layout); if (r.error) { toast(`No se puede abrir «${e.nombre}»: ${r.error}`); return; } // no cambia nada
   if (!ESC.cur) guardarMesaYa(); // al salir de tu mesa queda guardada tal cual
   ESC.cur = { id: e.id }; ESC.basada = null;
-  L = normalizar(JSON.parse(JSON.stringify(e.layout))); aplicarLayout(); ESC.base = jsonL();
+  L = r.layout; aplicarLayout(); ESC.base = jsonL();
   aplicarAjustes(e.ajustes); if (e.vista && e.vista.p) animarCam(new THREE.Vector3(...e.vista.p), new THREE.Vector3(...e.vista.t));
-  pintarNav(); if (!opts.silencio) toast(`${e.nombre} · ${ALM.quien(e)}`);
+  pintarNav(); if (!opts.silencio) toast(`${e.nombre} · ${ALM.quien(e)}${r.soloLectura ? ' · solo lectura (versión más nueva del gemelo)' : ''}`);
 }
 function pasarAMesa(motivo) { // la escena abierta se ha modificado: lo editado pasa a ser tu mesa y la escena no cambia
   const e = ESC.lista[idxActual()] || (ESC.cur && ESC.ultima); respaldarMesa();
@@ -2552,9 +2700,10 @@ function propiaEditable() { // la escena que «Guardar cambios» sobrescribiría
 }
 function pintarPop() {
   const i = idxActual(), prop = propiaEditable(), fs = ALM.modo === 'firestore';
-  const puede = !!ALM.modo && ALM.escribir !== false;
+  const ro = soloLectura(), puede = !!ALM.modo && ALM.escribir !== false && !ro;
   $('#escGuardarSec').hidden = !puede; $('#escSoloLectura').hidden = puede;
-  $('#escSoloLectura').innerHTML = ALM.aviso || 'Las escenas del grupo solo se ven al abrir la página en claude.ai con la sesión iniciada. Aquí puedes pasar escenas con un código (abajo).';
+  $('#escSoloLectura').innerHTML = ro ? `Esta disposición es de una versión más nueva del gemelo (v${L.version}; esta página es la v${LAYOUT.VERSION}). Se abre en <b>solo lectura</b>: no se guarda en Tu mesa ni en el grupo hasta que abras una escena compatible. Puedes copiar su código para pasarla.`
+    : ALM.aviso || 'Las escenas del grupo solo se ven al abrir la página en claude.ai con la sesión iniciada. Aquí puedes pasar escenas con un código (abajo).';
   $('#escAutorFila').hidden = !fs; if (fs && document.activeElement !== $('#escAutor')) $('#escAutor').value = ALM.yo || '';
   $('#escCambios').hidden = !prop; if (prop) $('#escCambios').textContent = `Guardar cambios en «${prop.nombre}»`;
   const fila = (k, e) => {
@@ -2587,6 +2736,8 @@ function cerrarPop() { $('#escPop').hidden = true; $('#escCur').setAttribute('ar
 async function guardarEscena(modo) {
   const nombre = $('#escNombre').value.trim(), nota = $('#escNota').value.trim();
   if (!ALM.modo) return; if (D.playing) { toast('Pausa la demo para guardar'); return; }
+  if (soloLectura()) { toast(`Esta disposición es de una versión más nueva del gemelo (v${L.version}): se ve en solo lectura y no se puede guardar`); return; }
+  const largo = LAYOUT.noGuardable(jsonL()); if (largo) { toast(`No se guarda: ${largo}`); return; } // las reglas de Firestore la rechazarían (I2)
   if (ALM.modo === 'firestore') { const a = $('#escAutor').value.trim().slice(0, 40); if (!a) { toast('Escribe tu nombre para que el grupo sepa de quién es'); $('#escAutor').focus(); return; } ALM.yo = a; ponerLS(CLAVE_NOMBRE, a); }
   if (!nombre) { toast('Ponle un nombre a la escena'); $('#escNombre').focus(); return; }
   const prop = modo === 'cambios' ? propiaEditable() : null;
@@ -2594,8 +2745,11 @@ async function guardarEscena(modo) {
   try {
     if (!planesAlDia()) await calcularPlanes(); // se guarda con su comprobación previa, para que el grupo vea si es viable
     const graves = comprobarPlan().filter(c => c.grave);
+    // durante el cálculo, Importar o Recuperar pueden haber cambiado L: se vuelve a comprobar lo que se va a guardar
+    if (soloLectura()) { toast(`Esta disposición es de una versión más nueva del gemelo (v${L.version}): se ve en solo lectura y no se puede guardar`); return; }
+    const txt = jsonL(), largo2 = LAYOUT.noGuardable(txt); if (largo2) { toast(`No se guarda: ${largo2}`); return; } // lo que se guarda es este texto
     const ahora = new Date().toISOString();
-    const item = { nombre: nombre.slice(0, 60), nota: nota.slice(0, 500), creado: ahora, editado: ahora, layout: JSON.parse(jsonL()), ajustes: ajustesDemo(), vista: vistaActual(),
+    const item = { nombre: nombre.slice(0, 60), nota: nota.slice(0, 500), creado: ahora, editado: ahora, layout: JSON.parse(txt), ajustes: ajustesDemo(), vista: vistaActual(),
       estado: { ok: !graves.length, n: graves.length, txt: graves.length ? graves[0].txt.slice(0, 300) : 'La comprobación previa no encuentra problemas.' } };
     const g = await ALM.guardar(item, prop);
     ESC.cur = { id: g.id }; ESC.basada = null; ESC.base = jsonL(); // ahora estás en la escena guardada
@@ -2610,9 +2764,11 @@ async function guardarEscena(modo) {
     else toast('No se ha podido guardar; inténtalo otra vez');
   } finally { $$('#escGuardarSec button').forEach(b => b.disabled = false); }
 }
+let tConfirmar = 0;
 function confirmar(id) { // dos pulsaciones para lo que no se deshace fácilmente
+  clearTimeout(tConfirmar); // cada pulsación anula el plazo de 4 s de la anterior (H2: si no, un plazo viejo deshacía una confirmación nueva)
   if (ESC.borrarId === id) { ESC.borrarId = null; return true; }
-  ESC.borrarId = id; pintarPop(); setTimeout(() => { if (ESC.borrarId === id) { ESC.borrarId = null; if (!$('#escPop').hidden) pintarPop(); } }, 4000); return false;
+  ESC.borrarId = id; pintarPop(); tConfirmar = setTimeout(() => { if (ESC.borrarId === id) { ESC.borrarId = null; if (!$('#escPop').hidden) pintarPop(); } }, 4000); return false;
 }
 async function borrarEscena(k) {
   const e = ESC.lista[k]; if (!e || !confirmar(e.id)) return;
@@ -2632,11 +2788,14 @@ function codigoEscena() {
 function abrirCodigo(t) {
   const m = /GEMELO1\.([A-Za-z0-9+/=]+)/.exec(String(t).replace(/\s+/g, '')); if (!m) { toast('Eso no parece un código de escena'); return; }
   let o; try { o = JSON.parse(decodeURIComponent(escape(atob(m[1])))); } catch (e) { toast('El código está incompleto'); return; }
-  if (!o.layout || !o.layout.cams) { toast('El código no trae una disposición'); return; }
+  if (!o || typeof o !== 'object' || !o.layout) { toast('El código no trae una disposición'); return; } // también si el JSON es null o no es un objeto
+  const r = migrarLayout(o.layout); if (r.error) { toast(`El código no trae una disposición válida: ${r.error}`); return; } // no cambia nada
   if (D.playing || CALC.activo) { toast('Espera a que termine la demo o el cálculo'); return; }
-  respaldarMesa(); ESC.cur = null; ESC.base = null; ESC.basada = { id: null, autor: null, nombre: o.nombre || 'Escena', nota: o.nota || '' };
-  L = normalizar(o.layout); aplicarLayout(); aplicarAjustes(o.ajustes); if (o.vista && o.vista.p) animarCam(new THREE.Vector3(...o.vista.p), new THREE.Vector3(...o.vista.t));
-  pintarNav(); cerrarPop(); toast(`Abierta en Tu mesa: ${o.nombre || 'escena'}${ALM.modo && ALM.escribir !== false ? '. Guárdala para que la vea el grupo' : ''}`);
+  vaciarGuardado(); respaldarMesa(); ESC.cur = null; ESC.base = null; ESC.basada = { id: null, autor: null, nombre: o.nombre || 'Escena', nota: o.nota || '' };
+  L = r.layout; aplicarLayout(); aplicarAjustes(o.ajustes); if (o.vista && o.vista.p) animarCam(new THREE.Vector3(...o.vista.p), new THREE.Vector3(...o.vista.t));
+  pintarNav(); cerrarPop();
+  toast(r.soloLectura ? `Abierta en Tu mesa en solo lectura: ${o.nombre || 'la escena'} es de una versión más nueva del gemelo (v${L.version})`
+    : `Abierta en Tu mesa: ${o.nombre || 'escena'}${ALM.modo && ALM.escribir !== false ? '. Guárdala para que la vea el grupo' : ''}`);
 }
 
 function iniciarEscenas() {
@@ -2670,8 +2829,11 @@ $('#escPapLista').addEventListener('click', async e => {
 $('#escCopiar').addEventListener('click', async () => { const c = codigoEscena(); try { await navigator.clipboard.writeText(c); toast('Código copiado: pégalo en un mensaje'); } catch (e) { $('#escCodigo').value = c; $('#escCodigo').select(); toast('Selecciona el código y cópialo'); } });
 $('#escAbrirCod').addEventListener('click', () => abrirCodigo($('#escCodigo').value));
 $('#escRecuperar').addEventListener('click', () => {
-  const prev = leerLS(CLAVE_PREV); ponerLS(CLAVE_PREV, null); if (!prev) return;
-  ponerLS(CLAVE, prev); ESC.cur = null; ESC.basada = null; ESC.base = null; L = normalizar(JSON.parse(prev)); aplicarLayout(); pintarNav(); cerrarPop(); toast('Recuperada tu mesa anterior');
+  const prev = leerLS(CLAVE_PREV); if (!prev) return;
+  const r = migrarLayout(prev); if (r.error) { toast(`No se puede recuperar tu mesa anterior: ${r.error}`); return; } // no cambia nada
+  vaciarGuardado();
+  if (!r.soloLectura) { ponerLS(CLAVE_PREV, null); ponerLS(CLAVE, prev); } // una disposición más nueva se abre sin escribirla en Tu mesa
+  ESC.cur = null; ESC.basada = null; ESC.base = null; L = r.layout; aplicarLayout(); pintarNav(); cerrarPop(); toast('Recuperada tu mesa anterior');
 });
 document.addEventListener('keydown', e => { if (e.key === 'Escape' && !$('#escPop').hidden) cerrarPop(); });
 document.addEventListener('pointerdown', e => { const p = $('#escPop'); if (!p.hidden && !p.contains(e.target) && !e.target.closest('#escNav')) cerrarPop(); });
@@ -2690,12 +2852,13 @@ $('#btnPng').addEventListener('click', () => { renderer.domElement.toBlob(b => b
 $('#btnImport').addEventListener('click', () => {
   const t = $('#yamlIn').value; const m = t.match(/#\s*layout-json:\s*(\{.*\})\s*$/m);
   if (!m) { toast('No encuentro la línea «# layout-json» del fichero exportado'); return; }
-  try { const n = JSON.parse(m[1]); if (!n.zona || !n.cams) throw 0; L = normalizar(n); aplicarLayout(); toast('Distribución aplicada'); } catch (e) { toast('El contenido no es una distribución válida'); }
+  const r = migrarLayout(m[1]); if (r.error) { toast(`El contenido no es una distribución válida: ${r.error}`); return; }
+  vaciarGuardado(); L = r.layout; aplicarLayout(); toast(r.soloLectura ? 'Distribución aplicada en solo lectura: es de una versión más nueva del gemelo' : 'Distribución aplicada');
 });
 function aplicarLayout() {
   aplicarPedido(); $$('#segRobot button').forEach(x => x.setAttribute('aria-pressed', x.dataset.v === L.robot));
   colocarRobots(); actualizarZona(); actualizarPlatos(); actualizarAruco(); for (const k in L.cams) actualizarCam(k); aplicarBandeja(simT);
-  reiniciarDemo(); pintarCaja(); evaluar(); calcularMapa(); guardarLocal(); if (!$('[data-panel="datos"]').hidden) pintarDatos();
+  reiniciarDemo(); pintarCaja(); evaluar(); calcularMapa(); pintarSoloLectura(); guardarLocal(); if (!$('[data-panel="datos"]').hidden) pintarDatos();
 }
 const FUENTES = [
   ['Mesa', '1180 × 830 mm, superficie a 760 mm', 'm', 'Cinta + foto (regla y A4, error < 2 %)'],
@@ -2741,7 +2904,11 @@ function tamano() { const r = view.getBoundingClientRect(); renderer.setSize(r.w
 new ResizeObserver(tamano).observe(view);
 const CAL = { ema: 16, lento: 0, bajado: false };
 function bucle(now) {
-  requestAnimationFrame(bucle); const dtr = (now - last) / 1000; const dt = Math.min(0.1, dtr); last = now; frame++;
+  // Mientras corre ensayo() (banco de pruebas y búsqueda de alternativas) el fotograma no toca el gemelo ni dibuja: ensayo()
+  // avanza simT y la bandeja por su cuenta, y un fotograma que caía en una de sus pausas según el reloj cambiaba el resultado
+  // (T1.2, criterio 6: bajo carga, 2 de 5 páginas daban otro t_sim y otras pausas)
+  requestAnimationFrame(bucle); if (D.banco) { last = now; return; }
+  const dtr = (now - last) / 1000; const dt = Math.min(0.1, dtr); last = now; frame++;
   // calidad adaptativa: si el equipo va lento, menos píxeles y sombras más simples
   CAL.ema = CAL.ema * 0.95 + Math.min(dtr * 1000, 500) * 0.05; if (!CAL.bajado && frame > 120) { CAL.lento = CAL.ema > 45 ? CAL.lento + 1 : 0; if (CAL.lento > 90) { CAL.bajado = true; renderer.setPixelRatio(1); renderer.shadowMap.type = THREE.PCFShadowMap; tamano(); } }
   if (D.playing && !D.banco) { let tot = dt * D.rate; while (tot > 1e-9) { const h = Math.min(tot, 1 / 60); simT += h; aplicarBandeja(simT); tickDemo(h); tot -= h; } }
@@ -2773,29 +2940,37 @@ function render() {
 
 // ======================= Banco de pruebas (solo con ?prueba) =======================
 async function ensayo(cfg = {}) {
-  D.sinRender = !!cfg.sinRender;
-  if (cfg.pedido) { L.pedido = cfg.pedido; aplicarPedido(); }
-  reiniciarDemo(); if (cfg.caja !== undefined) L.caja.on = cfg.caja; if (cfg.cajaH) L.caja.h = cfg.cajaH; actualizarPlatos(); pintarCaja();
-  D.modo = cfg.modo || 'M0'; D.amp = cfg.amp ?? 0.02; D.vel = cfg.vel ?? 0.25;
-  reiniciarDemo(); D.activo = true; D.playing = false; D.banco = true; D.fase = cfg.fase ?? Math.random() * 100;
-  const h = 1 / 60; const t0 = simT; const run = D.run; const pr = demo();
-  let n = 0;
-  while (!D.fin && simT - t0 < (cfg.limite || 600)) {
-    if (cfg.hasta && cfg.hasta(D)) { D.banco = false; D.sinRender = false; actualizarHUD(); return { parado: D.estado }; }
-    simT += h; aplicarBandeja(simT); tickDemo(h);
-    for (let k = 0; k < 4; k++) await Promise.resolve();
-    if (++n % 240 === 0) await new Promise(r => setTimeout(r, 0));
-  }
-  if (!D.fin) { D.run++; }
-  await new Promise(r => setTimeout(r, 0)); actualizarHUD();
-  D.banco = false; D.sinRender = false;
-  return { cfg, fin: D.fin || 'atascado', estado: D.estado, paso: D.paso + 1, t_sim: +(simT - t0).toFixed(1), t_mov: +D.motion.toFixed(1), errores_mm: D.errores.map(mm), choques: D.choques, roces: D.roces, pausas: D.pausas, autocol: D.autocol, planes: D.planes, sust: D.sustituidos, fallo: $('#dFallo').hidden ? '' : $('#dFallo').textContent.trim() };
+  // El ensayo empieza con simT = 0 (H3 y criterio 6 de T1.2). La bandeja se mueve con BALANCEO(simT + D.fase), así que
+  // cfg.fase es la fase de la bandeja al empezar. Y el resultado no depende de cuánto llevaba la página abierta (simT
+  // sigue al reloj mientras espera) ni de lo ensayado antes: con simT absoluto, el redondeo de simT + fase y de los
+  // tiempos de las animaciones cambiaba de un ensayo a otro (la matriz en orden inverso daba otros t_sim y planes).
+  simT = 0; D.sinRender = !!cfg.sinRender;
+  try {
+    if (cfg.pedido) { L.pedido = cfg.pedido; aplicarPedido(); }
+    reiniciarDemo(); if (cfg.caja !== undefined) L.caja.on = cfg.caja; if (cfg.cajaH) L.caja.h = cfg.cajaH; actualizarPlatos(); pintarCaja();
+    D.modo = cfg.modo || 'M0'; D.amp = cfg.amp ?? 0.02; D.vel = cfg.vel ?? 0.25;
+    reiniciarDemo(); D.activo = true; D.playing = false; D.banco = true; D.fase = cfg.fase ?? Math.random() * 100;
+    const h = 1 / 60; const t0 = simT; const run = D.run; const pr = demo();
+    let n = 0;
+    while (!D.fin && simT - t0 < (cfg.limite || 600)) {
+      if (cfg.hasta && cfg.hasta(D)) { D.banco = false; D.sinRender = false; actualizarHUD(); return { parado: D.estado }; }
+      simT += h; aplicarBandeja(simT); tickDemo(h);
+      for (let k = 0; k < 4; k++) await Promise.resolve();
+      if (++n % 240 === 0) await new Promise(r => setTimeout(r, 0));
+    }
+    if (!D.fin) { D.run++; }
+    await new Promise(r => setTimeout(r, 0)); actualizarHUD();
+    D.banco = false; D.sinRender = false;
+    return { cfg, fin: D.fin || 'atascado', estado: D.estado, paso: D.paso + 1, t_sim: +(simT - t0).toFixed(1), t_mov: +D.motion.toFixed(1), errores_mm: D.errores.map(mm), choques: D.choques, roces: D.roces, pausas: D.pausas, autocol: D.autocol, planes: D.planes, sust: D.sustituidos, fallo: $('#dFallo').hidden ? '' : $('#dFallo').textContent.trim() };
+  } catch (e) { // una excepción no deja la demo a medias: se cancela y la escena vuelve a la de partida; el error sigue hacia quien llamó
+    D.activo = false; reiniciarDemo(); throw e;
+  } finally { D.banco = false; D.sinRender = false; } // pase lo que pase, bucle() vuelve a avanzar y a dibujar (revisión de T1.2)
 }
 
 // ======================= Arranque =======================
 let D_ready = false;
 aplicarPedido(); dibujarGrafo(); pintarPasos(-1);
-actualizarZona(); actualizarPlatos(); actualizarAruco(); for (const k in L.cams) actualizarCam(k); aplicarTema(); pintarCaja();
+actualizarZona(); actualizarPlatos(); actualizarAruco(); for (const k in L.cams) actualizarCam(k); aplicarTema(); pintarCaja(); pintarSoloLectura();
 $$('#segRobot button').forEach(x => x.setAttribute('aria-pressed', x.dataset.v === L.robot));
 $('#segPedido').addEventListener('click', e => { const b = e.target.closest('button'); if (!b || D.playing) return; L.pedido = +b.dataset.v; D.activo = false; aplicarPedido(); reiniciarDemo(); actualizarPlatos(); evaluar(); guardarLocal(); toast(L.pedido === 1 ? 'Pide un solo plato: va al centro de la bandeja' : 'Pide primero y segundo'); });
 $('#segRate').addEventListener('click', e => { const b = e.target.closest('button'); if (!b) return; D.rate = +b.dataset.v; $$('#segRate button').forEach(x => x.setAttribute('aria-pressed', x === b)); });

@@ -26,8 +26,9 @@ function aplicarAjustes(a) {
   if (a.vel != null) { const el = $('#dVel'); el.value = Math.round(a.vel * 100); el.dispatchEvent(new Event('input')); }
   if (a.amp != null) { const el = $('#dAmp'); el.value = Math.round(a.amp * 1000) / 10; el.dispatchEvent(new Event('input')); }
 }
-function guardarMesaYa() { clearTimeout(saveT); ponerLS(CLAVE, jsonL()); }
-function respaldarMesa() { const m = leerLS(CLAVE); if (m) ponerLS(CLAVE_PREV, m); }
+function guardarMesaYa() { escribirMesa(); } // solo lectura: no se guarda (T1.1)
+// La copia anterior nunca recibe una disposición de una versión más nueva (la de Tu mesa solo la habría escrito otra versión)
+function respaldarMesa() { const m = leerLS(CLAVE); if (m && !migrarLayout(m).soloLectura) ponerLS(CLAVE_PREV, m); }
 
 // --- almacén de claude.ai (artefacto) ---
 const almClaude = {
@@ -90,8 +91,10 @@ async function iniciarFirestore() {
   ALM.aviso = 'La clave del grupo del enlace no es válida o las reglas de Firestore no están publicadas: no se pueden leer ni guardar escenas.';
   const tmr = setTimeout(() => { ESC.cargando = false; pintarNav(); }, 10000);
   FB.onSnapshot(COL_ESC, snap => {
-    clearTimeout(tmr); const vivas = [], papelera = [];
-    snap.docs.forEach(d => { const v = d.data() || {}; let layout = null; try { layout = JSON.parse(v.layout); } catch (e) { } if (!layout || !layout.cams) return; (v.borrado ? papelera : vivas).push({ ...v, layout, id: d.id }); });
+    clearTimeout(tmr); const vivas = [], papelera = [], ilegibles = [];
+    snap.docs.forEach(d => { const v = d.data() || {}; const r = migrarLayout(v.layout); if (r.error) { ilegibles.push(d.id); return; } (v.borrado ? papelera : vivas).push({ ...v, layout: r.layout, id: d.id }); });
+    // una escena cuya disposición no se puede leer no se lista (como en la v8), pero ahora se avisa, una vez por cambio (T1.1)
+    const k = ilegibles.sort().join(); if (k && k !== ESC.ilegibles) toast(`${ilegibles.length === 1 ? 'Una escena del grupo no se puede abrir' : `${ilegibles.length} escenas del grupo no se pueden abrir`}: su disposición no es válida`); ESC.ilegibles = k;
     ALM.escribir = null; recibirLista(vivas, papelera);
   }, err => { clearTimeout(tmr); ESC.cargando = false; if (err && err.code === 'permission-denied') ALM.escribir = false; pintarNav(); toast(err && err.code === 'permission-denied' ? 'La clave del grupo no es válida' : 'No se pueden leer las escenas del grupo ahora mismo'); });
 }
@@ -109,14 +112,15 @@ function abrirEscena(i, opts = {}) {
   if (D.playing || CALC.activo || D.buscando) { toast('Espera a que termine la demo o el cálculo'); return; }
   const actual = idxActual(); if (i === actual && !opts.forzar) return;
   if (i === -1) { // volver a la copia de trabajo
-    const m = cargarLocal(); ESC.cur = null; ESC.base = null; L = normalizar(m || layoutDefecto()); aplicarLayout(); pintarNav(); toast('Tu mesa'); return;
+    ESC.cur = null; ESC.base = null; L = mesaLocal(); aplicarLayout(); pintarNav(); toast('Tu mesa'); return;
   }
   const e = ESC.lista[i]; if (!e || !e.layout) return;
+  const r = migrarLayout(e.layout); if (r.error) { toast(`No se puede abrir «${e.nombre}»: ${r.error}`); return; } // no cambia nada
   if (!ESC.cur) guardarMesaYa(); // al salir de tu mesa queda guardada tal cual
   ESC.cur = { id: e.id }; ESC.basada = null;
-  L = normalizar(JSON.parse(JSON.stringify(e.layout))); aplicarLayout(); ESC.base = jsonL();
+  L = r.layout; aplicarLayout(); ESC.base = jsonL();
   aplicarAjustes(e.ajustes); if (e.vista && e.vista.p) animarCam(new THREE.Vector3(...e.vista.p), new THREE.Vector3(...e.vista.t));
-  pintarNav(); if (!opts.silencio) toast(`${e.nombre} · ${ALM.quien(e)}`);
+  pintarNav(); if (!opts.silencio) toast(`${e.nombre} · ${ALM.quien(e)}${r.soloLectura ? ' · solo lectura (versión más nueva del gemelo)' : ''}`);
 }
 function pasarAMesa(motivo) { // la escena abierta se ha modificado: lo editado pasa a ser tu mesa y la escena no cambia
   const e = ESC.lista[idxActual()] || (ESC.cur && ESC.ultima); respaldarMesa();
@@ -141,9 +145,10 @@ function propiaEditable() { // la escena que «Guardar cambios» sobrescribiría
 }
 function pintarPop() {
   const i = idxActual(), prop = propiaEditable(), fs = ALM.modo === 'firestore';
-  const puede = !!ALM.modo && ALM.escribir !== false;
+  const ro = soloLectura(), puede = !!ALM.modo && ALM.escribir !== false && !ro;
   $('#escGuardarSec').hidden = !puede; $('#escSoloLectura').hidden = puede;
-  $('#escSoloLectura').innerHTML = ALM.aviso || 'Las escenas del grupo solo se ven al abrir la página en claude.ai con la sesión iniciada. Aquí puedes pasar escenas con un código (abajo).';
+  $('#escSoloLectura').innerHTML = ro ? `Esta disposición es de una versión más nueva del gemelo (v${L.version}; esta página es la v${LAYOUT.VERSION}). Se abre en <b>solo lectura</b>: no se guarda en Tu mesa ni en el grupo hasta que abras una escena compatible. Puedes copiar su código para pasarla.`
+    : ALM.aviso || 'Las escenas del grupo solo se ven al abrir la página en claude.ai con la sesión iniciada. Aquí puedes pasar escenas con un código (abajo).';
   $('#escAutorFila').hidden = !fs; if (fs && document.activeElement !== $('#escAutor')) $('#escAutor').value = ALM.yo || '';
   $('#escCambios').hidden = !prop; if (prop) $('#escCambios').textContent = `Guardar cambios en «${prop.nombre}»`;
   const fila = (k, e) => {
@@ -176,6 +181,8 @@ function cerrarPop() { $('#escPop').hidden = true; $('#escCur').setAttribute('ar
 async function guardarEscena(modo) {
   const nombre = $('#escNombre').value.trim(), nota = $('#escNota').value.trim();
   if (!ALM.modo) return; if (D.playing) { toast('Pausa la demo para guardar'); return; }
+  if (soloLectura()) { toast(`Esta disposición es de una versión más nueva del gemelo (v${L.version}): se ve en solo lectura y no se puede guardar`); return; }
+  const largo = LAYOUT.noGuardable(jsonL()); if (largo) { toast(`No se guarda: ${largo}`); return; } // las reglas de Firestore la rechazarían (I2)
   if (ALM.modo === 'firestore') { const a = $('#escAutor').value.trim().slice(0, 40); if (!a) { toast('Escribe tu nombre para que el grupo sepa de quién es'); $('#escAutor').focus(); return; } ALM.yo = a; ponerLS(CLAVE_NOMBRE, a); }
   if (!nombre) { toast('Ponle un nombre a la escena'); $('#escNombre').focus(); return; }
   const prop = modo === 'cambios' ? propiaEditable() : null;
@@ -183,8 +190,11 @@ async function guardarEscena(modo) {
   try {
     if (!planesAlDia()) await calcularPlanes(); // se guarda con su comprobación previa, para que el grupo vea si es viable
     const graves = comprobarPlan().filter(c => c.grave);
+    // durante el cálculo, Importar o Recuperar pueden haber cambiado L: se vuelve a comprobar lo que se va a guardar
+    if (soloLectura()) { toast(`Esta disposición es de una versión más nueva del gemelo (v${L.version}): se ve en solo lectura y no se puede guardar`); return; }
+    const txt = jsonL(), largo2 = LAYOUT.noGuardable(txt); if (largo2) { toast(`No se guarda: ${largo2}`); return; } // lo que se guarda es este texto
     const ahora = new Date().toISOString();
-    const item = { nombre: nombre.slice(0, 60), nota: nota.slice(0, 500), creado: ahora, editado: ahora, layout: JSON.parse(jsonL()), ajustes: ajustesDemo(), vista: vistaActual(),
+    const item = { nombre: nombre.slice(0, 60), nota: nota.slice(0, 500), creado: ahora, editado: ahora, layout: JSON.parse(txt), ajustes: ajustesDemo(), vista: vistaActual(),
       estado: { ok: !graves.length, n: graves.length, txt: graves.length ? graves[0].txt.slice(0, 300) : 'La comprobación previa no encuentra problemas.' } };
     const g = await ALM.guardar(item, prop);
     ESC.cur = { id: g.id }; ESC.basada = null; ESC.base = jsonL(); // ahora estás en la escena guardada
@@ -199,9 +209,11 @@ async function guardarEscena(modo) {
     else toast('No se ha podido guardar; inténtalo otra vez');
   } finally { $$('#escGuardarSec button').forEach(b => b.disabled = false); }
 }
+let tConfirmar = 0;
 function confirmar(id) { // dos pulsaciones para lo que no se deshace fácilmente
+  clearTimeout(tConfirmar); // cada pulsación anula el plazo de 4 s de la anterior (H2: si no, un plazo viejo deshacía una confirmación nueva)
   if (ESC.borrarId === id) { ESC.borrarId = null; return true; }
-  ESC.borrarId = id; pintarPop(); setTimeout(() => { if (ESC.borrarId === id) { ESC.borrarId = null; if (!$('#escPop').hidden) pintarPop(); } }, 4000); return false;
+  ESC.borrarId = id; pintarPop(); tConfirmar = setTimeout(() => { if (ESC.borrarId === id) { ESC.borrarId = null; if (!$('#escPop').hidden) pintarPop(); } }, 4000); return false;
 }
 async function borrarEscena(k) {
   const e = ESC.lista[k]; if (!e || !confirmar(e.id)) return;
@@ -221,11 +233,14 @@ function codigoEscena() {
 function abrirCodigo(t) {
   const m = /GEMELO1\.([A-Za-z0-9+/=]+)/.exec(String(t).replace(/\s+/g, '')); if (!m) { toast('Eso no parece un código de escena'); return; }
   let o; try { o = JSON.parse(decodeURIComponent(escape(atob(m[1])))); } catch (e) { toast('El código está incompleto'); return; }
-  if (!o.layout || !o.layout.cams) { toast('El código no trae una disposición'); return; }
+  if (!o || typeof o !== 'object' || !o.layout) { toast('El código no trae una disposición'); return; } // también si el JSON es null o no es un objeto
+  const r = migrarLayout(o.layout); if (r.error) { toast(`El código no trae una disposición válida: ${r.error}`); return; } // no cambia nada
   if (D.playing || CALC.activo) { toast('Espera a que termine la demo o el cálculo'); return; }
-  respaldarMesa(); ESC.cur = null; ESC.base = null; ESC.basada = { id: null, autor: null, nombre: o.nombre || 'Escena', nota: o.nota || '' };
-  L = normalizar(o.layout); aplicarLayout(); aplicarAjustes(o.ajustes); if (o.vista && o.vista.p) animarCam(new THREE.Vector3(...o.vista.p), new THREE.Vector3(...o.vista.t));
-  pintarNav(); cerrarPop(); toast(`Abierta en Tu mesa: ${o.nombre || 'escena'}${ALM.modo && ALM.escribir !== false ? '. Guárdala para que la vea el grupo' : ''}`);
+  vaciarGuardado(); respaldarMesa(); ESC.cur = null; ESC.base = null; ESC.basada = { id: null, autor: null, nombre: o.nombre || 'Escena', nota: o.nota || '' };
+  L = r.layout; aplicarLayout(); aplicarAjustes(o.ajustes); if (o.vista && o.vista.p) animarCam(new THREE.Vector3(...o.vista.p), new THREE.Vector3(...o.vista.t));
+  pintarNav(); cerrarPop();
+  toast(r.soloLectura ? `Abierta en Tu mesa en solo lectura: ${o.nombre || 'la escena'} es de una versión más nueva del gemelo (v${L.version})`
+    : `Abierta en Tu mesa: ${o.nombre || 'escena'}${ALM.modo && ALM.escribir !== false ? '. Guárdala para que la vea el grupo' : ''}`);
 }
 
 function iniciarEscenas() {
@@ -259,8 +274,11 @@ $('#escPapLista').addEventListener('click', async e => {
 $('#escCopiar').addEventListener('click', async () => { const c = codigoEscena(); try { await navigator.clipboard.writeText(c); toast('Código copiado: pégalo en un mensaje'); } catch (e) { $('#escCodigo').value = c; $('#escCodigo').select(); toast('Selecciona el código y cópialo'); } });
 $('#escAbrirCod').addEventListener('click', () => abrirCodigo($('#escCodigo').value));
 $('#escRecuperar').addEventListener('click', () => {
-  const prev = leerLS(CLAVE_PREV); ponerLS(CLAVE_PREV, null); if (!prev) return;
-  ponerLS(CLAVE, prev); ESC.cur = null; ESC.basada = null; ESC.base = null; L = normalizar(JSON.parse(prev)); aplicarLayout(); pintarNav(); cerrarPop(); toast('Recuperada tu mesa anterior');
+  const prev = leerLS(CLAVE_PREV); if (!prev) return;
+  const r = migrarLayout(prev); if (r.error) { toast(`No se puede recuperar tu mesa anterior: ${r.error}`); return; } // no cambia nada
+  vaciarGuardado();
+  if (!r.soloLectura) { ponerLS(CLAVE_PREV, null); ponerLS(CLAVE, prev); } // una disposición más nueva se abre sin escribirla en Tu mesa
+  ESC.cur = null; ESC.basada = null; ESC.base = null; L = r.layout; aplicarLayout(); pintarNav(); cerrarPop(); toast('Recuperada tu mesa anterior');
 });
 document.addEventListener('keydown', e => { if (e.key === 'Escape' && !$('#escPop').hidden) cerrarPop(); });
 document.addEventListener('pointerdown', e => { const p = $('#escPop'); if (!p.hidden && !p.contains(e.target) && !e.target.closest('#escNav')) cerrarPop(); });

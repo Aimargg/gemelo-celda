@@ -11,7 +11,7 @@ const m4 = a => new THREE.Matrix4().set(...a);
 const css = v => getComputedStyle(document.documentElement).getPropertyValue(v).trim();
 const STOP = new Error('stop');
 // Escena del grupo abierta (cur) o «Tu mesa» (cur = null); base = disposición al abrirla, para saber si se ha modificado
-const ESC = { lista: [], papelera: [], cur: null, base: null, basada: null, ultima: null, cargando: true, borrarId: null };
+const ESC = { lista: [], papelera: [], cur: null, base: null, basada: null, ultima: null, cargando: true, borrarId: null, ilegibles: '' };
 let EDITANDO = false; // mientras se arrastra algo no se recalculan los planes (es lo caro); se recalculan al soltar
 let OBS_EXTRA = []; // obstáculos previstos (la fruta que tendrá el plato cuando se coja)
 let VERSION_ESCENA = 0; // sube cada vez que cambia algo del entorno (objetos movidos, cogidos o soltados)
@@ -30,9 +30,12 @@ const H_TR = 0.12, H_AP = 0.06; // altura de traslado sobre la mesa y de aproxim
 const CAJA_LADO = 0.10;
 // ArUco reales del diccionario DICT_4X4_50 (ids 0–15), bits interiores por filas
 const ARUCO = ['1011010100110010', '0000111110011010', '0011001100101101', '1001100101000110', '0101010010011110', '0111100111001101', '1001111000101110', '1100010011110010', '1111111011011010', '1100111101010110', '1111100110010001', '0001000110100111', '0000111010110111', '0010101000001111', '0010010010110001', '0010011000111110'];
+// @@LAYOUT@@
+// @@RNG@@
 
 function layoutDefecto() {
   return {
+    version: LAYOUT.VERSION, ...LAYOUT.NUEVA, // escena nueva: robot nominal, perfil «curso» y sensor de la ficha de la ELP (T1.1)
     robot: 'B',
     zona: { x: 0.12, y: 0.27, yaw: 0, w: 0.22, d: 0.16 },
     plato1: { x: 0.265, y: -0.049 }, plato2: { x: 0.122, y: 0.089 }, // a 36 cm de la base, a -118° y -150°: agarre horizontal y fruta desde arriba
@@ -54,16 +57,33 @@ function espejo(L) { // cambia el lado: x → −x
   for (const k in c.cams) { fx(c.cams[k].clamp); fx(c.cams[k].pos); fx(c.cams[k].mira); c.cams[k].roll = -(c.cams[k].roll || 0); }
   return c;
 }
-function normalizar(l) { const d = layoutDefecto(); if (!l || !l.zona || !l.cams) return d; if (!l.caja) l.caja = d.caja; if (!l.pedido) l.pedido = 2; return l; }
+// Toda carga de una disposición pasa por migrarLayout (T1.1, I1): la valida contra la forma de la de partida, migra la
+// de la v8 y dice si es de una versión más nueva (solo lectura). Devuelve { layout, soloLectura } o { error }.
+const ESQ_L = { ref: layoutDefecto(), robots: Object.keys(BASES), modos: Object.keys(MODOS), grupos: ['V1', 'V2', 'ROB'] };
+const migrarLayout = entrada => LAYOUT.migrarLayout(entrada, ESQ_L);
+// Solo lectura: una disposición de una versión más nueva se ve, pero no se guarda en local ni en el grupo
+function soloLectura() { return LAYOUT.soloLectura(L); }
 const CLAVE = 'gemelo-ur3e-v4';
-let L = normalizar(cargarLocal());
-function cargarLocal() { try { const s = localStorage.getItem(CLAVE); return s ? JSON.parse(s) : null; } catch (e) { return null; } }
-let saveT = 0;
-function guardarLocal() { if (ESC.cur) return; clearTimeout(saveT); // una escena del grupo abierta no pisa tu mesa
-  saveT = setTimeout(() => { try { localStorage.setItem(CLAVE, JSON.stringify(L)); } catch (e) { } }, 400); }
+function cargarLocal() { try { return localStorage.getItem(CLAVE); } catch (e) { return null; } } // texto de Tu mesa o null (sin almacenamiento)
+// Tu mesa guardada en este navegador. Si no se puede abrir, la disposición de partida con un aviso (la v8 la descartaba en silencio)
+function mesaLocal() {
+  const s = cargarLocal(); if (s == null) return layoutDefecto();
+  const r = migrarLayout(s);
+  if (r.error) { toast(`Tu mesa guardada no se puede abrir (${r.error}): se usa la disposición de partida`); return layoutDefecto(); }
+  if (r.soloLectura) toast(`Tu mesa es de una versión más nueva del gemelo (v${r.layout.version}): se abre en solo lectura`);
+  return r.layout;
+}
+let L = mesaLocal();
+let saveT = 0, savePend = false;
+// Escribe Tu mesa ya. Nunca con una escena del grupo abierta ni con una disposición de solo lectura (versión más nueva):
+// se comprueba al escribir, no al programar el guardado, porque L puede haber cambiado en esos 400 ms (T1.1, revisión)
+function escribirMesa() { clearTimeout(saveT); savePend = false; if (ESC.cur || soloLectura()) return; try { localStorage.setItem(CLAVE, JSON.stringify(L)); } catch (e) { } }
+function guardarLocal() { clearTimeout(saveT); savePend = !ESC.cur && !soloLectura(); if (savePend) saveT = setTimeout(escribirMesa, 400); } // a los 400 ms del último cambio
+// Antes de sustituir L por otra disposición: lo pendiente de guardar de Tu mesa se escribe ya y no se pierde
+function vaciarGuardado() { if (savePend) escribirMesa(); }
 
 // ======================= Texturas procedurales =======================
-function aleat(seed) { let s = seed >>> 0 || 1; return () => { s ^= s << 13; s ^= s >>> 17; s ^= s << 5; return ((s >>> 0) % 100000) / 100000; }; }
+const aleat = RNG.aleat; // xorshift32 sembrado (src/rng.js): texturas y modelo de colisión
 function lienzo(w, h, dibujar, { color = true, rep = null } = {}) {
   const c = document.createElement('canvas'); c.width = w; c.height = h; dibujar(c.getContext('2d'), w, h);
   const t = new THREE.CanvasTexture(c); if (color) t.colorSpace = THREE.SRGBColorSpace; t.wrapS = t.wrapT = THREE.RepeatWrapping; t.anisotropy = 8; if (rep) t.repeat.set(...rep); return t;
@@ -1215,6 +1235,13 @@ function pintarCaja() {
 }
 function actualizarCheck() { if ($('[data-panel="demo"]').hidden || D.activo || !robot) return; if (sinPlan()) { pintarCheck([{ cls: 'warn', txt: 'Hay cambios sin calcular. Pulsa «Calcular trayectorias» o reproduce la demo, que calcula antes de mover el brazo.' }]); return; } pintarCheck(comprobarPlan()); }
 function toast(t) { const el = $('#toast'); el.textContent = t; el.classList.add('on'); clearTimeout(el._t); el._t = setTimeout(() => el.classList.remove('on'), 2800); }
+// Aviso visible de solo lectura (T1.1), junto a las etiquetas de la cabecera
+$('.chips').insertAdjacentHTML('afterbegin', '<span class="chip" id="chipSoloLectura" role="status" hidden style="border-color:var(--bad);color:var(--bad);font-weight:600"></span>');
+function pintarSoloLectura() {
+  const el = $('#chipSoloLectura'), s = soloLectura(); el.hidden = !s;
+  el.textContent = s ? `SOLO LECTURA · disposición v${L.version}, esta página es la v${LAYOUT.VERSION}` : '';
+  el.title = s ? 'Esta disposición es de una versión más nueva del gemelo: se puede ver, pero no se guarda en Tu mesa ni en el grupo hasta que abras una compatible.' : '';
+}
 
 // Pestañas
 $$('.tabs button').forEach(b => b.addEventListener('click', () => {
@@ -1386,12 +1413,13 @@ $('#btnPng').addEventListener('click', () => { renderer.domElement.toBlob(b => b
 $('#btnImport').addEventListener('click', () => {
   const t = $('#yamlIn').value; const m = t.match(/#\s*layout-json:\s*(\{.*\})\s*$/m);
   if (!m) { toast('No encuentro la línea «# layout-json» del fichero exportado'); return; }
-  try { const n = JSON.parse(m[1]); if (!n.zona || !n.cams) throw 0; L = normalizar(n); aplicarLayout(); toast('Distribución aplicada'); } catch (e) { toast('El contenido no es una distribución válida'); }
+  const r = migrarLayout(m[1]); if (r.error) { toast(`El contenido no es una distribución válida: ${r.error}`); return; }
+  vaciarGuardado(); L = r.layout; aplicarLayout(); toast(r.soloLectura ? 'Distribución aplicada en solo lectura: es de una versión más nueva del gemelo' : 'Distribución aplicada');
 });
 function aplicarLayout() {
   aplicarPedido(); $$('#segRobot button').forEach(x => x.setAttribute('aria-pressed', x.dataset.v === L.robot));
   colocarRobots(); actualizarZona(); actualizarPlatos(); actualizarAruco(); for (const k in L.cams) actualizarCam(k); aplicarBandeja(simT);
-  reiniciarDemo(); pintarCaja(); evaluar(); calcularMapa(); guardarLocal(); if (!$('[data-panel="datos"]').hidden) pintarDatos();
+  reiniciarDemo(); pintarCaja(); evaluar(); calcularMapa(); pintarSoloLectura(); guardarLocal(); if (!$('[data-panel="datos"]').hidden) pintarDatos();
 }
 const FUENTES = [
   ['Mesa', '1180 × 830 mm, superficie a 760 mm', 'm', 'Cinta + foto (regla y A4, error < 2 %)'],
@@ -1437,7 +1465,11 @@ function tamano() { const r = view.getBoundingClientRect(); renderer.setSize(r.w
 new ResizeObserver(tamano).observe(view);
 const CAL = { ema: 16, lento: 0, bajado: false };
 function bucle(now) {
-  requestAnimationFrame(bucle); const dtr = (now - last) / 1000; const dt = Math.min(0.1, dtr); last = now; frame++;
+  // Mientras corre ensayo() (banco de pruebas y búsqueda de alternativas) el fotograma no toca el gemelo ni dibuja: ensayo()
+  // avanza simT y la bandeja por su cuenta, y un fotograma que caía en una de sus pausas según el reloj cambiaba el resultado
+  // (T1.2, criterio 6: bajo carga, 2 de 5 páginas daban otro t_sim y otras pausas)
+  requestAnimationFrame(bucle); if (D.banco) { last = now; return; }
+  const dtr = (now - last) / 1000; const dt = Math.min(0.1, dtr); last = now; frame++;
   // calidad adaptativa: si el equipo va lento, menos píxeles y sombras más simples
   CAL.ema = CAL.ema * 0.95 + Math.min(dtr * 1000, 500) * 0.05; if (!CAL.bajado && frame > 120) { CAL.lento = CAL.ema > 45 ? CAL.lento + 1 : 0; if (CAL.lento > 90) { CAL.bajado = true; renderer.setPixelRatio(1); renderer.shadowMap.type = THREE.PCFShadowMap; tamano(); } }
   if (D.playing && !D.banco) { let tot = dt * D.rate; while (tot > 1e-9) { const h = Math.min(tot, 1 / 60); simT += h; aplicarBandeja(simT); tickDemo(h); tot -= h; } }
@@ -1469,29 +1501,37 @@ function render() {
 
 // ======================= Banco de pruebas (solo con ?prueba) =======================
 async function ensayo(cfg = {}) {
-  D.sinRender = !!cfg.sinRender;
-  if (cfg.pedido) { L.pedido = cfg.pedido; aplicarPedido(); }
-  reiniciarDemo(); if (cfg.caja !== undefined) L.caja.on = cfg.caja; if (cfg.cajaH) L.caja.h = cfg.cajaH; actualizarPlatos(); pintarCaja();
-  D.modo = cfg.modo || 'M0'; D.amp = cfg.amp ?? 0.02; D.vel = cfg.vel ?? 0.25;
-  reiniciarDemo(); D.activo = true; D.playing = false; D.banco = true; D.fase = cfg.fase ?? Math.random() * 100;
-  const h = 1 / 60; const t0 = simT; const run = D.run; const pr = demo();
-  let n = 0;
-  while (!D.fin && simT - t0 < (cfg.limite || 600)) {
-    if (cfg.hasta && cfg.hasta(D)) { D.banco = false; D.sinRender = false; actualizarHUD(); return { parado: D.estado }; }
-    simT += h; aplicarBandeja(simT); tickDemo(h);
-    for (let k = 0; k < 4; k++) await Promise.resolve();
-    if (++n % 240 === 0) await new Promise(r => setTimeout(r, 0));
-  }
-  if (!D.fin) { D.run++; }
-  await new Promise(r => setTimeout(r, 0)); actualizarHUD();
-  D.banco = false; D.sinRender = false;
-  return { cfg, fin: D.fin || 'atascado', estado: D.estado, paso: D.paso + 1, t_sim: +(simT - t0).toFixed(1), t_mov: +D.motion.toFixed(1), errores_mm: D.errores.map(mm), choques: D.choques, roces: D.roces, pausas: D.pausas, autocol: D.autocol, planes: D.planes, sust: D.sustituidos, fallo: $('#dFallo').hidden ? '' : $('#dFallo').textContent.trim() };
+  // El ensayo empieza con simT = 0 (H3 y criterio 6 de T1.2). La bandeja se mueve con BALANCEO(simT + D.fase), así que
+  // cfg.fase es la fase de la bandeja al empezar. Y el resultado no depende de cuánto llevaba la página abierta (simT
+  // sigue al reloj mientras espera) ni de lo ensayado antes: con simT absoluto, el redondeo de simT + fase y de los
+  // tiempos de las animaciones cambiaba de un ensayo a otro (la matriz en orden inverso daba otros t_sim y planes).
+  simT = 0; D.sinRender = !!cfg.sinRender;
+  try {
+    if (cfg.pedido) { L.pedido = cfg.pedido; aplicarPedido(); }
+    reiniciarDemo(); if (cfg.caja !== undefined) L.caja.on = cfg.caja; if (cfg.cajaH) L.caja.h = cfg.cajaH; actualizarPlatos(); pintarCaja();
+    D.modo = cfg.modo || 'M0'; D.amp = cfg.amp ?? 0.02; D.vel = cfg.vel ?? 0.25;
+    reiniciarDemo(); D.activo = true; D.playing = false; D.banco = true; D.fase = cfg.fase ?? Math.random() * 100;
+    const h = 1 / 60; const t0 = simT; const run = D.run; const pr = demo();
+    let n = 0;
+    while (!D.fin && simT - t0 < (cfg.limite || 600)) {
+      if (cfg.hasta && cfg.hasta(D)) { D.banco = false; D.sinRender = false; actualizarHUD(); return { parado: D.estado }; }
+      simT += h; aplicarBandeja(simT); tickDemo(h);
+      for (let k = 0; k < 4; k++) await Promise.resolve();
+      if (++n % 240 === 0) await new Promise(r => setTimeout(r, 0));
+    }
+    if (!D.fin) { D.run++; }
+    await new Promise(r => setTimeout(r, 0)); actualizarHUD();
+    D.banco = false; D.sinRender = false;
+    return { cfg, fin: D.fin || 'atascado', estado: D.estado, paso: D.paso + 1, t_sim: +(simT - t0).toFixed(1), t_mov: +D.motion.toFixed(1), errores_mm: D.errores.map(mm), choques: D.choques, roces: D.roces, pausas: D.pausas, autocol: D.autocol, planes: D.planes, sust: D.sustituidos, fallo: $('#dFallo').hidden ? '' : $('#dFallo').textContent.trim() };
+  } catch (e) { // una excepción no deja la demo a medias: se cancela y la escena vuelve a la de partida; el error sigue hacia quien llamó
+    D.activo = false; reiniciarDemo(); throw e;
+  } finally { D.banco = false; D.sinRender = false; } // pase lo que pase, bucle() vuelve a avanzar y a dibujar (revisión de T1.2)
 }
 
 // ======================= Arranque =======================
 let D_ready = false;
 aplicarPedido(); dibujarGrafo(); pintarPasos(-1);
-actualizarZona(); actualizarPlatos(); actualizarAruco(); for (const k in L.cams) actualizarCam(k); aplicarTema(); pintarCaja();
+actualizarZona(); actualizarPlatos(); actualizarAruco(); for (const k in L.cams) actualizarCam(k); aplicarTema(); pintarCaja(); pintarSoloLectura();
 $$('#segRobot button').forEach(x => x.setAttribute('aria-pressed', x.dataset.v === L.robot));
 $('#segPedido').addEventListener('click', e => { const b = e.target.closest('button'); if (!b || D.playing) return; L.pedido = +b.dataset.v; D.activo = false; aplicarPedido(); reiniciarDemo(); actualizarPlatos(); evaluar(); guardarLocal(); toast(L.pedido === 1 ? 'Pide un solo plato: va al centro de la bandeja' : 'Pide primero y segundo'); });
 $('#segRate').addEventListener('click', e => { const b = e.target.closest('button'); if (!b) return; D.rate = +b.dataset.v; $$('#segRate button').forEach(x => x.setAttribute('aria-pressed', x === b)); });
@@ -1499,7 +1539,7 @@ $('#segModoB').addEventListener('click', e => { const b = e.target.closest('butt
 $('#dVel').addEventListener('input', e => { D.vel = e.target.value / 100; $('#dVelOut').textContent = `${e.target.value} %`; });
 $('#dAmp').addEventListener('input', e => { D.amp = e.target.value / 100; $('#dAmpOut').textContent = `${fmt(+e.target.value, 1)} cm`; actualizarCheck(); });
 requestAnimationFrame(bucle);
-if (location.search.includes('prueba')) window.__g = { aplicarPedido, actualizarZona, esferasObjeto, cargaDe, BAND, bandeja, aplicarBandeja: t => aplicarBandeja(t), ladoZonas: () => ladoZonas(), comprobarPlan, llegaVertical, puntosSoltar, FRUTAS, CACHE_PLAN, poseHoriz, ejeHoriz, mundoABase, enLimites, qValida, rutaNivelada: (...a) => rutaNivelada(...a), colocacionConTransporte: (...a) => colocacionConTransporte(...a), planColocar: (...a) => planColocar(...a), zonasB, ikTCP, planAgarrePlato, planColocar, planPlatoCache, KIN_: KIN, BASES, consts: { R_AGARRE, H_BORDE }, COL: () => COL, choqueEn: (q, c) => choqueEn(q, c), obstaculos: () => obstaculos(), textoChoque: c => textoChoque(c), D, L: () => L, cam, orbit, scene, renderer, OBJ, piezas: () => piezas, simT: () => simT, CAMS, actualizarCam, actualizarAruco, actualizarPlatos, metricasCam, estadoObjeto, alcance, comprobarPlan, ensayo, planAgarrePlato, holguraActual, get robot() { return robot; }, KIN, pinza, tcpMundo, zPlato, setL: l => { L = l; }, ESC, ALM, abrirEscena, codigoEscena, abrirCodigo, guardarEscena, escCam: cam, orbit, vista, CALC, calcularPlanes, planesAlDia, recalcular, orientDe, fijarOrient, orientarDesdeQuat, CAMS, seleccionar, tctl, generarYaml, cadenaPlato, cargaPlan, rutaCartesiana: (...a) => rutaCartesiana(...a), zonasB_: () => zonasB, zonaDe, qReposo, aplicarLayout, buscarAlternativa, candidatos, explicar, mostrarFalloInfo, diagnosticarPunto };
+if (location.search.includes('prueba')) window.__g = { aplicarPedido, actualizarZona, esferasObjeto, cargaDe, BAND, bandeja, aplicarBandeja: t => aplicarBandeja(t), ladoZonas: () => ladoZonas(), comprobarPlan, llegaVertical, puntosSoltar, FRUTAS, CACHE_PLAN, poseHoriz, ejeHoriz, mundoABase, enLimites, qValida, rutaNivelada: (...a) => rutaNivelada(...a), colocacionConTransporte: (...a) => colocacionConTransporte(...a), planColocar: (...a) => planColocar(...a), zonasB, ikTCP, planAgarrePlato, planColocar, planPlatoCache, KIN_: KIN, BASES, consts: { R_AGARRE, H_BORDE }, COL: () => COL, choqueEn: (q, c) => choqueEn(q, c), obstaculos: () => obstaculos(), textoChoque: c => textoChoque(c), D, L: () => L, cam, orbit, scene, renderer, OBJ, piezas: () => piezas, simT: () => simT, CAMS, actualizarCam, actualizarAruco, actualizarPlatos, metricasCam, estadoObjeto, alcance, comprobarPlan, ensayo, planAgarrePlato, holguraActual, get robot() { return robot; }, KIN, pinza, tcpMundo, zPlato, setL: l => { L = l; }, ESC, ALM, abrirEscena, codigoEscena, abrirCodigo, guardarEscena, escCam: cam, orbit, vista, CALC, calcularPlanes, planesAlDia, recalcular, orientDe, fijarOrient, orientarDesdeQuat, CAMS, seleccionar, tctl, generarYaml, cadenaPlato, cargaPlan, rutaCartesiana: (...a) => rutaCartesiana(...a), zonasB_: () => zonasB, zonaDe, qReposo, aplicarLayout, buscarAlternativa, candidatos, explicar, mostrarFalloInfo, diagnosticarPunto, LAYOUT, ESQ_L, migrarLayout, soloLectura, RNG, planificar: (...a) => planificar(...a) };
 fetch('ur3e-malla.json').then(r => { if (!r.ok) throw new Error(r.status); return r.json(); }).then(j => { const bin = atob(j.glb); const u8 = new Uint8Array(bin.length); for (let i = 0; i < bin.length; i++) u8[i] = bin.charCodeAt(i); new GLTFLoader().parse(u8.buffer, '', cargado, fallo); }).catch(fallo);
 function fallo(err) { $('#loading').textContent = 'No se ha podido cargar el modelo del UR3e.'; console.error(err); }
 function cargado(g) {

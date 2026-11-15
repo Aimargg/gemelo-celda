@@ -31,7 +31,7 @@ try {
   if (matriz) {
     const res = await conPagina(srv, p => ensayar(p, CASOS_MATRIZ));
     escribir(path.join(RAIZ, 'tests/fixtures/matriz-base.json'), {
-      descripcion: 'Caracterización de la v8: 8 casos fijos de __g.ensayo, en este orden y en una página recién cargada (tras el primer calcularPlanes), con la fase de la bandeja relativa al inicio de cada ensayo (tests/medir.mjs). El test compara fin, choques, roces y pausas; el resto es informativo (en T0.2 también salió igual en 6 ejecuciones).',
+      descripcion: 'Caracterización de la v8: 8 casos fijos de __g.ensayo, en este orden y en una página recién cargada (tras el primer calcularPlanes), con la fase de la bandeja al empezar cada ensayo (ensayo() empieza con simT = 0 desde T1.2) y la semilla del RRT por petición. El test compara fin, choques, roces y pausas; el resto es informativo (en T0.2 también salió igual en 6 ejecuciones).',
       fuente_src: fuente, comando: 'npm run caracterizar',
       casos: res.map(({ ms, ...r }) => r),
     });

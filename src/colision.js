@@ -193,11 +193,19 @@ function atajar(ruta, ctx, rnd) {
   for (let it = 0; it < 80 && ruta.length > 2; it++) { const i = Math.floor(rnd() * (ruta.length - 2)), j = i + 2 + Math.floor(rnd() * (ruta.length - i - 2)); if (j < ruta.length && tramoLibre(ruta[i], ruta[j], ctx)) ruta.splice(i + 1, j - i - 1); }
   return ruta;
 }
-let SEMILLA = 1;
+// Perfil de movimiento con el que planifica el gemelo; entra en la semilla (D5). Hoy solo existe «gemelo»: el campo
+// `perfil` del layout aún no tiene efecto (T1.1). T1.6 pondrá aquí el perfil de la petición.
+const PERFIL_PLAN = 'gemelo';
+// Semilla por petición (T1.2, D5, I6): hash de la entrada canónica del plan (src/rng.js) con los mismos valores por
+// defecto que choqueEn. La misma petición da el mismo plan, se calcule en el orden que se calcule.
+function semillaDe(qa, qb, ctx) {
+  return RNG.semillaPlan({ qa, qb, w: ctx.w ?? pinza.w, carga: ctx.carga === undefined ? D.carga : ctx.carga, obst: ctx.sinEntorno ? null : (ctx.obst || obstaculos()),
+    permitir: ctx.permitir, conBlandos: ctx.conBlandos, sinEntorno: ctx.sinEntorno, sinAuto: ctx.sinAuto, perfil: PERFIL_PLAN });
+}
 function planificar(qa, qb, ctx) {
   if (D.sinPlanificador || tramoLibre(qa, qb, ctx)) return { ruta: [qa, qb], plan: false };
   if (choqueEn(qb, ctx)) return null;
-  const rnd = aleat(SEMILLA++ * 7919);
+  const rnd = RNG.aleat(semillaDe(qa, qb, ctx)); // una sola semilla: si con ella no hay camino, no hay plan (sin reintentos)
   for (const [h, it] of [[PI / 2, 1500], [PI, 3000]]) { const r = rrtConnect(qa, qb, ctx, rnd, h, it); if (r) return { ruta: atajar(r, ctx, rnd), plan: true }; }
   return null;
 }
