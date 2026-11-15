@@ -1,6 +1,6 @@
 # Plan: gemelo de la celda v9, fiel al curso, exportable a ROS y conectable en solo lectura
 
-> **Estado:** borrador · **Última actualización:** 2026-11-15 · **Tipo:** cambio en repo existente, con rescate de deuda en la fase 0
+> **Estado:** en curso · **Última actualización:** 2026-11-15 · **Tipo:** cambio en repo existente, con rescate de deuda en la fase 0
 >
 > Este archivo es la fuente de verdad del desarrollo del repo `Aimargg/gemelo-celda`. Claude Code lo lee antes de cada encargo y cita sus decisiones e invariantes. Al terminar una tarea, lo único que cambia del plan es el estado de esa tarea, que pasa a «entregada» con el hash del commit. El resto de cambios llegan por brief o los hace el arquitecto.
 >
@@ -127,13 +127,13 @@ Estados: pendiente · en curso · entregada · aceptada · correcciones · bloqu
 
 | Id | Fase | Tarea | Ejecutor | Depende de | Riesgo | Estado | Commit |
 |---|---|---|---|---|---|---|---|
-| T0.1 | 0 | Empaquetar las fuentes con la estructura del repo y comprobar que el build es idéntico | Arquitecto | — | bajo | entregada | (paquete) |
-| U1 | 0 | Subir el paquete a la rama `v9-dev` o dar acceso al repo | Usuario | T0.1 | — | pendiente | — |
-| U2 | 0 | Confirmar que la web guarda escenas con el `config.js` corregido | Usuario | — | — | pendiente | — |
+| T0.1 | 0 | Empaquetar las fuentes con la estructura del repo y comprobar que el build es idéntico | Arquitecto | — | bajo | aceptada | 41dd4d5 |
+| U1 | 0 | Subir el paquete a la rama `v9-dev` o dar acceso al repo | Arquitecto (con permiso del usuario) | T0.1 | — | aceptada | 41dd4d5 |
+| U2 | 0 | Confirmar que la web guarda escenas con el `config.js` corregido (subido por el arquitecto a `main`) | Usuario | — | — | pendiente | 161d7ce |
 | T0.2 | 0 | Arnés de pruebas (`npm test`) y pruebas de caracterización | Claude Code | U1 | medio | pendiente | |
 | T0.3 | 0 | Línea base medida (informe, sin cambiar código) | Claude Code | T0.2 | bajo | pendiente | |
 | T0.4 | 0 | `CLAUDE.md`, `tools/check.sh` y plantilla de pull request | Claude Code | T0.2 | bajo | pendiente | |
-| U3 | 0 | Responder Q1–Q5 | Usuario | — | — | pendiente | — |
+| U3 | 0 | Responder Q1–Q5 (se aplican los valores por defecto mientras tanto) | Usuario | — | — | en curso | — |
 | T1.1 | 1 | Versionar el layout y migrarlo al cargar | Claude Code | T0.3 | medio | pendiente | |
 | T1.2 | 1 | Semilla por petición en el RRT | Claude Code | T1.1 | medio | pendiente | |
 | T1.3 | 1 | Ficheros de referencia de cinemática generados con el xacro del curso | Claude Code | T0.2, Q4 | bajo | pendiente | |
@@ -442,12 +442,12 @@ Estas fichas se revisan y se detallan al cerrar la fase anterior, con lo aprendi
 
 | Id | Antes de | Tipo | Motivo | Estado |
 |---|---|---|---|---|
-| P1 | Fusionar `v9-dev` en `main` al cerrar cada fase | acción del usuario | `main` es la web publicada | pendiente |
-| P2 | Publicar la versión de artefacto en claude.ai | acción del arquitecto a petición del usuario | El enlace es público («cualquiera con el enlace») | pendiente |
+| P1 | Fusionar `v9-dev` en `main` al cerrar cada fase | delegada al coordinador (aprobado por el usuario el 2026-11-15): fusiona si la puerta de calidad de la fase está en verde y avisa | `main` es la web publicada; reversible con revert | delegada |
+| P2 | Publicar la versión de artefacto en claude.ai | arquitecto, al cerrar F4 (aprobado 2026-11-15) | El enlace es público («cualquiera con el enlace») | delegada |
 | P3 | Cualquier cambio en las reglas o en los campos de escena de Firestore | decisión del usuario | Puede dejar fuera escenas o abrir permisos | no prevista |
 | P4 | Conectar el espejo a un ROS de la red del laboratorio o con el UR3e real | decisión del usuario tras la respuesta del profesorado | rosbridge no autentica; puertos junto al robot real | cerrada hasta PROF |
-| P5 | Cambiar el perfil por defecto a «curso» | decisión del usuario | Cambia los veredictos de las escenas guardadas | pendiente |
-| P6 | Añadir una dependencia no prevista en D3 o D9, o cambiar three, Firebase o roslib de versión | decisión del usuario | Riesgo de rotura y de paquetes inventados | pendiente |
+| P5 | Cambiar el perfil por defecto a «curso» | decisión del usuario | Cambia los veredictos de las escenas guardadas | pendiente (Q2 = A mientras tanto) |
+| P6 | Añadir una dependencia no prevista en D3 o D9, o cambiar three, Firebase o roslib de versión | delegada al coordinador (2026-11-15) si es imprescindible, comprobada en npm y registrada aquí | Riesgo de rotura y de paquetes inventados | delegada |
 
 ## 10. Preguntas abiertas
 
@@ -475,3 +475,4 @@ Estas fichas se revisan y se detallan al cerrar la fase anterior, con lo aprendi
 | Fecha | Cambio | Motivo |
 |---|---|---|
 | 2026-11-15 | Creación del plan | Estudio gemelo-ros y petición del usuario de un plan para agentes autónomos |
+| 2026-11-15 | Ejecución autónoma aprobada: el coordinador fusiona fases en `main` (P1), publica el artefacto al cerrar F4 (P2) y puede aprobar dependencias imprescindibles (P6); Q1–Q5 con valores por defecto; prioridad del usuario: tener la herramienta lista cuanto antes | Mensaje del usuario, 16:09 |
