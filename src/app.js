@@ -74,9 +74,13 @@ function mesaLocal() {
   return r.layout;
 }
 let L = mesaLocal();
-let saveT = 0;
-function guardarLocal() { if (ESC.cur || soloLectura()) return; clearTimeout(saveT); // una escena del grupo abierta (o de solo lectura) no pisa tu mesa
-  saveT = setTimeout(() => { try { localStorage.setItem(CLAVE, JSON.stringify(L)); } catch (e) { } }, 400); }
+let saveT = 0, savePend = false;
+// Escribe Tu mesa ya. Nunca con una escena del grupo abierta ni con una disposición de solo lectura (versión más nueva):
+// se comprueba al escribir, no al programar el guardado, porque L puede haber cambiado en esos 400 ms (T1.1, revisión)
+function escribirMesa() { clearTimeout(saveT); savePend = false; if (ESC.cur || soloLectura()) return; try { localStorage.setItem(CLAVE, JSON.stringify(L)); } catch (e) { } }
+function guardarLocal() { clearTimeout(saveT); savePend = !ESC.cur && !soloLectura(); if (savePend) saveT = setTimeout(escribirMesa, 400); } // a los 400 ms del último cambio
+// Antes de sustituir L por otra disposición: lo pendiente de guardar de Tu mesa se escribe ya y no se pierde
+function vaciarGuardado() { if (savePend) escribirMesa(); }
 
 // ======================= Texturas procedurales =======================
 const aleat = RNG.aleat; // xorshift32 sembrado (src/rng.js): texturas y modelo de colisión
@@ -1410,7 +1414,7 @@ $('#btnImport').addEventListener('click', () => {
   const t = $('#yamlIn').value; const m = t.match(/#\s*layout-json:\s*(\{.*\})\s*$/m);
   if (!m) { toast('No encuentro la línea «# layout-json» del fichero exportado'); return; }
   const r = migrarLayout(m[1]); if (r.error) { toast(`El contenido no es una distribución válida: ${r.error}`); return; }
-  L = r.layout; aplicarLayout(); toast(r.soloLectura ? 'Distribución aplicada en solo lectura: es de una versión más nueva del gemelo' : 'Distribución aplicada');
+  vaciarGuardado(); L = r.layout; aplicarLayout(); toast(r.soloLectura ? 'Distribución aplicada en solo lectura: es de una versión más nueva del gemelo' : 'Distribución aplicada');
 });
 function aplicarLayout() {
   aplicarPedido(); $$('#segRobot button').forEach(x => x.setAttribute('aria-pressed', x.dataset.v === L.robot));
@@ -1502,22 +1506,26 @@ async function ensayo(cfg = {}) {
   // sigue al reloj mientras espera) ni de lo ensayado antes: con simT absoluto, el redondeo de simT + fase y de los
   // tiempos de las animaciones cambiaba de un ensayo a otro (la matriz en orden inverso daba otros t_sim y planes).
   simT = 0; D.sinRender = !!cfg.sinRender;
-  if (cfg.pedido) { L.pedido = cfg.pedido; aplicarPedido(); }
-  reiniciarDemo(); if (cfg.caja !== undefined) L.caja.on = cfg.caja; if (cfg.cajaH) L.caja.h = cfg.cajaH; actualizarPlatos(); pintarCaja();
-  D.modo = cfg.modo || 'M0'; D.amp = cfg.amp ?? 0.02; D.vel = cfg.vel ?? 0.25;
-  reiniciarDemo(); D.activo = true; D.playing = false; D.banco = true; D.fase = cfg.fase ?? Math.random() * 100;
-  const h = 1 / 60; const t0 = simT; const run = D.run; const pr = demo();
-  let n = 0;
-  while (!D.fin && simT - t0 < (cfg.limite || 600)) {
-    if (cfg.hasta && cfg.hasta(D)) { D.banco = false; D.sinRender = false; actualizarHUD(); return { parado: D.estado }; }
-    simT += h; aplicarBandeja(simT); tickDemo(h);
-    for (let k = 0; k < 4; k++) await Promise.resolve();
-    if (++n % 240 === 0) await new Promise(r => setTimeout(r, 0));
-  }
-  if (!D.fin) { D.run++; }
-  await new Promise(r => setTimeout(r, 0)); actualizarHUD();
-  D.banco = false; D.sinRender = false;
-  return { cfg, fin: D.fin || 'atascado', estado: D.estado, paso: D.paso + 1, t_sim: +(simT - t0).toFixed(1), t_mov: +D.motion.toFixed(1), errores_mm: D.errores.map(mm), choques: D.choques, roces: D.roces, pausas: D.pausas, autocol: D.autocol, planes: D.planes, sust: D.sustituidos, fallo: $('#dFallo').hidden ? '' : $('#dFallo').textContent.trim() };
+  try {
+    if (cfg.pedido) { L.pedido = cfg.pedido; aplicarPedido(); }
+    reiniciarDemo(); if (cfg.caja !== undefined) L.caja.on = cfg.caja; if (cfg.cajaH) L.caja.h = cfg.cajaH; actualizarPlatos(); pintarCaja();
+    D.modo = cfg.modo || 'M0'; D.amp = cfg.amp ?? 0.02; D.vel = cfg.vel ?? 0.25;
+    reiniciarDemo(); D.activo = true; D.playing = false; D.banco = true; D.fase = cfg.fase ?? Math.random() * 100;
+    const h = 1 / 60; const t0 = simT; const run = D.run; const pr = demo();
+    let n = 0;
+    while (!D.fin && simT - t0 < (cfg.limite || 600)) {
+      if (cfg.hasta && cfg.hasta(D)) { D.banco = false; D.sinRender = false; actualizarHUD(); return { parado: D.estado }; }
+      simT += h; aplicarBandeja(simT); tickDemo(h);
+      for (let k = 0; k < 4; k++) await Promise.resolve();
+      if (++n % 240 === 0) await new Promise(r => setTimeout(r, 0));
+    }
+    if (!D.fin) { D.run++; }
+    await new Promise(r => setTimeout(r, 0)); actualizarHUD();
+    D.banco = false; D.sinRender = false;
+    return { cfg, fin: D.fin || 'atascado', estado: D.estado, paso: D.paso + 1, t_sim: +(simT - t0).toFixed(1), t_mov: +D.motion.toFixed(1), errores_mm: D.errores.map(mm), choques: D.choques, roces: D.roces, pausas: D.pausas, autocol: D.autocol, planes: D.planes, sust: D.sustituidos, fallo: $('#dFallo').hidden ? '' : $('#dFallo').textContent.trim() };
+  } catch (e) { // una excepción no deja la demo a medias: se cancela y la escena vuelve a la de partida; el error sigue hacia quien llamó
+    D.activo = false; reiniciarDemo(); throw e;
+  } finally { D.banco = false; D.sinRender = false; } // pase lo que pase, bucle() vuelve a avanzar y a dibujar (revisión de T1.2)
 }
 
 // ======================= Arranque =======================

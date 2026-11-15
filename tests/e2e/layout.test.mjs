@@ -63,6 +63,8 @@ test('artefacto: lo guardado lleva los campos v9 y un código corrupto muestra u
       ['modo de cámara imposible', roto(l => { l.cams.cenital.modo = '1x1'; }), /^El código no trae una disposición válida: «cams\.cenital\.modo» no es un modo de la cámara \(1x1\)$/],
       ['layout con JSON inválido', conLayout('Rota', '{"zona": '), /^El código no trae una disposición válida: el texto no es JSON válido \(.+\)$/],
       ['código con JSON inválido', 'GEMELO1.' + Buffer.from('{"layout": {', 'utf8').toString('base64'), /^El código está incompleto$/],
+      ['código cuyo JSON es null', 'GEMELO1.' + Buffer.from('null', 'utf8').toString('base64'), /^El código no trae una disposición$/],
+      ['código cuyo JSON es un número', 'GEMELO1.' + Buffer.from('42', 'utf8').toString('base64'), /^El código no trae una disposición$/],
     ];
     for (const [nombre, codigo, re] of CASOS) {
       const n0 = await marca(p);
@@ -72,6 +74,43 @@ test('artefacto: lo guardado lleva los campos v9 y un código corrupto muestra u
       await p.waitForTimeout(500); // espera justificada: guardarLocal escribiría a los 400 ms; no hay nada observable si no escribe
       assert.deepEqual(await estado(), antes, `${nombre}: L, Tu mesa, la copia anterior y la escena abierta siguen igual`);
     }
+    comprobar(s.reg);
+  } finally { await s.cerrar(); }
+});
+
+// Registra cada escritura de Tu mesa y de su copia anterior en localStorage, con su clave (antes de cargar la página)
+const REGISTRO_LS = () => {
+  window.__escrLS = []; const orig = Storage.prototype.setItem;
+  Storage.prototype.setItem = function (k, v) { if (String(k).startsWith('gemelo-ur3e-v4')) window.__escrLS.push([k, String(v)]); return orig.call(this, k, v); };
+};
+
+test('artefacto: con Tu mesa pendiente de guardar, abrir una v10 (código o YAML) no la escribe y lo pendiente no se pierde', { timeout: 300000 }, async () => {
+  const s = await abrir(srv.url, { initScripts: [REGISTRO_LS] }); const p = s.page;
+  // ¿Está la disposición de esa escena v8 (tal como queda al abrirla, esperado.layout) en Tu mesa o en la copia anterior?
+  const guardada = async esc => {
+    const ls = await p.evaluate(([k, kp]) => [localStorage.getItem(k), localStorage.getItem(kp)], [CLAVE, CLAVE_PREV]);
+    const igual = t => !!t && Object.entries(esc.esperado.layout).every(([k, v]) => JSON.stringify(JSON.parse(t)[k]) === JSON.stringify(v));
+    return { mesa: igual(ls[0]), anterior: igual(ls[1]) };
+  };
+  const v10 = () => p.evaluate(() => window.__escrLS.filter(([, v]) => { try { return JSON.parse(v).version > 9; } catch (e) { return false; } }).map(([k]) => k));
+  const futura = { ...copia(LAYOUT_V8), version: 10, campoFuturo: 1 };
+  try {
+    // 1) dos códigos seguidos: el segundo (v10) llega antes de los 400 ms del guardado pendiente del primero (v8)
+    const A = ESC_V8['3-un-plato'];
+    await p.evaluate(([a, b]) => { window.__g.abrirCodigo(a); window.__g.abrirCodigo(b); }, [A.codigo, conLayout('Futura', futura)]);
+    await p.waitForTimeout(800); // espera justificada: el guardado pendiente se escribiría a los 400 ms; no hay nada que observar si no escribe
+    assert.equal(await p.evaluate(() => window.__g.L().version), 10, 'la v10 queda abierta en solo lectura');
+    assert.deepEqual(await v10(), [], 'ninguna escritura de una v10 en localStorage');
+    assert.deepEqual(await guardada(A), { mesa: true, anterior: true }, 'la disposición del código v8 está en Tu mesa y en la copia anterior');
+    // 2) lo mismo con Importar YAML: un código v8 y, antes de 400 ms, un YAML con una v10 en su línea layout-json
+    const B = ESC_V8['1-defecto'];
+    await p.evaluate(([a, yaml]) => { window.__g.abrirCodigo(a); document.getElementById('yamlIn').value = yaml; document.getElementById('btnImport').click(); },
+      [B.codigo, `posiciones: {}\n# layout-json: ${JSON.stringify(futura)}\n`]);
+    await esperarToast(p, 'Distribución aplicada en solo lectura: es de una versión más nueva del gemelo');
+    await p.waitForTimeout(800); // espera justificada, como arriba
+    assert.equal(await p.evaluate(() => window.__g.L().version), 10);
+    assert.deepEqual(await v10(), [], 'ninguna escritura de una v10 en localStorage');
+    assert.equal((await guardada(B)).mesa, true, 'la disposición del segundo código v8 está en Tu mesa');
     comprobar(s.reg);
   } finally { await s.cerrar(); }
 });
@@ -133,6 +172,18 @@ test('web: una disposición de una versión más nueva se abre en solo lectura y
     await p.waitForFunction(() => globalThis.__fsStore.size === 2, null, { timeout: 60000, polling: 50 });
     ds = await docs();
     assert.deepEqual(CAMPOS_V9(JSON.parse(ds.find(d => d.nombre === 'Nueva').layout)), { version: 9, robotId: 'nominal', perfil: 'curso', sensor: 'elp-ficha' });
+    // Revisión: si L pasa a ser una v10 mientras guardarEscena espera a calcularPlanes (aquí, Importar YAML justo después de
+    // pulsar Guardar con los planes sin calcular), al terminar el cálculo no se guarda
+    await abrirCod(ESC_V8['3-un-plato'].codigo); await esperarToast(p, 'Abierta en Tu mesa: Un plato, zona desplazada. Guárdala para que la vea el grupo');
+    const n1 = await marca(p);
+    await p.evaluate(yaml => {
+      document.getElementById('escNombre').value = 'Durante'; document.getElementById('escNueva').click(); // empieza calcularPlanes y espera
+      document.getElementById('yamlIn').value = yaml; document.getElementById('btnImport').click();          // L pasa a ser una v10
+    }, `# layout-json: ${JSON.stringify(futura)}\n`);
+    const RO = 'Esta disposición es de una versión más nueva del gemelo (v10): se ve en solo lectura y no se puede guardar'; // ya salió antes: se espera el nuevo
+    await p.waitForFunction(([n, t]) => window.__toastsPrueba.slice(n).includes(t), [n1, RO], { timeout: 120000, polling: 50 });
+    assert.ok((await p.evaluate(n => window.__toastsPrueba.slice(n), n1)).includes('Distribución aplicada en solo lectura: es de una versión más nueva del gemelo'));
+    assert.equal((await docs()).length, 2, 'la escena no se guardó');
     comprobar(s.reg);
   } finally { await s.cerrar(); }
 });

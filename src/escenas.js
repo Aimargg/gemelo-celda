@@ -26,8 +26,9 @@ function aplicarAjustes(a) {
   if (a.vel != null) { const el = $('#dVel'); el.value = Math.round(a.vel * 100); el.dispatchEvent(new Event('input')); }
   if (a.amp != null) { const el = $('#dAmp'); el.value = Math.round(a.amp * 1000) / 10; el.dispatchEvent(new Event('input')); }
 }
-function guardarMesaYa() { clearTimeout(saveT); if (!soloLectura()) ponerLS(CLAVE, jsonL()); } // solo lectura: no se guarda (T1.1)
-function respaldarMesa() { const m = leerLS(CLAVE); if (m) ponerLS(CLAVE_PREV, m); }
+function guardarMesaYa() { escribirMesa(); } // solo lectura: no se guarda (T1.1)
+// La copia anterior nunca recibe una disposición de una versión más nueva (la de Tu mesa solo la habría escrito otra versión)
+function respaldarMesa() { const m = leerLS(CLAVE); if (m && !migrarLayout(m).soloLectura) ponerLS(CLAVE_PREV, m); }
 
 // --- almacén de claude.ai (artefacto) ---
 const almClaude = {
@@ -189,6 +190,8 @@ async function guardarEscena(modo) {
   try {
     if (!planesAlDia()) await calcularPlanes(); // se guarda con su comprobación previa, para que el grupo vea si es viable
     const graves = comprobarPlan().filter(c => c.grave);
+    // durante el cálculo, Importar o Recuperar pueden haber cambiado L: se vuelve a comprobar lo que se va a guardar
+    if (soloLectura()) { toast(`Esta disposición es de una versión más nueva del gemelo (v${L.version}): se ve en solo lectura y no se puede guardar`); return; }
     const txt = jsonL(), largo2 = LAYOUT.noGuardable(txt); if (largo2) { toast(`No se guarda: ${largo2}`); return; } // lo que se guarda es este texto
     const ahora = new Date().toISOString();
     const item = { nombre: nombre.slice(0, 60), nota: nota.slice(0, 500), creado: ahora, editado: ahora, layout: JSON.parse(txt), ajustes: ajustesDemo(), vista: vistaActual(),
@@ -230,10 +233,10 @@ function codigoEscena() {
 function abrirCodigo(t) {
   const m = /GEMELO1\.([A-Za-z0-9+/=]+)/.exec(String(t).replace(/\s+/g, '')); if (!m) { toast('Eso no parece un código de escena'); return; }
   let o; try { o = JSON.parse(decodeURIComponent(escape(atob(m[1])))); } catch (e) { toast('El código está incompleto'); return; }
-  if (!o.layout) { toast('El código no trae una disposición'); return; }
+  if (!o || typeof o !== 'object' || !o.layout) { toast('El código no trae una disposición'); return; } // también si el JSON es null o no es un objeto
   const r = migrarLayout(o.layout); if (r.error) { toast(`El código no trae una disposición válida: ${r.error}`); return; } // no cambia nada
   if (D.playing || CALC.activo) { toast('Espera a que termine la demo o el cálculo'); return; }
-  respaldarMesa(); ESC.cur = null; ESC.base = null; ESC.basada = { id: null, autor: null, nombre: o.nombre || 'Escena', nota: o.nota || '' };
+  vaciarGuardado(); respaldarMesa(); ESC.cur = null; ESC.base = null; ESC.basada = { id: null, autor: null, nombre: o.nombre || 'Escena', nota: o.nota || '' };
   L = r.layout; aplicarLayout(); aplicarAjustes(o.ajustes); if (o.vista && o.vista.p) animarCam(new THREE.Vector3(...o.vista.p), new THREE.Vector3(...o.vista.t));
   pintarNav(); cerrarPop();
   toast(r.soloLectura ? `Abierta en Tu mesa en solo lectura: ${o.nombre || 'la escena'} es de una versión más nueva del gemelo (v${L.version})`
@@ -273,7 +276,9 @@ $('#escAbrirCod').addEventListener('click', () => abrirCodigo($('#escCodigo').va
 $('#escRecuperar').addEventListener('click', () => {
   const prev = leerLS(CLAVE_PREV); if (!prev) return;
   const r = migrarLayout(prev); if (r.error) { toast(`No se puede recuperar tu mesa anterior: ${r.error}`); return; } // no cambia nada
-  ponerLS(CLAVE_PREV, null); ponerLS(CLAVE, prev); ESC.cur = null; ESC.basada = null; ESC.base = null; L = r.layout; aplicarLayout(); pintarNav(); cerrarPop(); toast('Recuperada tu mesa anterior');
+  vaciarGuardado();
+  if (!r.soloLectura) { ponerLS(CLAVE_PREV, null); ponerLS(CLAVE, prev); } // una disposición más nueva se abre sin escribirla en Tu mesa
+  ESC.cur = null; ESC.basada = null; ESC.base = null; L = r.layout; aplicarLayout(); pintarNav(); cerrarPop(); toast('Recuperada tu mesa anterior');
 });
 document.addEventListener('keydown', e => { if (e.key === 'Escape' && !$('#escPop').hidden) cerrarPop(); });
 document.addEventListener('pointerdown', e => { const p = $('#escPop'); if (!p.hidden && !p.contains(e.target) && !e.target.closest('#escNav')) cerrarPop(); });

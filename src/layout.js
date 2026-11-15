@@ -44,7 +44,7 @@ const LAYOUT = (() => {
     if (tipo(l) !== 'object') return 'no es una disposición';
     if (l.version !== undefined && !(Number.isInteger(l.version) && l.version >= VERSION)) return `«version» no es válida (${JSON.stringify(l.version)})`;
     const e = forma(esq.ref, l, ''); if (e) return e;
-    for (const k of Object.keys(l.cams)) if (!(k in esq.ref.cams)) return `cámara desconocida «${k}»`;
+    for (const k of Object.keys(l.cams)) if (!Object.hasOwn(esq.ref.cams, k)) return `cámara desconocida «${k}»`; // no vale «toString» ni «__proto__»
     if (!esq.robots.includes(l.robot)) return `«robot» debe ser ${esq.robots.join(' o ')}`;
     if (l.pedido !== 1 && l.pedido !== 2) return '«pedido» debe ser 1 o 2 platos';
     for (const k of Object.keys(l.cams)) {

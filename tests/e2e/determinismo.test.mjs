@@ -92,3 +92,27 @@ test('I6 en la demo: la matriz en orden inverso da los mismos registros, campo a
     comprobar(s.reg);
   } finally { await s.cerrar(); }
 });
+
+// Una excepción dentro de ensayo() (aquí, desde cfg.hasta, que ensayo() llama en cada paso) llega a quien llamó y no deja
+// el banco puesto: D.banco y D.sinRender vuelven a false, la demo se cancela y bucle() vuelve a avanzar. Después, un
+// ensayo da exactamente el primer caso de matriz-base.json.
+test('una excepción dentro de ensayo() no deja el banco de pruebas puesto', { timeout: 300000 }, async () => {
+  const BASE_M = JSON.parse(fs.readFileSync(path.join(RAIZ, 'tests/fixtures/matriz-base.json'), 'utf8')).casos;
+  const s = await abrir(srv.url); const p = s.page;
+  try {
+    const r = await p.evaluate(async c => {
+      const g = window.__g; let visto = null;
+      const hasta = d => { if (d.paso >= 2) { visto = { banco: d.banco, activo: d.activo }; throw new Error('fallo de prueba en hasta'); } return false; };
+      try { await g.ensayo({ ...c, hasta }); return { lanzo: false }; } catch (e) {
+        return { lanzo: e.message, visto, despues: { banco: g.D.banco, sinRender: g.D.sinRender, activo: g.D.activo, playing: g.D.playing, estado: g.D.estado }, simT: g.simT() };
+      }
+    }, CASOS_MATRIZ[0]);
+    assert.deepEqual({ lanzo: r.lanzo, visto: r.visto, despues: r.despues },
+      { lanzo: 'fallo de prueba en hasta', visto: { banco: true, activo: true }, despues: { banco: false, sinRender: false, activo: false, playing: false, estado: 'REPOSO' } });
+    await p.waitForFunction(t => window.__g.simT() > t + 0.2, r.simT, { timeout: 30000, polling: 50 }); // bucle() vuelve a avanzar simT
+    const [d] = await ensayar(p, [CASOS_MATRIZ[0]]);
+    const { ms, ...sinMs } = d;
+    assert.deepEqual(sinMs, BASE_M[0], 'el ensayo siguiente da el primer caso de la matriz, campo a campo');
+    comprobar(s.reg);
+  } finally { await s.cerrar(); }
+});

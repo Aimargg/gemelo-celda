@@ -122,6 +122,16 @@ test('validarLayout: una disposición v8 válida pasa; cada rotura da su motivo 
   }
 });
 
+test('una cámara llamada como una propiedad heredada (toString, constructor, __proto__) es desconocida', () => {
+  for (const k of ['toString', 'constructor', '__proto__']) {
+    // con JSON.parse, «__proto__» queda como clave propia, igual que si llegara en un código o en Firestore
+    const l = JSON.parse(JSON.stringify(V8[0].layout).replace('"cams":{', `"cams":{${JSON.stringify(k)}:${JSON.stringify(V8[0].layout.cams.cenital)},`));
+    assert.ok(Object.keys(l.cams).includes(k), k);
+    assert.equal(validarLayout(l, ESQ), `cámara desconocida «${k}»`, k);
+    assert.deepEqual(migrarLayout(JSON.stringify(l), ESQ), { error: `cámara desconocida «${k}»` }, k);
+  }
+});
+
 test('el giro de la imagen de una cámara (roll) puede faltar, como en la v8', () => {
   const l = copia(V8[0].layout); delete l.cams.cenital.roll;
   assert.equal(validarLayout(l, ESQ), null);
