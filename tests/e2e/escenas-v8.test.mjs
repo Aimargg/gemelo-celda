@@ -36,6 +36,9 @@ for (const f of FICHEROS) {
       const m = await medirEscena(s.page, esc.codigo);
       assert.equal(m.abierta, esc.esperado.abierta);
       assert.deepEqual(difEnClaves(m.layout, esc.esperado.layout), [], 'posiciones (claves del layout v8)');
+      // T1.1: al abrirla, la escena v8 queda migrada a la v9 con el comportamiento de la v8 (D6, D10)
+      assert.deepEqual({ version: m.layout.version, robotId: m.layout.robotId, perfil: m.layout.perfil, sensor: m.layout.sensor },
+        { version: 9, robotId: 'nominal', perfil: 'gemelo', sensor: 'gemelo-v8' }, 'campos v9 de una escena v8 migrada');
       assert.deepEqual(m.veredicto, esc.esperado.veredicto, 'comprobación previa');
       assert.equal(m.alDia, true);
       assert.deepEqual(m.demo, esc.esperado.demo, 'ensayo M0 con balanceo de 2 cm');

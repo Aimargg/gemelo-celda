@@ -14,15 +14,12 @@ const hasta = (p, fn, arg) => p.waitForFunction(fn, arg, { timeout: 60000, polli
 const abrirPapelera = async p => { await p.locator('#escPapelera').waitFor(); if (!(await p.evaluate(() => document.getElementById('escPapelera').open))) await p.click('#escPapelera summary'); };
 // Dos pulsaciones (confirmar() de escenas.js) dentro de la página y seguidas: la confirmación caduca a los 4 s y, con la
 // página ocupada por SwiftShader, dos clics de Playwright pueden tardar más (falló así en check.sh). Comprueba el texto
-// intermedio y devuelve la hora de la primera pulsación, que arma ese temporizador.
+// intermedio.
 const dosVeces = async (p, sel, texto) => {
-  await p.locator(sel).first().waitFor(); const t = Date.now();
+  await p.locator(sel).first().waitFor();
   const medio = await p.evaluate(sel => { const b = () => document.querySelector(sel); b().click(); const m = b().textContent; b().click(); return m; }, sel);
-  assert.equal(medio, texto, `texto tras la primera pulsación en ${sel}`); return t;
+  assert.equal(medio, texto, `texto tras la primera pulsación en ${sel}`);
 };
-// Espera justificada (no a una condición): el temporizador de 4 s de una confirmación anterior de la misma escena
-// anula la siguiente (hallazgo fijado abajo); no hay nada observable que indique que ha vencido.
-const vencido = (p, t) => p.waitForTimeout(Math.max(0, 4300 - (Date.now() - t)));
 
 test('guardar, editar, papelera, restaurar y borrar para siempre', { timeout: 300000 }, async () => {
   const s = await abrir(srv.url, { destino: 'web', hash: `#g=${CLAVE_BUENA}` }); const p = s.page;
@@ -51,30 +48,27 @@ test('guardar, editar, papelera, restaurar y borrar para siempre', { timeout: 30
     assert.deepEqual({ f: JSON.parse(d.layout).cams.cenital.f, editadoPor: d.editadoPor, nombre: d.nombre }, { f: 5, editadoPor: 'Prueba', nombre: 'Referencia' });
     // papelera (dos pulsaciones), restaurar
     await p.click('#escCur');
-    const t1 = await dosVeces(p, '#escLista [data-borrar]', '¿Seguro?'); await esperarToast(p, 'Escena movida a la papelera');
+    await dosVeces(p, '#escLista [data-borrar]', '¿Seguro?'); await esperarToast(p, 'Escena movida a la papelera');
     await hasta(p, () => [...globalThis.__fsStore.values()][0].borrado === true);
     await abrirPapelera(p);
     assert.equal(await p.textContent('#escPapCuenta'), '1');
     await p.click('#escPapLista [data-restaurar]'); await esperarToast(p, 'Escena restaurada');
     await hasta(p, () => [...globalThis.__fsStore.values()][0].borrado === false);
     await p.locator('#escLista [data-borrar]').waitFor();
-    // Hallazgo v8 (fijado tal cual, sin arreglar): confirmar() no cancela el temporizador de 4 s de una confirmación
-    // anterior de la misma escena. Pulsar «A la papelera», cerrar, volver a abrir y pulsar «A la papelera» y «¿Seguro?»
-    // antes de que venza el primero: la segunda pulsación solo vuelve a pedir confirmación y la escena no se borra.
-    await vencido(p, t1);
+    // H2 (corregido en T1.1): cada pulsación anula el plazo de 4 s de la confirmación anterior. Pulsar «A la papelera»,
+    // cerrar, volver a abrir, pulsar «A la papelera» y, después de que habría vencido el primer plazo (t0 + 4 s) pero
+    // antes del segundo, «¿Seguro?»: la escena va a la papelera. En la v8 el primer plazo deshacía la segunda
+    // confirmación y la escena no se borraba (este mismo bloque daba borrado: false).
     const h = await p.evaluate(async () => {
       const q = s => document.querySelector(s), dormir = ms => new Promise(r => setTimeout(r, ms)), t0 = performance.now();
       q('#escLista [data-borrar]').click(); q('#escCerrar').click(); q('#escCur').click(); // primera confirmación y cerrar
       await dormir(1000); q('#escLista [data-borrar]').click();                            // nueva confirmación a t0 + 1 s
       await dormir(3500 - (performance.now() - t0)); const texto = q('#escLista [data-borrar]').textContent;
       await dormir(4500 - (performance.now() - t0)); q('#escLista [data-borrar]').click();   // «¿Seguro?» a t0 + 4,5 s
-      await dormir(300); const borrado = [...globalThis.__fsStore.values()][0].borrado;
-      await dormir(4300); return { texto, borrado };                                        // deja vencer todos los temporizadores
+      await dormir(300); return { texto, borrado: [...globalThis.__fsStore.values()][0].borrado };
     });
-    assert.deepEqual(h, { texto: '¿Seguro?', borrado: false });
-    // borrar para siempre: primero a la papelera, después dos pulsaciones en «Borrar para siempre»
-    await dosVeces(p, '#escLista [data-borrar]', '¿Seguro?');
-    await hasta(p, () => [...globalThis.__fsStore.values()][0].borrado === true);
+    assert.deepEqual(h, { texto: '¿Seguro?', borrado: true });
+    // borrar para siempre: ya está en la papelera; dos pulsaciones en «Borrar para siempre»
     await abrirPapelera(p);
     await dosVeces(p, '#escPapLista [data-def]', '¿Seguro? Se pierde'); await esperarToast(p, 'Escena borrada para siempre');
     await hasta(p, () => globalThis.__fsStore.size === 0);
