@@ -134,8 +134,8 @@ Estados: pendiente · en curso · entregada · aceptada · correcciones · bloqu
 | T0.3 | 0 | Línea base medida (informe, sin cambiar código) | Claude Code | T0.2 | bajo | aceptada | 5d7ba13, dac4587 |
 | T0.4 | 0 | `CLAUDE.md`, `tools/check.sh` y plantilla de pull request | Claude Code | T0.2 | bajo | aceptada | e8940d3, dac4587 |
 | U3 | 0 | Responder Q1–Q5 | Usuario | — | — | aceptada | — |
-| T1.1 | 1 | Versionar el layout y migrarlo al cargar | Claude Code | T0.3 | medio | entregada | 4cabe6c, 69a6905 |
-| T1.2 | 1 | Semilla por petición en el RRT | Claude Code | T1.1 | medio | entregada | 0cde036, 46bd547, 69a6905 |
+| T1.1 | 1 | Versionar el layout y migrarlo al cargar | Claude Code | T0.3 | medio | aceptada | 4cabe6c, 69a6905 |
+| T1.2 | 1 | Semilla por petición en el RRT | Claude Code | T1.1 | medio | aceptada | 0cde036, 46bd547, 69a6905 |
 | T1.3 | 1 | Ficheros de referencia de cinemática generados con el xacro del curso | Claude Code | T0.2, Q4 | bajo | aceptada | cce7601 |
 | T1.4 | 1 | Selector de robot con FK calibrada e IK refinada | Claude Code | T1.1, T1.3 | alto | pendiente | |
 | T1.5 | 1 | `world`↔`base_link` por robot en la conversión y en la exportación | Claude Code | T1.4 | medio | pendiente | |
@@ -330,7 +330,7 @@ Estados: pendiente · en curso · entregada · aceptada · correcciones · bloqu
 
 - **Objetivo:** planificar con la cinemática del robot elegido (D7).
 - **Alcance:**
-  - Toca `kin.js` (FK con los parámetros de cada robot e IK refinada), Ajustes (selector) y el layout (`robot`).
+  - Toca `kin.js` (FK con los parámetros de cada robot e IK refinada), el selector junto al de lado A/B y el layout (`robotId`; `robot` sigue siendo la posición A/B).
   - No toca la colisión ni el planificador, salvo para pasarles la cinemática.
 - **Reutiliza:** la IK analítica actual como semilla y `src/datos/calibracion.js`.
 - **Criterios de aceptación:**
@@ -365,7 +365,7 @@ Estados: pendiente · en curso · entregada · aceptada · correcciones · bloqu
      - arranque en contacto = fallo, con el texto «MoveIt rechazaría el arranque en contacto».
   2. En una ruta de prueba, la duración en «curso» frente a «gemelo» sigue la relación que predicen los parámetros (test con la ruta y la tolerancia escritas).
   3. Con el perfil «gemelo», la matriz queda idéntica (I8).
-  4. Las escenas nuevas usan «curso»; las v8 migradas, «gemelo» (D6).
+  4. Las escenas nuevas usan «curso»; las v8 migradas, «gemelo» (D6). La semilla del RRT usa hoy la constante `PERFIL_PLAN = 'gemelo'` (`src/colision.js`): pasa a ser el perfil de la petición, sin cambiar la matriz «gemelo».
   5. El panel deja claro que la temporización es una aproximación y no TOTG (deuda DT4).
 - **Verificación:** tests y captura del selector.
 - **Invariantes afectadas:** I1, I6 e I8.
@@ -487,15 +487,20 @@ Estas fichas se revisan y se detallan al cerrar la fase anterior, con lo aprendi
 | DT4 | La temporización no es TOTG | planificador | Duraciones aproximadas | F5 (TOTG portado) o se acepta | abierta |
 | DT5 | three r160 (la última es r187); la lectura de píxeles asíncrona llega en r165 | import map | Captura sintética lenta | Plan aparte con P6 | abierta |
 | DT6 | Colisión por esferas frente a mallas de MoveIt | `colision.js` | Una postura libre en el gemelo puede chocar en MoveIt | F3 mide la diferencia (T3.4); F5 decide | abierta |
-| DT7 | La matriz de 32 casos de la línea base no es estable entre ejecuciones (pausas 10 u 8 desde «caja M0 2 cm vel 50 %»); la de 8 casos de los tests sí lo es (5 ejecuciones, una con CPU cargada) | `docs/estado/linea-base-v8.md` §5 | Cifras de la línea base con ruido | T1.2 (semilla por petición) | abierta |
+| DT7 | La matriz de 32 casos de la línea base no es estable entre ejecuciones (pausas 10 u 8 desde «caja M0 2 cm vel 50 %»); la de 8 casos de los tests sí lo es (5 ejecuciones, una con CPU cargada) | `docs/estado/linea-base-v8.md` §5 | Cifras de la línea base con ruido | T1.2 (semilla por petición) | pagada en T1.2: 32 casos iguales en 3 páginas (`tests/medidas/repetibilidad.mjs`); falta regenerar el informe con `npm run medir` en la pasada de deuda de F1 |
 | DT8 | Aún no hay tests de I4 (nada se envía a ROS) ni de I5 (HTML único, CDN con versión exacta) | `tests/` | Las dos invariantes solo se revisan a mano | I5 en la pasada de deuda de F1; I4 con el adaptador en T3.1 | abierta |
 | DT9 | Sin `clave_grupo.txt`, la búsqueda de la clave en `check.sh` es heurística | `tools/check.sh` | Una clave con un formato no previsto pasaría | La búsqueda exacta se hace en la sesión del coordinador (con la clave fuera del repo) en cada puerta de fase | aceptada |
+| DT10 | `buscarAlternativa` ensaya desde la fase `D.fase` y no desde la fase en que arrancó la demo que falló (ni antes ni ahora); la demo interactiva sigue con `simT` absoluto | `src/fallos.js:167`, `src/app.js` | La búsqueda es determinista, pero no reproduce el balanceo exacto del fallo | T1.8 (toca `buscarAlternativa`) | abierta |
+| DT11 | `validarLayout` es más estricto que `normalizar()` de la v8: una disposición antigua fuera de esa forma se oculta del listado o se sustituye por la de partida; I1 solo está demostrado con 3 escenas. Las escenas ilegibles no se pueden borrar desde la interfaz | `src/layout.js`, `src/escenas.js` | Escenas antiguas raras invisibles para el grupo | Pasada de deuda de F1: listar las ilegibles con su motivo y opción de borrarlas | abierta |
+| DT12 | `semillaPlan` serializa a precisión completa cualquier campo de obstáculo que sea array u objeto (hoy no hay ninguno). El contador de `tests/e2e/determinismo.test.mjs` no ve el `aleat` capturado en `src/app.js` | `src/rng.js`, tests | Un obstáculo nuevo con array rompería «+1e-7 no cambia la semilla»; test de «sin reintento» débil | Pasada de deuda de F1 | abierta |
+| DT13 | Latentes sin efecto medible: la caché de esferas de la pinza guarda la primera apertura de cada milímetro; `D.tick` no se reinicia entre ensayos; `fuente_src` de los fixtures es el último commit y no el árbol | `src/colision.js:28`, `src/app.js`, `tests/fixtures/generar.mjs` | Ninguno hoy (orden directo e inverso coinciden) | Se vigilan con `tests/medidas/repetibilidad.mjs`; F5 | aceptada |
 
 ## 12. Registro de cambios del plan
 
 | Fecha | Cambio | Motivo |
 |---|---|---|
 | 2026-11-15 | Creación del plan | Estudio gemelo-ros y petición del usuario de un plan para agentes autónomos |
+| 2026-11-15 | T1.1 y T1.2 aceptadas (69a6905 tras la revisión independiente: 5 correcciones). DT7 pagada; DT10–DT13 añadidas. Ficha T1.4 con `robotId`; nota de `PERFIL_PLAN` en T1.6. Brief de T1.4+T1.5 con las decisiones del coordinador (giro de la base por `mount_yaw`, una sola conversión mundo↔base, IK refinada solo fuera de `nominal`) | Informe de T1.1+T1.2, revisión independiente y revisión del coordinador |
 | 2026-11-15 | Fase 0 cerrada: T0.2–T0.4 aceptadas tras revisión independiente (9 correcciones en dac4587). T1.1 usa `robotId` (el campo `robot` ya es A/B). H2 pasa a T1.1 y H3 y la variabilidad a T1.2; H1 («Ponlo sobre la caja») es comportamiento previsto. D12 reescrita para reflejar P1 delegada. DT7–DT9 añadidas | Informe de la fase 0, revisión independiente y revisión del coordinador |
 | 2026-11-15 | D6 reescrita y T1.8 añadida: los dos perfiles conviven en un flujo «explorar (gemelo) → validar (curso)» | Petición del usuario, 16:18 |
 | 2026-11-15 | Q1–Q5 respondidas: robot B desconocido (nominal), perfil «curso» para escenas nuevas y «gemelo» para las v8, web como herramienta principal, calibraciones del curso con atribución, agentes en la nube | Mensaje del usuario, 16:13 |
