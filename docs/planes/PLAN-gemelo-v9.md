@@ -74,7 +74,7 @@ Todo con pruebas automáticas y sin perder las escenas guardadas.
 | D9 | Conexión con ROS por rosbridge con roslib 2.1.0, a través de un **adaptador único de solo lectura** (`rosEspejo`) que solo puede suscribirse. Import map a mano (roslib y eventemitter3 desde `dist/`, versión exacta) | foxglove_bridge (acciones solo como topics ocultos, cliente JS deprecado) | Es la vía en producción y la superficie de riesgo se reduce a leer (→ puente-ros) | sí |
 | D10 | Modelo de sensor por modo y por cámara. Por defecto, la ficha de la ELP (5,952 mm, marcada SIN VALIDAR); el `camera_info` lo sustituye cuando haya intrínseca | Mantener 6,287 mm | El gemelo sobreestima el campo horizontal ~3° a 3,6 mm (→ camaras-colocacion) | sí |
 | D11 | Nada de Web Workers ni WASM en v9 hasta el pico T5.1 | Mover ya el planificador a un worker | No se sabe si la CSP del artefacto lo permite; GitHub Pages no admite COOP/COEP (→ gemelo-web «trabajo fuera del hilo principal») | sí |
-| D12 | Los agentes trabajan en la rama `v9-dev` y abren un pull request por fase. Solo el usuario fusiona en `main`, y fusionar equivale a desplegar | Commits directos a `main` | Pages publica `main`: fusionar es pasar a producción | sí |
+| D12 | Los agentes trabajan en ramas propias (una por tarea o lote, en su worktree) que el coordinador revisa e integra en `v9-dev` con merge `--no-ff`. Al cerrar cada fase, el coordinador fusiona `v9-dev` en `main` si la puerta está en verde (P1 delegada el 2026-11-15); fusionar equivale a desplegar. Solo el coordinador hace push | Commits directos a `main`; solo el usuario fusiona | Pages publica `main`: fusionar es pasar a producción, y el usuario delegó P1 para tener la herramienta cuanto antes | sí (revert) |
 
 ## 6. Invariantes
 
@@ -279,7 +279,8 @@ Estados: pendiente · en curso · entregada · aceptada · correcciones · bloqu
   - No toca las reglas de Firestore: los campos nuevos van dentro del string `layout`.
 - **Reutiliza:** el patrón de `aplicarLayout` y los fixtures `escenas-v8/`.
 - **Criterios de aceptación:**
-  1. El layout guardado lleva `version: 9` y los campos `robot` (`nominal` por defecto), `perfil` y `sensor`. Una escena nueva usa `curso` y `ELP ficha`; una escena v8 migrada usa `gemelo` y `gemelo-v8`.
+  1. El layout guardado lleva `version: 9` y los campos `robotId` (`nominal` por defecto; el campo `robot` ya existe y es la posición A/B del brazo en la celda), `perfil` y `sensor`. Una escena nueva usa `curso` y `elp-ficha`; una escena v8 migrada usa `gemelo` y `gemelo-v8`.
+  6. H2 (fase 0): `confirmar()` de `escenas.js` cancela el temporizador de una confirmación anterior de la misma escena.
   2. `migrarLayout` convierte cualquier layout sin `version` a v9 con esos valores por defecto. Las tres escenas v8 se abren con posiciones idénticas y el mismo veredicto (I1).
   3. Un layout con `version` mayor que la conocida se abre en solo lectura, con un aviso.
   4. Un layout corrupto (JSON inválido, sin `mesa`) muestra un error y no deja la mesa a medias.
@@ -298,6 +299,8 @@ Estados: pendiente · en curso · entregada · aceptada · correcciones · bloqu
   2. Test I6: planificar A, después B, después A da A y A' idénticos, comparando los q del camino.
   3. La matriz de caracterización se vuelve a fijar con la nueva semilla. Su diff se documenta en el informe y no empeora el agregado de T0.3 (I8): misma cantidad de casos correctos o más.
   4. Si el RRT no encuentra camino con su semilla, el resultado sigue siendo «sin plan», con la misma explicación que ahora. No hay reintento silencioso con otra semilla.
+  5. H3 (fase 0): en `ensayo()`, `cfg.fase` es la fase de la bandeja al empezar el ensayo; desaparece el parche de `tests/medir.mjs`.
+  6. La matriz y la medida de escena dan todos los campos iguales (incluidos `t_sim` y `planes`) en páginas nuevas distintas; la matriz de 32 casos de la línea base deja de variar (DT7).
 - **Verificación:** salida de los tests y diff de `matriz-base.json` con su explicación.
 - **Invariantes afectadas:** I6 e I8.
 
@@ -484,12 +487,16 @@ Estas fichas se revisan y se detallan al cerrar la fase anterior, con lo aprendi
 | DT4 | La temporización no es TOTG | planificador | Duraciones aproximadas | F5 (TOTG portado) o se acepta | abierta |
 | DT5 | three r160 (la última es r187); la lectura de píxeles asíncrona llega en r165 | import map | Captura sintética lenta | Plan aparte con P6 | abierta |
 | DT6 | Colisión por esferas frente a mallas de MoveIt | `colision.js` | Una postura libre en el gemelo puede chocar en MoveIt | F3 mide la diferencia (T3.4); F5 decide | abierta |
+| DT7 | La matriz de 32 casos de la línea base no es estable entre ejecuciones (pausas 10 u 8 desde «caja M0 2 cm vel 50 %»); la de 8 casos de los tests sí lo es (5 ejecuciones, una con CPU cargada) | `docs/estado/linea-base-v8.md` §5 | Cifras de la línea base con ruido | T1.2 (semilla por petición) | abierta |
+| DT8 | Aún no hay tests de I4 (nada se envía a ROS) ni de I5 (HTML único, CDN con versión exacta) | `tests/` | Las dos invariantes solo se revisan a mano | I5 en la pasada de deuda de F1; I4 con el adaptador en T3.1 | abierta |
+| DT9 | Sin `clave_grupo.txt`, la búsqueda de la clave en `check.sh` es heurística | `tools/check.sh` | Una clave con un formato no previsto pasaría | La búsqueda exacta se hace en la sesión del coordinador (con la clave fuera del repo) en cada puerta de fase | aceptada |
 
 ## 12. Registro de cambios del plan
 
 | Fecha | Cambio | Motivo |
 |---|---|---|
 | 2026-11-15 | Creación del plan | Estudio gemelo-ros y petición del usuario de un plan para agentes autónomos |
+| 2026-11-15 | Fase 0 cerrada: T0.2–T0.4 aceptadas tras revisión independiente (9 correcciones en dac4587). T1.1 usa `robotId` (el campo `robot` ya es A/B). H2 pasa a T1.1 y H3 y la variabilidad a T1.2; H1 («Ponlo sobre la caja») es comportamiento previsto. D12 reescrita para reflejar P1 delegada. DT7–DT9 añadidas | Informe de la fase 0, revisión independiente y revisión del coordinador |
 | 2026-11-15 | D6 reescrita y T1.8 añadida: los dos perfiles conviven en un flujo «explorar (gemelo) → validar (curso)» | Petición del usuario, 16:18 |
 | 2026-11-15 | Q1–Q5 respondidas: robot B desconocido (nominal), perfil «curso» para escenas nuevas y «gemelo» para las v8, web como herramienta principal, calibraciones del curso con atribución, agentes en la nube | Mensaje del usuario, 16:13 |
 | 2026-11-15 | Ejecución autónoma aprobada: el coordinador fusiona fases en `main` (P1), publica el artefacto al cerrar F4 (P2) y puede aprobar dependencias imprescindibles (P6); Q1–Q5 con valores por defecto; prioridad del usuario: tener la herramienta lista cuanto antes | Mensaje del usuario, 16:09 |
