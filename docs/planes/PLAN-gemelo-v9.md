@@ -130,9 +130,9 @@ Estados: pendiente · en curso · entregada · aceptada · correcciones · bloqu
 | T0.1 | 0 | Empaquetar las fuentes con la estructura del repo y comprobar que el build es idéntico | Arquitecto | — | bajo | aceptada | 41dd4d5 |
 | U1 | 0 | Subir el paquete a la rama `v9-dev` o dar acceso al repo | Arquitecto (con permiso del usuario) | T0.1 | — | aceptada | 41dd4d5 |
 | U2 | 0 | Confirmar que la web guarda escenas con el `config.js` corregido (subido por el arquitecto a `main`) | Usuario | — | — | pendiente | 161d7ce |
-| T0.2 | 0 | Arnés de pruebas (`npm test`) y pruebas de caracterización | Claude Code | U1 | medio | pendiente | |
-| T0.3 | 0 | Línea base medida (informe, sin cambiar código) | Claude Code | T0.2 | bajo | pendiente | |
-| T0.4 | 0 | `CLAUDE.md`, `tools/check.sh` y plantilla de pull request | Claude Code | T0.2 | bajo | pendiente | |
+| T0.2 | 0 | Arnés de pruebas (`npm test`) y pruebas de caracterización | Claude Code | U1 | medio | aceptada | 6ed2854, dac4587 |
+| T0.3 | 0 | Línea base medida (informe, sin cambiar código) | Claude Code | T0.2 | bajo | aceptada | 5d7ba13, dac4587 |
+| T0.4 | 0 | `CLAUDE.md`, `tools/check.sh` y plantilla de pull request | Claude Code | T0.2 | bajo | aceptada | e8940d3, dac4587 |
 | U3 | 0 | Responder Q1–Q5 | Usuario | — | — | aceptada | — |
 | T1.1 | 1 | Versionar el layout y migrarlo al cargar | Claude Code | T0.3 | medio | pendiente | |
 | T1.2 | 1 | Semilla por petición en el RRT | Claude Code | T1.1 | medio | pendiente | |

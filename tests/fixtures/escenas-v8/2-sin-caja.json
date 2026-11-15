@@ -1,0 +1,133 @@
+{
+  "nombre": "Platos sobre la mesa",
+  "descripcion": "Por defecto con la caja quitada (L.caja.on = false): los platos quedan sobre la mesa",
+  "fuente_src": "41dd4d5",
+  "comando": "npm run caracterizar -- --escenas",
+  "codigo": "GEMELO1.eyJ2IjoxLCJub21icmUiOiJQbGF0b3Mgc29icmUgbGEgbWVzYSIsIm5vdGEiOiIiLCJsYXlvdXQiOnsicm9ib3QiOiJCIiwiem9uYSI6eyJ4IjowLjEyLCJ5IjowLjI3LCJ5YXciOjAsInciOjAuMjIsImQiOjAuMTZ9LCJwbGF0bzEiOnsieCI6MC4yNjUsInkiOi0wLjA0OX0sInBsYXRvMiI6eyJ4IjowLjEyMiwieSI6MC4wODl9LCJjYWphIjp7Im9uIjpmYWxzZSwiaCI6MC4xfSwicGVkaWRvIjoyLCJwZXJzb25hIjp7IngiOjEuMjgsInkiOjAuMzIsInlhdyI6My4xNDE1OTI2NTM1ODk3OTN9LCJiYW5kZWphIjp7ImFsdCI6MSwiYWRlIjowLjR9LCJhcnVjb0UiOlt7IngiOjAuNDgsInkiOjAuMX0seyJ4IjowLjU1LCJ5IjotMC4wNX1dLCJjYW1zIjp7ImNlbml0YWwiOnsiZ3J1cG8iOiJWMiIsIm5vbWJyZSI6IkNlbml0YWwiLCJmIjozLjYsIm1vZG8iOiIxOTIweDEwODAiLCJjbGFtcCI6eyJ4IjowLjE3LCJ5IjotMC40MTV9LCJwb3MiOnsieCI6MC4xNywieSI6LTAuMTcsInoiOjEuMTd9LCJtaXJhIjp7IngiOjAuMTgsInkiOjAuMSwieiI6MC43Nn0sInJvbGwiOjB9LCJlbnRyZWdhIjp7ImdydXBvIjoiVjEiLCJub21icmUiOiJFbnRyZWdhIiwiZiI6My42LCJtb2RvIjoiMTkyMHgxMDgwIiwiY2xhbXAiOnsieCI6MC41NSwieSI6LTAuNDE1fSwicG9zIjp7IngiOjAuNTUsInkiOi0wLjM5NSwieiI6MS4yNX0sIm1pcmEiOnsieCI6MC42OCwieSI6MC4xLCJ6IjowLjl9LCJyb2xsIjowfSwicGVyc29uYSI6eyJncnVwbyI6IlYxIiwibm9tYnJlIjoiUGVyc29uYSIsImYiOjQuNSwibW9kbyI6IjE5MjB4MTA4MCIsImNsYW1wIjp7IngiOjAuMywieSI6LTAuNDE1fSwicG9zIjp7IngiOjAuMywieSI6LTAuMzY1LCJ6IjoxLjI1fSwibWlyYSI6eyJ4IjoxLjIsInkiOjAuMzIsInoiOjEuM30sInJvbGwiOjB9fX0sImFqdXN0ZXMiOnsibW9kbyI6Ik0wIiwiYW1wIjowLjAyLCJ2ZWwiOjAuMjUsInBlZGlkbyI6Mn0sInZpc3RhIjp7InAiOlstMS4xNSwtMS40NSwxLjhdLCJ0IjpbMC40MiwwLjEsMC45XX19",
+  "esperado": {
+    "abierta": "Tu mesa · copia de «Platos sobre la mesa»",
+    "layout": {
+      "robot": "B",
+      "zona": {
+        "x": 0.12,
+        "y": 0.27,
+        "yaw": 0,
+        "w": 0.22,
+        "d": 0.16
+      },
+      "plato1": {
+        "x": 0.265,
+        "y": -0.049
+      },
+      "plato2": {
+        "x": 0.122,
+        "y": 0.089
+      },
+      "caja": {
+        "on": false,
+        "h": 0.1
+      },
+      "pedido": 2,
+      "persona": {
+        "x": 1.28,
+        "y": 0.32,
+        "yaw": 3.141592653589793
+      },
+      "bandeja": {
+        "alt": 1,
+        "ade": 0.4
+      },
+      "arucoE": [
+        {
+          "x": 0.48,
+          "y": 0.1
+        },
+        {
+          "x": 0.55,
+          "y": -0.05
+        }
+      ],
+      "cams": {
+        "cenital": {
+          "grupo": "V2",
+          "nombre": "Cenital",
+          "f": 3.6,
+          "modo": "1920x1080",
+          "clamp": {
+            "x": 0.17,
+            "y": -0.415
+          },
+          "pos": {
+            "x": 0.17,
+            "y": -0.17,
+            "z": 1.17
+          },
+          "mira": {
+            "x": 0.18,
+            "y": 0.1,
+            "z": 0.76
+          },
+          "roll": 0
+        },
+        "entrega": {
+          "grupo": "V1",
+          "nombre": "Entrega",
+          "f": 3.6,
+          "modo": "1920x1080",
+          "clamp": {
+            "x": 0.55,
+            "y": -0.415
+          },
+          "pos": {
+            "x": 0.55,
+            "y": -0.395,
+            "z": 1.25
+          },
+          "mira": {
+            "x": 0.68,
+            "y": 0.1,
+            "z": 0.9
+          },
+          "roll": 0
+        },
+        "persona": {
+          "grupo": "V1",
+          "nombre": "Persona",
+          "f": 4.5,
+          "modo": "1920x1080",
+          "clamp": {
+            "x": 0.3,
+            "y": -0.415
+          },
+          "pos": {
+            "x": 0.3,
+            "y": -0.365,
+            "z": 1.25
+          },
+          "mira": {
+            "x": 1.2,
+            "y": 0.32,
+            "z": 1.3
+          },
+          "roll": 0
+        }
+      }
+    },
+    "veredicto": {
+      "ok": false,
+      "n": 2,
+      "graves": [
+        "Plato 1º: el robot real no puede cogerlo en horizontal por el borde: chocaría la muñeca 2 con la mesa (27 mm). Ponlo sobre la caja.",
+        "Plato 2º: el robot real no puede cogerlo en horizontal por el borde: chocaría la muñeca 2 con la mesa (27 mm). Ponlo sobre la caja."
+      ]
+    },
+    "alDia": true,
+    "demo": {
+      "fin": "previo",
+      "choques": 0,
+      "roces": 0,
+      "pausas": 0
+    }
+  },
+  "esperado_fuente_src": "41dd4d5"
+}
