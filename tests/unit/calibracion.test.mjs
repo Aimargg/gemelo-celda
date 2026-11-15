@@ -47,14 +47,16 @@ test('T1.4-1: la FK de cada id coincide con su JSON en las 20 configuraciones (�
 
 // 2000 poses alcanzables por construcción: q aleatoria en (−π, π]^6 → FK calibrada → IK refinada
 function idaYVuelta(id, semilla = 20261115, N = 2000) {
-  const K = cinematica(id), r = rng(semilla); let conRama = 0, errPos = 0, errRot = 0, desc = 0, semillas = 0, extra = 0, sinSemilla = 0, malas = 0;
+  const K = cinematica(id), r = rng(semilla); let conRama = 0, errPos = 0, errRot = 0, desc = 0, semillas = 0, extra = 0, sinSemilla = 0, malas = 0, devueltas = 0, paresDup = 0;
+  const ang = a => Math.atan2(Math.sin(a), Math.cos(a)), mismaPostura = (a, b) => a.every((v, i) => Math.abs(ang(v - b[i])) < 1e-4);
   for (let k = 0; k < N; k++) {
     const q = Array.from({ length: 6 }, () => (r() * 2 - 1) * Math.PI), T = K.fk(q), d = K.ikDetalle(T);
     if (d.sols.length) conRama++; if (!d.semillas) sinSemilla++;
     desc += d.descartadas; semillas += d.semillas; extra += d.extra || 0; errPos = Math.max(errPos, d.errPos); errRot = Math.max(errRot, d.errRot);
     for (const s of d.sols) { const e = errores(K.fk(s), T); if (e.p > KIN.TOL_POS || e.r > KIN.TOL_ROT) malas++; } // cada rama aceptada, comprobada aparte
+    devueltas += d.sols.length; d.sols.forEach((a, i) => d.sols.forEach((b, j) => { if (j > i && mismaPostura(a, b)) paresDup++; })); // corrección 4
   }
-  return { N, conRama, pct: 100 * conRama / N, errPos, errRot, desc, semillas, extra, sinSemilla, malas, stats: K.stats };
+  return { N, conRama, pct: 100 * conRama / N, errPos, errRot, desc, semillas, extra, sinSemilla, malas, devueltas, paresDup, stats: K.stats };
 }
 
 test('T1.4-2: IK refinada en 2000 poses alcanzables: ≥ 99,5 % con alguna rama en 203, 205 y 206; ramas aceptadas ≤ 1e-6 m y 1e-6 rad', t => {
@@ -62,13 +64,16 @@ test('T1.4-2: IK refinada en 2000 poses alcanzables: ≥ 99,5 % con alguna rama 
   for (const id of ['203', '205', '206', '204']) {
     const r = idaYVuelta(id);
     t.diagnostic(`${id}: ${r.pct.toFixed(2)} % con alguna rama (${r.conRama}/${r.N}); error máximo de las aceptadas ${r.errPos.toExponential(2)} m y ${r.errRot.toExponential(2)} rad; ` +
-      `${r.semillas} ramas analíticas + ${r.extra} proyectadas al borde, ${r.desc} descartadas; ${r.sinSemilla} poses sin ninguna rama analítica`);
+      `${r.semillas} ramas analíticas + ${r.extra} proyectadas al borde, ${r.desc} descartadas, ${r.stats.duplicadas} duplicadas quitadas; ${r.sinSemilla} poses sin ninguna rama analítica`);
     assert.equal(r.malas, 0, `${id}: ramas aceptadas que no reproducen la pose`);
     assert.ok(r.errPos <= 1e-6 && r.errRot <= 1e-6, `${id}: ${r.errPos} m, ${r.errRot} rad`);
     // el contador se puede leer y cuadra: cada rama probada converge o se descarta
     assert.deepEqual({ semillas: r.stats.semillas, extra: r.stats.extra, descartadas: r.stats.descartadas, llamadas: r.stats.llamadas },
       { semillas: r.semillas, extra: r.extra, descartadas: r.desc, llamadas: r.N }, id);
     assert.equal(r.stats.convergidas + r.stats.descartadas, r.stats.semillas + r.stats.extra, id);
+    // ninguna postura sale dos veces (dos soluciones con todas las articulaciones a menos de 1e-4 rad); las quitadas se cuentan
+    assert.equal(r.paresDup, 0, `${id}: ${r.paresDup} pares de soluciones duplicadas`);
+    assert.equal(r.devueltas, r.stats.convergidas - r.stats.duplicadas, id);
     if (id !== '204') assert.ok(r.pct >= 99.5, `${id}: ${r.pct} %`); // 204: se da la cifra, sin umbral (brief T1.4-T1.5)
   }
 });

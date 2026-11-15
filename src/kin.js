@@ -141,7 +141,7 @@ const KIN = (() => {
   // mueve el borde unos milímetros, y sin ellas las poses junto al codo o la muñeca estirados se quedaban sin semilla.
   // Solo cuentan como «ramas analíticas» (`semillas`) las de la IK nominal estricta: si no hay ninguna, el punto está fuera
   // de alcance; si las hay y ninguna converge, «IK calibrada no converge» (T1.4-5).
-  const TOL_POS = 1e-6, TOL_ROT = 1e-6, MAX_ITER = 30, HOLGURA_SEMILLA = 0.05;
+  const TOL_POS = 1e-6, TOL_ROT = 1e-6, MAX_ITER = 30, HOLGURA_SEMILLA = 0.05, DUP_Q = 1e-4;
   function mulR(a, b) { // producto de dos transformadas rígidas (la última fila es 0 0 0 1)
     return [a[0]*b[0] + a[1]*b[4] + a[2]*b[8], a[0]*b[1] + a[1]*b[5] + a[2]*b[9], a[0]*b[2] + a[1]*b[6] + a[2]*b[10], a[0]*b[3] + a[1]*b[7] + a[2]*b[11] + a[3],
       a[4]*b[0] + a[5]*b[4] + a[6]*b[8], a[4]*b[1] + a[5]*b[5] + a[6]*b[9], a[4]*b[2] + a[5]*b[6] + a[6]*b[10], a[4]*b[3] + a[5]*b[7] + a[6]*b[11] + a[7],
@@ -219,14 +219,20 @@ const KIN = (() => {
     const jo = CLAVES_CAL.map((k, i) => { const o = kinematics[k]; const m = org(o.x, o.y, o.z, o.roll, o.pitch, o.yaw); return i === 0 ? mul(rz(PI), m) : m; });
     const fkLinksC = q => cadena(jo, q), fkC = q => cadena(jo, q)[6];
     // stats se puede leer desde fuera: llamadas, ramas analíticas (semillas), semillas proyectadas al borde (extra),
-    // ramas que convergen, descartadas (no convergen) e iteraciones de LM
-    const stats = { llamadas: 0, semillas: 0, extra: 0, convergidas: 0, descartadas: 0, iteraciones: 0 };
+    // ramas que convergen, descartadas (no convergen), duplicadas (convergen a una postura ya hallada) e iteraciones de LM
+    const stats = { llamadas: 0, semillas: 0, extra: 0, convergidas: 0, descartadas: 0, duplicadas: 0, iteraciones: 0 };
+    // Dos ramas que convergen a la misma postura (todas las articulaciones a menos de DUP_Q rad) cuentan una sola vez
+    const igual = (a, b) => { for (let i = 0; i < 6; i++) if (Math.abs(wrap(a[i] - b[i])) >= DUP_Q) return false; return true; };
     function ikDetalle(T) {
-      const forz = [], sem = ikHolgura(T, HOLGURA_SEMILLA, forz), sols = []; let desc = 0, errPos = 0, errRot = 0;
-      sem.forEach((s, k) => { const r = refinar(jo, s, T); stats.iteraciones += r.it; if (!r.ok) { desc++; return; } sols.push(r.q); errPos = Math.max(errPos, r.p); errRot = Math.max(errRot, r.r); });
+      const forz = [], sem = ikHolgura(T, HOLGURA_SEMILLA, forz), sols = []; let desc = 0, conv = 0, dup = 0, errPos = 0, errRot = 0;
+      sem.forEach((s, k) => {
+        const r = refinar(jo, s, T); stats.iteraciones += r.it; if (!r.ok) { desc++; return; } conv++;
+        if (sols.some(o => igual(o, r.q))) { dup++; return; }
+        sols.push(r.q); errPos = Math.max(errPos, r.p); errRot = Math.max(errRot, r.r);
+      });
       const extra = forz.filter(Boolean).length, semillas = sem.length - extra;
-      stats.llamadas++; stats.semillas += semillas; stats.extra += extra; stats.convergidas += sols.length; stats.descartadas += desc;
-      return { sols, semillas, extra, descartadas: desc, errPos, errRot };
+      stats.llamadas++; stats.semillas += semillas; stats.extra += extra; stats.convergidas += conv; stats.descartadas += desc; stats.duplicadas += dup;
+      return { sols, semillas, extra, descartadas: desc, duplicadas: dup, errPos, errRot };
     }
     return { calibrada: true, JO: jo, W3T: W3_TOOL0, fk: fkC, fkLinks: fkLinksC, ik: T => ikDetalle(T).sols, ikDetalle, manip: q => manipDe(fkC, q), stats };
   }
@@ -247,6 +253,6 @@ const KIN = (() => {
     };
   }
   return { fk, fkLinks, fkDH, ik, ikDH, mul, inv, rz, rx, ry, tr, org, manip, wrap, D1, A2, A3, D4, D5, D6, PRE, JO, W3T: W3_TOOL0,
-    nominal: NOMINAL, calibrada, marcoBase, TOL_POS, TOL_ROT, MAX_ITER };
+    nominal: NOMINAL, calibrada, marcoBase, TOL_POS, TOL_ROT, MAX_ITER, DUP_Q };
 })();
 if (typeof module !== 'undefined') module.exports = KIN;

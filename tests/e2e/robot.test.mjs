@@ -38,9 +38,16 @@ test('T1.4-6: con el 203, brazo dibujado, colisión y TCP calculado coinciden y 
       // un obstáculo en base_link vuelve al mismo punto del mundo: el centro del plato 1 (esferasObjeto: 8 mm sobre su base)
       const o = g.obstaculos().find(o => o.tag === 'plato:plato1'), pw = g.OBJ.plato1.localToWorld(new g.robot.root.position.constructor(0, 0, 0.008));
       const obs = g.baseAMundo(o.x, o.y, o.z).distanceTo(pw);
-      // el tablero en base_link gira con la base: la pinza a 5 mm de la mesa dentro de ella choca con la mesa; fuera de ella, no
-      const enMesa = (x, y) => { const q = g.ikTCP(new g.robot.root.position.constructor(x, y, 0.76 + 0.005), Math.PI / 2, null, { sinColision: true, w: 0.02 }); const c = q && g.choqueEn(q, { carga: null, w: 0.02 }); return q ? (c ? c.b : 'libre') : 'sin IK'; };
-      return { rot: root.rotation.z, yaw, ejeX: [e[0], e[1]], tcp, esf, n: C.N, obs, dentro: enMesa(0.50, 0.05), fuera: enMesa(0.66, 0.05) };
+      // El tablero en base_link gira con la base (corrección 8). Si no girara, el gemelo comprobaría el tablero girado `yaw`
+      // alrededor de su centro: { p : |(R(−yaw)·p)x| < w/2 y |(R(−yaw)·p)y| < d/2 }. Se buscan, a partir de esa geometría,
+      // puntos dentro del tablero de verdad y fuera del girado (A) y al revés (B), a 4 cm de los bordes de los dos y con IK;
+      // la pinza, 5 mm por encima del tablero, choca con la mesa en A y no en B.
+      const V = g.robot.root.position.constructor, W = 1.18 / 2, Dm = 0.83 / 2, M = 0.04, c = Math.cos(-yaw), s = Math.sin(-yaw);
+      const dentro = (x, y) => Math.abs(x) < W - M && Math.abs(y) < Dm - M, fuera = (x, y) => Math.abs(x) > W + M || Math.abs(y) > Dm + M;
+      const ikEn = (x, y) => g.ikTCP(new V(x, y, 0.76 + 0.005), Math.PI / 2, null, { sinColision: true, w: 0.02 });
+      const buscar = (enVerdad, enGirado) => { for (let x = -0.8; x <= 0.8; x += 0.01) for (let y = -0.6; y <= 0.6; y += 0.01) { const xr = c * x - s * y, yr = s * x + c * y; if (enVerdad(x, y) && enGirado(xr, yr)) { const q = ikEn(x, y); if (q) return { x: +x.toFixed(2), y: +y.toFixed(2), q }; } } return null; };
+      const A = buscar(dentro, fuera), B = buscar(fuera, dentro), contra = P => { const ch = P && g.choqueEn(P.q, { carga: null, w: 0.02 }); return P ? (ch ? ch.b : 'libre') : 'sin punto'; };
+      return { rot: root.rotation.z, yaw, ejeX: [e[0], e[1]], tcp, esf, n: C.N, obs, A: A && [A.x, A.y], B: B && [B.x, B.y], dentro: contra(A), fuera: contra(B) };
     });
     assert.ok(Math.abs(r.rot - r.yaw) < 1e-12, `base girada ${r.rot} rad; mount_yaw − π = ${r.yaw}`);
     assert.ok(Math.abs(r.yaw + 3 * Math.PI / 4) < 1e-8, 'el 203 gira −135°');
@@ -48,7 +55,8 @@ test('T1.4-6: con el 203, brazo dibujado, colisión y TCP calculado coinciden y 
     assert.ok(r.tcp <= 1e-5, `tcpMundo (dibujo) frente a tcpDeQ (colisión): ${r.tcp * 1000} mm`);
     assert.ok(r.esf <= 1e-5 && r.n > 100, `esferas de colisión frente a las dibujadas: ${r.esf * 1000} mm en ${r.n}`);
     assert.ok(r.obs <= 1e-9, `obstáculo del plato: ${r.obs * 1000} mm`);
-    assert.deepEqual({ dentro: r.dentro, fuera: r.fuera }, { dentro: 'mesa', fuera: 'libre' });
+    assert.ok(r.A && r.B, `puntos de prueba del tablero: A ${r.A}, B ${r.B}`);
+    assert.deepEqual({ dentro: r.dentro, fuera: r.fuera }, { dentro: 'mesa', fuera: 'libre' }, `A ${r.A} (dentro del tablero, fuera del girado) y B ${r.B} (al revés)`);
     comprobar(s.reg);
   } finally { await s.cerrar(); }
 });
@@ -112,6 +120,44 @@ test('T1.4-5: si el objetivo tiene ramas analíticas y ninguna converge, el pane
     assert.ok(r.txt.includes('IK calibrada no converge'), r.txt);
     assert.ok(!/no llega ahí|No hay solución de cinemática inversa/.test(r.txt), 'no se explica como fuera de alcance');
     assert.equal(r.lejos, 'alcance'); assert.match(r.txtLejos, /no llega ahí/);
+    comprobar(s.reg);
+  } finally { await s.cerrar(); }
+});
+
+test('corrección 3: «IK calibrada no converge» también en rutaCartesiana, en la comprobación previa y en la de la fruta', { timeout: 300000 }, async () => {
+  const s = await abrir(srv.url); const p = s.page;
+  try {
+    await elegir(p, '204');
+    await p.evaluate(() => window.__g.calcularPlanes()); await esperarPlanes(p); // planes al día con el 204
+    // Caso buscado como en T1.4-5: TCP con la pinza horizontal con ramas analíticas y ninguna convergida
+    const r = await p.evaluate(() => {
+      const g = window.__g;
+      for (const z of [0.25, 0.1]) for (let x = -0.5; x <= 0.5001; x += 0.025) for (let y = -0.5; y <= 0.5001; y += 0.025) for (let k = 0; k < 12; k++) for (const pitch of [0, 0.5]) {
+        const pw = g.baseAMundo(x, y, z), yaw = g.marco().yawAMundo(k * Math.PI / 6), o = { horiz: true, pitch, w: 0.006 };
+        if (!g.ikNoConverge(pw, yaw, o)) continue;
+        // una recta cartesiana que acaba en ese punto falla ahí, con su causa y su texto
+        const ruta = g.rutaCartesiana(g.robot.q.slice(), [{ p: pw, yaw }, { p: pw, yaw }], o);
+        // el plan del plato 1 falla en ese punto al levantarlo (lo que daría cadenaPlato): la comprobación previa lo cuenta
+        const pl = g.CACHE_PLAN.plato1.pl; if (!g.planesAlDia() || !pl) return { sinPlan: true }; pl.cadena = { fallo: { ...ruta, fallo: `al levantarlo de la caja, ${ruta.fallo}`, fase: 'plato', etapa: 1 } };
+        return { causa: ruta.causa, fallo: ruta.fallo, item: g.comprobarPlan().filter(c => c.grave).map(c => c.txt).join(' | ') };
+      }
+      return null;
+    });
+    assert.ok(r, 'la búsqueda encuentra un caso'); assert.ok(!r.sinPlan, 'con el 204 hay plan del plato 1 al día');
+    assert.deepEqual({ causa: r.causa, fallo: r.fallo }, { causa: 'ik_calibrada', fallo: 'IK calibrada no converge' });
+    assert.match(r.item, /^Plato 1º: no puedo cogerlo y levantarlo en línea recta: al levantarlo de la caja, IK calibrada no converge/);
+    // el panel «La demo no puede empezar» de la demo
+    const d = await p.evaluate(() => window.__g.ensayo({ vel: 0.25, fase: 0, sinRender: true, limite: 60, modo: 'M0', amp: 0 }));
+    assert.equal(d.fin, 'previo'); assert.match(d.fallo, /La demo no puede empezar/); assert.match(d.fallo, /IK calibrada no converge/);
+    // La fruta: con las calibraciones del curso, las poses verticales de esa comprobación no dan nunca ramas sin converger
+    // (búsqueda en rejilla de 5 mm en el informe), así que aquí ninguna rama converge para ninguna pose (se simula) y se
+    // comprueba que la causa se distingue con causaSinIK
+    const f = await p.evaluate(() => {
+      const g = window.__g, C = g.CIN, det0 = C.ikDetalle, ik0 = C.ik;
+      C.ikDetalle = T => { const d = det0(T); return { ...d, sols: [], descartadas: d.semillas + d.extra }; }; C.ik = T => C.ikDetalle(T).sols;
+      try { return g.comprobarPlan().filter(c => c.grave && c.info.fase === 'fruta').map(c => c.txt); } finally { C.ikDetalle = det0; C.ik = ik0; }
+    });
+    assert.ok(f.length >= 1, 'la fruta no se puede coger'); for (const t of f) assert.match(t, /: IK calibrada no converge para cogerla en vertical/);
     comprobar(s.reg);
   } finally { await s.cerrar(); }
 });

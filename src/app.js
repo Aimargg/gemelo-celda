@@ -15,6 +15,7 @@ const ESC = { lista: [], papelera: [], cur: null, base: null, basada: null, ulti
 let EDITANDO = false; // mientras se arrastra algo no se recalculan los planes (es lo caro); se recalculan al soltar
 let OBS_EXTRA = []; // obstáculos previstos (la fruta que tendrá el plato cuando se coja)
 let VERSION_ESCENA = 0; // sube cada vez que cambia algo del entorno (objetos movidos, cogidos o soltados)
+let ROBOT_PEDIDO = false, AVISO_ROBOT = null; // cambio de robot desde el selector · aviso de robot pendiente (aplicarCinematica)
 class FalloDemo extends Error { constructor(msg, tipo = 'fallo', info = {}) { super(msg); this.tipo = tipo; this.info = { ...(typeof D !== 'undefined' ? D.ctx : {}), ...info }; } }
 
 const MESA = { w: 1.18, d: 0.83, h: 0.76, e: 0.03 };
@@ -952,7 +953,13 @@ function comprobarPlan0(opts) {
     ctxI = { fase: 'fruta' }; const pz = piezas.find(p => p.tipo === tipo); const c = pz.obj.getWorldPosition(new THREE.Vector3());
     const okA = ikTCP(new THREE.Vector3(c.x, c.y, zTr), 0, q0) || ikTCP(new THREE.Vector3(c.x, c.y, zTr), PI / 2, q0);
     const okG = llegaVertical(new THREE.Vector3(c.x, c.y, MESA.h + alturaAgarre(pz.F)), q0);
-    if (okA && okG) add('ok', `Coger ${pz.F.nombre.toLowerCase()} en la zona de fruta`); else add('bad', `${pz.F.nombre}: fuera de alcance para cogerla en vertical`, true);
+    if (okA && okG) add('ok', `Coger ${pz.F.nombre.toLowerCase()} en la zona de fruta`);
+    else { // T1.4-5: si en las poses que fallan hay ramas analíticas y ninguna converge, no es «fuera de alcance»
+      const pA = new THREE.Vector3(c.x, c.y, zTr), pG = new THREE.Vector3(c.x, c.y, MESA.h + alturaAgarre(pz.F));
+      const poses = !okA ? [[pA, 0], [pA, PI / 2]] : [0, PI / 4, PI / 2, -PI / 4].map(y => [pG, y]);
+      ctxI.causa = poses.every(([p, y]) => causaSinIK(p, y, {}) === 'ik_calibrada') ? 'ik_calibrada' : 'alcance';
+      add('bad', ctxI.causa === 'ik_calibrada' ? `${pz.F.nombre}: IK calibrada no converge para cogerla en vertical (la IK analítica nominal tiene ramas, pero ninguna converge con la calibración del ${ROB.id})` : `${pz.F.nombre}: fuera de alcance para cogerla en vertical`, true);
+    }
   }
   // platos: soltar la fruta y coger en horizontal
   for (const [pk] of platosActivos()) {
@@ -1008,7 +1015,7 @@ async function demo() {
     paso(4); estado('ESPERANDO_BANDEJA');
     await anim(1.6, s => { trayState.subida = smooth(s); }); trayState.balanceo = true; if (!uno) ladoZonas(); await esperar(0.8);
     publicar('/v1/tray_status', ['tstat'], { estado: 'lista', desviacion_mm: 0 });
-    const bp = poseBandeja(simT), tb = enBase(bp); publicar('/v1/tray_pose', ['tpose'], { marco: 'base_link', x: +tb.x.toFixed(3), y: +tb.y.toFixed(3), z: +tb.z.toFixed(3), yaw_deg: +(yawABase(bp.yaw) * R2D).toFixed(1), marcadores_vistos: 3 }); await esperar(0.6);
+    const bp = poseBandeja(simT), tb = enBase(bp); publicar('/v1/tray_pose', ['tpose'], { marco: 'base_link', x: +tb.x.toFixed(3), y: +tb.y.toFixed(3), z: +tb.z.toFixed(3), yaw_deg: gradosBase(bp.yaw), marcadores_vistos: 3 }); await esperar(0.6);
     paso(5); publicar('/v2/fruits', ['img', 'det', 'fruits'], { marco: 'base_link', piezas: piezas.filter(p => !p.usada).map(p => `${p.id}: ${p.tipo}`) }); await esperar(0.5);
     await servirPlato('plato1', 'manzana', 2, zonaDe('plato1'), 1);
     if (!uno) { paso(6); await servirPlato('plato2', 'uvas', 1, 'zona_segundo', 2); }
@@ -1053,7 +1060,7 @@ async function servirPlato(pk, tipo, n, zona, num) {
     const wAb = Math.min(0.11, pz.F.w + 0.024); const ag = planAgarreFruta(pz, wAb, robot.q);
     if (!ag) throw new FalloDemo(`No hay ninguna orientación de la pinza para coger ${pz.F.nombre.toLowerCase()} (pieza ${pz.id})`, 'fallo', { causa: 'fruta', detalle: 'Ninguna orientación de la pinza vertical llega a la pieza sin chocar.' });
     const c = ag.c, yaw = ag.yaw;
-    publicar('servir_pieza [PROPUESTA]', ['accion'], { pieza: pz.id, tipo, plato: pk, agarre_z_m: +pz.F.h.toFixed(3), giro_pinza_deg: Math.round(angDiff(yaw, 0) * R2D), hueco_con_vecinas_mm: ag.hol === Infinity ? '—' : mm(ag.hol) });
+    publicar('servir_pieza [PROPUESTA]', ['accion'], { pieza: pz.id, tipo, plato: pk, agarre_z_m: +pz.F.h.toFixed(3), giro_pinza_deg: Math.round(gradosBase(yaw)), marco_giro: 'base_link', hueco_con_vecinas_mm: ag.hol === Infinity ? '—' : mm(ag.hol) });
     await pinzaA(wAb);
     await irA(new THREE.Vector3(c.x, c.y, zTr), yaw, {}, `la vertical de ${pz.F.nombre.toLowerCase()}`);
     const dz = alturaAgarre(pz.F) - pz.F.h, cierre = Math.max(0.01, Math.min(pz.F.w, 2 * Math.sqrt(Math.max(0, pz.F.r ** 2 - dz ** 2))) - 0.004); // ancho de la pieza a la altura de la yema
@@ -1269,7 +1276,7 @@ function pintarCaja() {
   $('#cajaInfo').innerHTML = platosActivos().map(([k]) => { const pl = planPlatoCache(k); const n = k === 'plato1' ? '1º' : '2º'; if (!pl) { const f = planForzado(k); return `<dt>Coger el plato ${n}</dt><dd><span class="pill bad">${f && f.choque ? `imposible: ${textoChoque(f.choque)}${f.hol.min < 0 ? `, ${mm(-f.hol.min)} mm` : ''}` : 'sin dirección posible'}</span></dd>`; } const h = pl.hol.min; return `<dt>Holgura al coger el plato ${n}</dt><dd><span class="pill ${h < -0.002 ? 'bad' : h < 0.01 ? 'warn' : 'ok'}">${h < -0.002 ? `choca con la ${pl.hol.contra}: ${mm(h)} mm` : `${mm(h)} mm`}</span></dd>`; }).join('');
 }
 function actualizarCheck() { if ($('[data-panel="demo"]').hidden || D.activo || !robot) return; if (sinPlan()) { pintarCheck([{ cls: 'warn', txt: 'Hay cambios sin calcular. Pulsa «Calcular trayectorias» o reproduce la demo, que calcula antes de mover el brazo.' }]); return; } pintarCheck(comprobarPlan()); }
-function toast(t) { const el = $('#toast'); el.textContent = t; el.classList.add('on'); clearTimeout(el._t); el._t = setTimeout(() => el.classList.remove('on'), 2800); }
+function toast(t) { if (AVISO_ROBOT) { t = t ? `${t} · ${AVISO_ROBOT}` : AVISO_ROBOT; AVISO_ROBOT = null; } const el = $('#toast'); el.textContent = t; el.classList.add('on'); clearTimeout(el._t); el._t = setTimeout(() => el.classList.remove('on'), 2800); }
 // Aviso visible de solo lectura (T1.1), junto a las etiquetas de la cabecera
 $('.chips').insertAdjacentHTML('afterbegin', '<span class="chip" id="chipSoloLectura" role="status" hidden style="border-color:var(--bad);color:var(--bad);font-weight:600"></span>');
 // Aviso de calibración sospechosa del robot elegido (T1.4-4), visible desde cualquier pestaña; el detalle va en Escena
@@ -1296,18 +1303,27 @@ $('#segRobot').addEventListener('click', e => {
 // Activa la cinemática de L.robotId (decisión 2 del brief): IK, colisión (esferas y pares permitidos, iniciarColision) y
 // dibujo del brazo. Lo que depende de ella se invalida: los planes (clavePlan lleva ROB.id), los obstáculos en base_link
 // (su clave también), el HUD (VERSION_ESCENA), el perfil y el mapa de alcance (aplicarLayout llama a calcularMapa).
+// Si el robot cambia porque se abre, se importa o se aplica una disposición con otro robotId, se avisa (corrección 9 de la
+// revisión). El selector (cambiarRobotId) avisa por su cuenta: ROBOT_PEDIDO.
 function aplicarCinematica() {
   const id = idValido(L.robotId);
   if (id !== ROB.id) {
-    ROB = robotDe(id); CIN = ROB.cin; VERSION_ESCENA++;
+    const de = ROB; ROB = robotDe(id); CIN = ROB.cin; VERSION_ESCENA++;
     if (robot) { robot.setCinematica(CIN); REF_MANIP = CIN.manip(Q_REF_MANIP); if (COL.listo) iniciarColision(); calcularPerfil(); }
+    if (robot && !ROBOT_PEDIDO) avisoRobot(L.robotId !== id ? `Esta escena usa el robot «${L.robotId}», que esta versión del gemelo no conoce: se usa la cinemática nominal`
+      : Math.abs(angDiff(ROB.yaw, de.yaw)) < 1e-9 ? `Esta escena usa el robot ${id}: cambia la cinemática (el giro de la base es el mismo)`
+      : `Esta escena usa el robot ${id}: cambian la cinemática y el giro de la base (${gradosTxt(ROB.yaw)})`);
   }
   pintarRobotId();
 }
+// El aviso del robot se suma al siguiente aviso de la página (abrir o importar ponen el suyo justo después) o sale solo
+function avisoRobot(t) { AVISO_ROBOT = t; setTimeout(() => { if (AVISO_ROBOT) toast(''); }, 0); }
 // Postura en la que arranca el hardware simulado de sim_<id> (initial_positions.yaml del curso; configuraciones[1] de
 // tests/fixtures/cinematica/<id>.json): es la del aviso de calibración sospechosa
 const Q_INICIAL_SIM = [0, -1.57, 0, -1.57, 0, 0];
 const gradosTxt = a => `${fmt(a * R2D, 1).replace('-', '−')}°`;
+// Giro del mundo pasado a base_link, en grados en (−180, 180] con 0,1° (topics simulados, corrección 7)
+function gradosBase(a) { let g = Math.round(angDiff(yawABase(a), 0) * R2D * 10) / 10; if (g <= -180) g += 360; return g; }
 // Campo del prefijo de frames (T1.5-4): '' siempre; '<id>_' solo si el robot tiene URDF doble en el curso
 function pintarPrefijo() {
   const s = $('#prefijo'), d = ROB.datos.doble, id = ROB.id, pf = L.prefijoFrames ?? '';
@@ -1337,9 +1353,11 @@ function pintarRobotId() {
 // respecto al robot (los objetos giran alrededor de la base y conservan sus coordenadas en base_link). Si no cambia el
 // giro (nominal, 205 y 206), se cambia sin preguntar y se avisa.
 let PREG_ROBOT = null;
+// Mientras corre la demo, el cálculo o la búsqueda de una disposición no se cambia de robot (correcciones 1 y 2)
+const ocupadoRobot = () => D.playing ? 'Pausa la demo para cambiar de robot' : CALC.activo ? 'Espera a que termine el cálculo para cambiar de robot' : D.buscando ? 'Espera a que termine la búsqueda de una disposición para cambiar de robot' : null;
 function pedirRobotId(id) {
   if (!robot || !LAYOUT.ROBOT_IDS.includes(id)) return;
-  if (D.playing || CALC.activo) { toast(D.playing ? 'Pausa la demo para cambiar de robot' : 'Espera a que termine el cálculo'); return; }
+  const oc = ocupadoRobot(); if (oc) { toast(oc); return; }
   if (soloLectura()) { toast('Disposición de solo lectura (versión más nueva): no se cambia el robot'); return; }
   if (id === ROB.id && id === L.robotId) { cerrarPreguntaRobot(); return; }
   const dy = angDiff(robotDe(id).yaw, ROB.yaw);
@@ -1364,15 +1382,20 @@ function cambiarRobotId(id, modo) {
   const de = ROB, a = robotDe(id), dy = angDiff(a.yaw, de.yaw), pre0 = L.prefijoFrames;
   if (modo === 'robot' && dy) girarDisposicion(L, BASES[L.robot], dy);
   L.robotId = id; L.prefijoFrames = pre0 && a.datos.doble ? `${id}_` : '';
-  cerrarPreguntaRobot(); D.activo = false; aplicarLayout();
+  cerrarPreguntaRobot(); D.activo = false; ROBOT_PEDIDO = true; try { aplicarLayout(); } finally { ROBOT_PEDIDO = false; }
   const pre = pre0 !== L.prefijoFrames ? ` Prefijo de frames: ${L.prefijoFrames ? `«${L.prefijoFrames}»` : 'ninguno'}.` : '';
   toast(!dy ? `Robot ${id}: base_link con el mismo giro que el ${de.id}; nada se mueve. Recalcula las trayectorias.${pre}`
     : modo === 'mesa' ? `Robot ${id}: se mantiene la mesa. El brazo gira ${gradosTxt(dy)} y cambian las coordenadas en base_link.${pre}`
       : `Robot ${id}: la disposición gira ${gradosTxt(dy)} alrededor de la base y conserva sus coordenadas en base_link.${pre}`);
 }
 $('#segRobotId').addEventListener('click', e => { const b = e.target.closest('button'); if (b) pedirRobotId(b.dataset.v); });
-$('#rpMesa').addEventListener('click', () => { if (PREG_ROBOT) cambiarRobotId(PREG_ROBOT, 'mesa'); });
-$('#rpRobot').addEventListener('click', () => { if (PREG_ROBOT) cambiarRobotId(PREG_ROBOT, 'robot'); });
+function responderRobot(modo) {
+  if (!PREG_ROBOT) return; const oc = ocupadoRobot();
+  if (oc) { cerrarPreguntaRobot(); toast(`${oc}: el robot no cambia`); return; } // la pregunta se abrió antes de empezar: no vale
+  cambiarRobotId(PREG_ROBOT, modo);
+}
+$('#rpMesa').addEventListener('click', () => responderRobot('mesa'));
+$('#rpRobot').addEventListener('click', () => responderRobot('robot'));
 $('#rpCancel').addEventListener('click', () => { cerrarPreguntaRobot(); toast('El robot no cambia'); });
 $('#segCaja').addEventListener('click', e => { const b = e.target.closest('button'); if (!b || D.playing) return; L.caja.on = b.dataset.v === '1'; if (!D.activo) reiniciarDemo(); actualizarPlatos(); pintarCaja(); evaluar(); guardarLocal(); toast(L.caja.on ? 'Platos sobre la caja' : 'Platos sobre la mesa: mira la holgura al cogerlos'); });
 $('#cajaH').addEventListener('input', e => { if (D.playing) return; L.caja.h = e.target.value / 100; $('#cajaHOut').textContent = `${e.target.value} cm`; EDITANDO = true; actualizarPlatos(); clearTimeout(pintarCaja._t); pintarCaja._t = setTimeout(() => { EDITANDO = false; actualizarPlatos(); pintarCaja(); evaluar(); }, 300); guardarLocal(); });
@@ -1504,17 +1527,22 @@ function generarYaml() {
   const B = o => enBase({ x: o.x, y: o.y, z: o.z ?? MESA.h }), P = o => { const b = B(o); return `{x: ${r3(b.x)}, y: ${r3(b.y)}, z: ${r3(b.z)}}`; };
   const tp = poseBandeja(0); bandeja.updateMatrixWorld(true); const zw = k => zonasB[k].getWorldPosition(new THREE.Vector3());
   const id = ROB.id, d = ROB.datos, pf = L.prefijoFrames || '', frame = `${pf}base_link`, sup = '# SUPUESTO (disposición propuesta, sin medir)';
+  // Una disposición de solo lectura puede traer un robot que esta versión no conoce: se dice y se usa el nominal (corrección 5)
+  const desconocido = L.robotId !== id, doble = pf && d.doble ? d.doble.fichero.split('/').pop().replace('.urdf.xacro', '') : null;
+  // Lo que depende del giro world → base_link (mount_yaw − π) es SUPUESTO mientras no se valide en ROS (corrección 6)
+  const conGiro = ROB.yaw !== 0, giroSup = 'SUPUESTO (giro world→base_link sin validar en ROS)';
   let y = `# posiciones.yaml · gemelo de la celda UR3e · BORRADOR (generado por IA)\n`;
-  y += `# Robot: ${id === 'nominal' ? 'nominal (sin identificar: cinemática nominal del UR3e)' : `${id} (calibration_${id}.yaml del curso${d.sospechoso ? '; calibración sospechosa, SIN VALIDAR' : ''})`}, en la posición ${L.robot} de la celda (${L.robot === 'B' ? 'derecha' : 'izquierda'} en la foto cenital).\n`;
-  y += `# Frame: ${frame}${pf ? ` (prefijo «${pf}» del URDF doble ${d.doble.fichero.split('/').pop()})` : ' (sin prefijo, como en sim_<id>)'}. Metros y radianes (REP-103), redondeo a 1 mm y 0,001 rad.\n`;
-  y += `# world: los ejes de la mesa, con el origen en el centro de la base sobre el tablero [SUPUESTO hasta comprobarlo en el laboratorio].\n`;
-  y += `# ${frame} está girado ${rad3(ROB.yaw)} rad (${gradosTxt(ROB.yaw)}) respecto a world: mount_yaw − π del xacro del curso [SIN VALIDAR en ROS; docs/estado/frames.md].\n`;
+  y += `# Robot: ${desconocido ? `«${L.robotId}» (desconocido para esta versión del gemelo: se usa la cinemática nominal)` : id === 'nominal' ? 'nominal (sin identificar: cinemática nominal del UR3e)' : `${id} (calibration_${id}.yaml del curso${d.sospechoso ? '; calibración sospechosa, SIN VALIDAR' : ''})`}, en la posición ${L.robot} de la celda (${L.robot === 'B' ? 'derecha' : 'izquierda'} en la foto cenital).\n`;
+  y += `# Frame: ${frame}${doble ? ` (prefijo «${pf}» del URDF doble ${doble}.urdf.xacro)` : pf ? ` (prefijo «${pf}» de la disposición; esta versión del gemelo no conoce su URDF doble)` : ' (sin prefijo, como en sim_<id>)'}. Metros y radianes (REP-103), redondeo a 1 mm y 0,001 rad.\n`;
+  y += `# world: el world del gemelo, con los ejes de la mesa y el origen en el centro de la base sobre el tablero [SUPUESTO hasta comprobarlo en el laboratorio].\n`;
+  y += `# ${frame} está girado ${rad3(ROB.yaw)} rad (${gradosTxt(ROB.yaw)}) respecto a ese world: mount_yaw − π del xacro del curso [SIN VALIDAR en ROS; docs/estado/frames.md].\n`;
   y += `# Origen de cada valor, al final de su línea: MEDIDO, FABRICANTE o SUPUESTO. Las cámaras dan el giro desde +y de ${frame} hacia +x.\n`;
-  y += `fecha: ${new Date().toISOString().slice(0, 10)}\nrobot: ${L.robot}  # MEDIDO (posición de la base en la celda)\nrobot_id: ${id}  # elegido en el gemelo\n`;
-  y += `frame: ${frame}\nprefijo_frames: '${pf}'\nworld_a_base_link: {x: 0.000, y: 0.000, z: 0.000, yaw_rad: ${rad3(ROB.yaw)}}  # SUPUESTO (world con los ejes de la mesa); giro del xacro del curso\n`;
+  y += `fecha: ${new Date().toISOString().slice(0, 10)}\nrobot: ${L.robot}  # MEDIDO (posición de la base en la celda)\nrobot_id: ${desconocido ? `${L.robotId}  # de la disposición; el gemelo no lo conoce y usa la cinemática nominal` : `${id}  # elegido en el gemelo`}\n`;
+  y += `frame: ${frame}\nprefijo_frames: '${pf}'\nworld_a_base_link: {x: 0.000, y: 0.000, z: 0.000, yaw_rad: ${rad3(ROB.yaw)}}  # world del gemelo (ejes de la mesa): SUPUESTO · giro: mount_yaw − π del xacro del curso, SUPUESTO (sin validar en ROS)\n`;
+  if (doble) y += `pose_en_world_doble: {frame: ${frame}, x: ${r3(d.doble.x)}, y: ${r3(d.doble.y)}, z: 0.000, yaw_rad: ${rad3(d.doble.yaw - PI)}}  # xacro del curso, ${doble}: SUPUESTO (sin validar en ROS)\n`;
   y += `pinza: {modelo: OnRobot RG2, tcp_z_m: ${r3(pinza.tcpZ(0))}, carrera_m: 0.110}  # tcp_z: SUPUESTO (modelo simplificado) · carrera: MEDIDO\n`;
   const mc = B({ x: 0, y: 0 });
-  y += `mesa: {ancho_m: 1.180, fondo_m: 0.830, alto_m: 0.760, centro_en_base_link: {x: ${r3(mc.x)}, y: ${r3(mc.y)}}, yaw_rad: ${rad3(yawABase(0))}}  # MEDIDO\n`;
+  y += `mesa: {ancho_m: 1.180, fondo_m: 0.830, alto_m: 0.760, centro_en_base_link: {x: ${r3(mc.x)}, y: ${r3(mc.y)}}, yaw_rad: ${rad3(yawABase(0))}}  # ${conGiro ? `medidas: MEDIDO · centro_en_base_link y yaw_rad: ${giroSup}` : 'MEDIDO'}\n`;
   y += `pedido: ${L.pedido === 1 ? 'un_plato  # al centro de la bandeja' : 'dos_platos  # primero y segundo'} · elegido en el gemelo\n`;
   y += `platos: {sobre_caja: ${L.caja.on}, caja_alto_m: ${r3(L.caja.h)}, caja_lado_m: ${r3(CAJA_LADO)}, agarre: horizontal_por_el_borde, radio_agarre_m: ${r3(R_AGARRE)}}  # SUPUESTO\n`;
   const zf = B(L.zona);
