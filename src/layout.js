@@ -4,13 +4,15 @@
 const LAYOUT = (() => {
   const VERSION = 9;        // versión que escribe esta página
   const MAX_TXT = 50000;    // reglas de Firestore: el layout es un texto de 50.000 caracteres como máximo (I2)
-  // Campos de la v9. `robotId` es el robot calibrado (T1.4 añadirá '203'–'206'); el campo `robot` sigue siendo la
-  // posición A/B del brazo en la celda. `perfil`: perfil de movimiento (D6). `sensor`: modelo de sensor de las cámaras
-  // (D10). En T1.1 ninguno cambia el comportamiento: T1.4, T1.6 y T1.7 les darán efecto.
-  const ROBOT_IDS = ['nominal'], PERFILES = ['curso', 'gemelo'], SENSORES = ['elp-ficha', 'gemelo-v8'];
-  const CAMPOS_V9 = ['version', 'robotId', 'perfil', 'sensor'];
-  const NUEVA = { robotId: 'nominal', perfil: 'curso', sensor: 'elp-ficha' };   // escena nueva (layoutDefecto)
-  const MIGRADA = { robotId: 'nominal', perfil: 'gemelo', sensor: 'gemelo-v8' }; // escena v8: conserva su comportamiento (I1, D6)
+  // Campos de la v9. `robotId` es el robot calibrado: 'nominal' o uno de los UR3e del laboratorio con su calibración del
+  // curso (T1.4, src/datos/calibracion.js); el campo `robot` sigue siendo la posición A/B del brazo en la celda. `perfil`:
+  // perfil de movimiento (D6). `sensor`: modelo de sensor de las cámaras (D10); T1.6 y T1.7 les darán efecto.
+  // `prefijoFrames` (T1.5): prefijo de los nombres de frame al exportar: '' con sim_<id> (un robot) o '<robotId>_' con el
+  // URDF doble del curso (doble_ur3e_<a>_<b>). Una v9 sin el campo (anterior a T1.5) se completa con ''.
+  const ROBOT_IDS = ['nominal', '203', '204', '205', '206'], PERFILES = ['curso', 'gemelo'], SENSORES = ['elp-ficha', 'gemelo-v8'];
+  const CAMPOS_V9 = ['version', 'robotId', 'perfil', 'sensor', 'prefijoFrames'];
+  const NUEVA = { robotId: 'nominal', perfil: 'curso', sensor: 'elp-ficha', prefijoFrames: '' };   // escena nueva (layoutDefecto)
+  const MIGRADA = { robotId: 'nominal', perfil: 'gemelo', sensor: 'gemelo-v8', prefijoFrames: '' }; // escena v8: conserva su comportamiento (I1, D6)
   const opcional = ruta => /^cams\.[^.]+\.roll$/.test(ruta); // giro de la imagen: 0 si falta (orientDe, espejo)
   const tipo = v => v === null ? 'null' : Array.isArray(v) ? 'array' : typeof v;
   const copia = o => JSON.parse(JSON.stringify(o));
@@ -56,6 +58,9 @@ const LAYOUT = (() => {
         if (l[k] === undefined) return `falta «${k}»`;
         if (!lista.includes(l[k])) return `«${k}» desconocido (${JSON.stringify(l[k])})`;
       }
+      const pf = l.prefijoFrames;
+      if (pf === undefined) return 'falta «prefijoFrames»';
+      if (pf !== '' && !(l.robotId !== 'nominal' && pf === `${l.robotId}_`)) return `«prefijoFrames» solo puede ser "" o "<robotId>_" (${JSON.stringify(pf)})`;
     }
     return null;
   }
@@ -63,7 +68,8 @@ const LAYOUT = (() => {
   // Entrada: el layout como objeto o como texto JSON. Nunca modifica la entrada.
   // Salida: { layout, soloLectura } si se puede abrir, o { error } con el motivo.
   //  · Sin `version` (v8 o anterior): se completa como hacía normalizar() (caja y pedido si faltan) y se le añaden
-  //    version 9, robotId 'nominal', perfil 'gemelo' y sensor 'gemelo-v8'. El resto se conserva tal cual.
+  //    version 9, robotId 'nominal', perfil 'gemelo', sensor 'gemelo-v8' y prefijoFrames ''. El resto se conserva tal cual.
+  //  · Una v9 sin `prefijoFrames` (creada antes de T1.5) se completa con ''.
   //  · Con una `version` mayor que la de esta página: se abre en solo lectura (no se guarda en local ni en el grupo).
   function migrarLayout(entrada, esq) {
     let l = entrada;
@@ -74,7 +80,7 @@ const LAYOUT = (() => {
       if (!l.caja) l.caja = copia(esq.ref.caja);
       if (!l.pedido) l.pedido = 2;
       Object.assign(l, { version: VERSION }, MIGRADA);
-    }
+    } else if (l.version === VERSION && l.prefijoFrames === undefined) l.prefijoFrames = '';
     const error = validarLayout(l, esq);
     return error ? { error } : { layout: l, soloLectura: l.version > VERSION };
   }

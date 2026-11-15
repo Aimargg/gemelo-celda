@@ -137,8 +137,8 @@ Estados: pendiente · en curso · entregada · aceptada · correcciones · bloqu
 | T1.1 | 1 | Versionar el layout y migrarlo al cargar | Claude Code | T0.3 | medio | aceptada | 4cabe6c, 69a6905 |
 | T1.2 | 1 | Semilla por petición en el RRT | Claude Code | T1.1 | medio | aceptada | 0cde036, 46bd547, 69a6905 |
 | T1.3 | 1 | Ficheros de referencia de cinemática generados con el xacro del curso | Claude Code | T0.2, Q4 | bajo | aceptada | cce7601 |
-| T1.4 | 1 | Selector de robot con FK calibrada e IK refinada | Claude Code | T1.1, T1.3 | alto | pendiente | |
-| T1.5 | 1 | `world`↔`base_link` por robot en la conversión y en la exportación | Claude Code | T1.4 | medio | pendiente | |
+| T1.4 | 1 | Selector de robot con FK calibrada e IK refinada | Claude Code | T1.1, T1.3 | alto | entregada | 83afa78 |
+| T1.5 | 1 | `world`↔`base_link` por robot en la conversión y en la exportación | Claude Code | T1.4 | medio | entregada | dafd643 |
 | T1.6 | 1 | Perfil de movimiento «curso» | Claude Code | T1.2 | medio | pendiente | |
 | T1.7 | 1 | Modelo de sensor de la ELP por modo | Claude Code | T1.1 | bajo | pendiente | |
 | T1.8 | 1 | Flujo «explorar → validar» con los dos perfiles | Claude Code | T1.6 | medio | pendiente | |

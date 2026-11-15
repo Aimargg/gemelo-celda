@@ -280,6 +280,14 @@ textarea{width:100%;min-height:120px;border:1px solid var(--line);border-radius:
           <h2>Robot del grupo</h2>
           <div class="seg" id="segRobot"><button data-v="A" aria-pressed="false">A · izquierda</button><button data-v="B" aria-pressed="true">B · derecha</button></div>
           <p class="hint">Izquierda y derecha según la foto cenital del 10-11. El otro robot queda como obstáculo de otro puesto.</p>
+          <div class="seg" id="segRobotId" role="group" aria-label="Robot calibrado"><button data-v="nominal" aria-pressed="true">Nominal</button><button data-v="203" aria-pressed="false">203</button><button data-v="204" aria-pressed="false">204</button><button data-v="205" aria-pressed="false">205</button><button data-v="206" aria-pressed="false">206</button></div>
+          <p class="hint" id="robotNota"></p>
+          <div class="card fallo" id="robotAviso" role="alert" hidden></div>
+          <div class="card" id="robotPregunta" role="alertdialog" aria-labelledby="robotPregTit" hidden>
+            <b id="robotPregTit"></b>
+            <p class="hint" id="robotPregTxt"></p>
+            <div class="btns"><button class="btn" id="rpMesa">Mantener la mesa</button><button class="btn" id="rpRobot">Mantener la disposición respecto al robot</button><button class="btn" id="rpCancel">Cancelar</button></div>
+          </div>
         </div>
         <div class="sec">
           <h2>Pinza OnRobot RG2</h2>
@@ -390,7 +398,9 @@ textarea{width:100%;min-height:120px;border:1px solid var(--line);border-radius:
       <div class="tab" data-panel="datos" hidden>
         <div class="sec">
           <h2>posiciones.yaml</h2>
-          <p class="hint">Posiciones en el marco <code>base_link</code> del robot del grupo, en metros y grados. Es la tabla que alimenta la escena de colisión de MoveIt 2 y los fake_* mientras no haya calibración.</p>
+          <p class="hint">Posiciones en el marco <code>base_link</code> del robot elegido, en metros y radianes. Es la tabla que alimenta la escena de colisión de MoveIt 2 y los fake_* mientras no haya calibración.</p>
+          <div class="field2"><label for="prefijo">Prefijo de los frames</label><select id="prefijo"></select></div>
+          <p class="hint" id="prefijoTxt">Con <code>sim_&lt;id&gt;</code> (un robot) los frames van sin prefijo: <code>base_link</code>, <code>tool0</code>… Solo los URDF dobles del curso (<code>doble_ur3e_&lt;a&gt;_&lt;b&gt;</code>) añaden <code>&lt;id&gt;_</code> (<code>203_base_link</code>…), según la expansión de su xacro. SIN VALIDAR en ROS: se comprueba con <code>ros2 run tf2_tools view_frames</code> en <code>sim_&lt;id&gt;</code>. Más en <a id="prefijoDoc" href="https://github.com/Aimargg/gemelo-celda/blob/main/docs/estado/frames.md" target="_blank" rel="noopener">docs/estado/frames.md</a>.</p>
           <textarea id="yaml" readonly spellcheck="false"></textarea>
           <div class="btns"><button class="btn" id="btnCopy">Copiar</button><button class="btn" id="btnDlYaml">Descargar</button><button class="btn" id="btnPng">Captura PNG</button></div>
         </div>
@@ -469,11 +479,15 @@ const KIN = (() => {
   function A(i, t) { return mul(mul(tr(0,0,d[i]), rz(t)), mul(tr(a[i],0,0), rx(al[i]))); }
   function fkDH(q) { let T = I(); for (let i = 0; i < 6; i++) T = mul(T, A(i, q[i])); return T; }
   // IK analítica (Hawkins / Keating) en el marco DH. Devuelve hasta 8 soluciones válidas.
-  function ikDH(T) {
+  // holgura (solo para las semillas de la IK refinada; 0 en la nominal, que da los mismos números que antes): admite poses
+  // que se salen del espacio de trabajo nominal por poco y las proyecta a su borde (cosenos recortados a ±1). Si se pasa
+  // `forzadas`, recibe por cada solución si ha hecho falta esa proyección.
+  function ikDH(T, holgura = 0, forzadas = null) {
     const sols = [];
     const p05 = [T[3] - D6*T[2], T[7] - D6*T[6], T[11] - D6*T[10]];
     const r05 = Math.hypot(p05[0], p05[1]);
-    if (r05 < D4 - 1e-9) return sols;
+    if (r05 < D4 - 1e-9 - holgura * D4) return sols;
+    const f1 = r05 < D4 - 1e-9;
     const psi = Math.atan2(p05[1], p05[0]);
     const phi = Math.acos(Math.min(1, D4 / r05));
     for (const s1 of [1, -1]) {
@@ -481,7 +495,8 @@ const KIN = (() => {
       const T10 = inv(A(0, t1));
       const T16 = mul(T10, T);
       const c5 = (T16[11] - D4) / D6;
-      if (Math.abs(c5) > 1 + 1e-9) continue;
+      if (Math.abs(c5) > 1 + 1e-9 + holgura) continue;
+      const f5 = f1 || Math.abs(c5) > 1 + 1e-9;
       const a5 = Math.acos(Math.max(-1, Math.min(1, c5)));
       for (const s5 of [1, -1]) {
         const t5 = s5*a5;
@@ -495,7 +510,8 @@ const KIN = (() => {
         const P13 = [T14[0]*0 + T14[1]*(-D4) + T14[3], T14[4]*0 + T14[5]*(-D4) + T14[7], T14[8]*0 + T14[9]*(-D4) + T14[11]];
         const n13 = Math.hypot(P13[0], P13[1], P13[2]);
         const c3 = (n13*n13 - A2*A2 - A3*A3) / (2*A2*A3);
-        if (Math.abs(c3) > 1 + 1e-9) continue;
+        if (Math.abs(c3) > 1 + 1e-9 + holgura) continue;
+        const f3 = f5 || Math.abs(c3) > 1 + 1e-9;
         const a3 = Math.acos(Math.max(-1, Math.min(1, c3)));
         for (const s3 of [1, -1]) {
           const t3 = s3*a3;
@@ -504,6 +520,7 @@ const KIN = (() => {
           const T34 = mul(mul(T32, T21), T14);
           const t4 = Math.atan2(T34[4], T34[0]);
           sols.push([t1, t2, t3, t4, t5, t6].map(wrap));
+          if (forzadas) forzadas.push(f3);
         }
       }
     }
@@ -513,8 +530,10 @@ const KIN = (() => {
   // Relación URDF <-> DH: T_urdf(q) = PRE * T_dh(q) * POST (se comprueba en el test)
   const PRE = rz(PI), POST = I();
   function ik(T_base_tool0) { return ikDH(mul(mul(inv(PRE), T_base_tool0), inv(POST))); }
+  function ikHolgura(T_base_tool0, holgura, forzadas) { return ikDH(mul(mul(inv(PRE), T_base_tool0), inv(POST)), holgura, forzadas); }
   // Jacobiano geométrico numérico (posición+orientación) para manipulabilidad
-  function manip(q) {
+  function manip(q) { return manipDe(fk, q); }
+  function manipDe(fk, q) {
     const h = 1e-5; const T0 = fk(q); const J = [];
     for (let i = 0; i < 6; i++) {
       const qp = q.slice(); qp[i] += h; const T1 = fk(qp);
@@ -540,7 +559,134 @@ const KIN = (() => {
     }
     return Math.abs(det);
   }
-  return { fk, fkLinks, fkDH, ik, ikDH, mul, inv, rz, rx, ry, tr, org, manip, wrap, D1, A2, A3, D4, D5, D6, PRE, JO, W3T: W3_TOOL0 };
+
+  // ======== Cinemática por robot (T1.4, D7) ========
+  // Un objeto de cinemática tiene { calibrada, JO, W3T, fk, fkLinks, ik, ikDetalle, manip, stats }. El nominal es el de
+  // arriba tal cual (mismas funciones y mismos números: I8). Uno calibrado se construye con los orígenes de articulación de
+  // su calibration_<id>.yaml (src/datos/calibracion.js), con la misma convención que el URDF del curso: origen
+  // Trans·Rz(yaw)·Ry(pitch)·Rx(roll) y después el giro de la articulación en su eje z; base_link → base_link_inertia gira π
+  // (ur_macro.xacro), como en JO[0]. tool0 cuelga de wrist_3 igual que en el nominal (la calibración no lo cambia).
+  const CLAVES_CAL = ['shoulder', 'upper_arm', 'forearm', 'wrist_1', 'wrist_2', 'wrist_3'];
+  // IK refinada: cada rama de la IK analítica nominal es una semilla que se refina con Levenberg–Marquardt sobre la FK
+  // calibrada hasta TOL_POS y TOL_ROT, con MAX_ITER iteraciones como mucho. Las ramas que no llegan se descartan y se cuentan.
+  // HOLGURA_SEMILLA: además de las ramas analíticas, se refinan las que salen al proyectar al borde del espacio de trabajo
+  // nominal una pose que se sale de él por poco (coseno hasta 1,05; unos 5 mm junto al codo estirado). Una calibración
+  // mueve el borde unos milímetros, y sin ellas las poses junto al codo o la muñeca estirados se quedaban sin semilla.
+  // Solo cuentan como «ramas analíticas» (`semillas`) las de la IK nominal estricta: si no hay ninguna, el punto está fuera
+  // de alcance; si las hay y ninguna converge, «IK calibrada no converge» (T1.4-5).
+  const TOL_POS = 1e-6, TOL_ROT = 1e-6, MAX_ITER = 30, HOLGURA_SEMILLA = 0.05, DUP_Q = 1e-4;
+  function mulR(a, b) { // producto de dos transformadas rígidas (la última fila es 0 0 0 1)
+    return [a[0]*b[0] + a[1]*b[4] + a[2]*b[8], a[0]*b[1] + a[1]*b[5] + a[2]*b[9], a[0]*b[2] + a[1]*b[6] + a[2]*b[10], a[0]*b[3] + a[1]*b[7] + a[2]*b[11] + a[3],
+      a[4]*b[0] + a[5]*b[4] + a[6]*b[8], a[4]*b[1] + a[5]*b[5] + a[6]*b[9], a[4]*b[2] + a[5]*b[6] + a[6]*b[10], a[4]*b[3] + a[5]*b[7] + a[6]*b[11] + a[7],
+      a[8]*b[0] + a[9]*b[4] + a[10]*b[8], a[8]*b[1] + a[9]*b[5] + a[10]*b[9], a[8]*b[2] + a[9]*b[6] + a[10]*b[10], a[8]*b[3] + a[9]*b[7] + a[10]*b[11] + a[11], 0, 0, 0, 1];
+  }
+  // Eslabones y tool0 en base_link para unos orígenes de articulación jo: T_i = T_(i−1) · jo[i] · Rz(q_i). jo[i] · Rz(q) solo
+  // cambia las dos primeras columnas de jo[i], así que se calcula directamente (es lo que más cuesta en la IK refinada).
+  function cadena(jo, q) {
+    const out = []; let T = null;
+    for (let i = 0; i < 6; i++) {
+      const J = jo[i], c = Math.cos(q[i]), s = Math.sin(q[i]);
+      const M = [J[0]*c + J[1]*s, J[1]*c - J[0]*s, J[2], J[3], J[4]*c + J[5]*s, J[5]*c - J[4]*s, J[6], J[7], J[8]*c + J[9]*s, J[9]*c - J[8]*s, J[10], J[11], 0, 0, 0, 1];
+      T = T ? mulR(T, M) : M; out.push(T);
+    }
+    out.push(mulR(T, W3_TOOL0));
+    return out;
+  }
+  // Error de pose de T (actual) respecto a D (deseada) en base_link: posición D − T y vector de giro de D·Tᵀ
+  function errorPose(T, D) {
+    const ep = [D[3] - T[3], D[7] - T[7], D[11] - T[11]];
+    const M = new Array(9); // D·Tᵀ (solo la rotación)
+    for (let r = 0; r < 3; r++) for (let c = 0; c < 3; c++) M[r * 3 + c] = D[r * 4] * T[c * 4] + D[r * 4 + 1] * T[c * 4 + 1] + D[r * 4 + 2] * T[c * 4 + 2];
+    const v = [M[7] - M[5], M[2] - M[6], M[3] - M[1]]; const s = Math.hypot(v[0], v[1], v[2]) / 2, c = (M[0] + M[4] + M[8] - 1) / 2;
+    const th = Math.atan2(s, c); let er;
+    if (s > 1e-9) er = v.map(x => x / 2 * th / s);
+    else if (c > 0) er = v.map(x => x / 2); // giro casi nulo
+    else { // casi media vuelta: eje desde la diagonal de (M + I) / 2
+      const k = [0, 4, 8].reduce((a, b) => M[b] > M[a] ? b : a, 0) / 4; const ax = [0, 0, 0];
+      ax[k] = Math.sqrt(Math.max(0, (M[k * 4] + 1) / 2)); for (let j = 0; j < 3; j++) if (j !== k) ax[j] = (M[j * 3 + k] + M[k * 3 + j]) / 4 / ax[k];
+      er = ax.map(x => x * th);
+    }
+    return { ep, er, p: Math.hypot(ep[0], ep[1], ep[2]), r: Math.hypot(er[0], er[1], er[2]) };
+  }
+  // Búferes de trabajo de refinar (la página tiene un solo hilo y refinar no se llama a sí misma)
+  const _J = new Float64Array(36), _A = new Float64Array(36), _g = new Float64Array(6), _dq = new Float64Array(6);
+  function cholesky6(A, b, x) { // A·x = b con A simétrica definida positiva (JᵀJ + λI), en el sitio; false si no lo es
+    for (let j = 0; j < 6; j++) {
+      let d = A[j * 6 + j]; for (let k = 0; k < j; k++) d -= A[j * 6 + k] * A[j * 6 + k];
+      if (!(d > 0)) return false; d = Math.sqrt(d); A[j * 6 + j] = d;
+      for (let i = j + 1; i < 6; i++) { let s = A[i * 6 + j]; for (let k = 0; k < j; k++) s -= A[i * 6 + k] * A[j * 6 + k]; A[i * 6 + j] = s / d; }
+    }
+    for (let i = 0; i < 6; i++) { let s = b[i]; for (let k = 0; k < i; k++) s -= A[i * 6 + k] * x[k]; x[i] = s / A[i * 6 + i]; }
+    for (let i = 5; i >= 0; i--) { let s = x[i]; for (let k = i + 1; k < 6; k++) s -= A[k * 6 + i] * x[k]; x[i] = s / A[i * 6 + i]; }
+    return true;
+  }
+  // Levenberg–Marquardt desde q0 hacia la pose D con los orígenes jo: (JᵀJ + λI)·Δq = Jᵀe, con J el jacobiano geométrico
+  // en base_link y e el error de posición y de giro. λ baja si el paso mejora y sube si no. Devuelve { q, it, p, r, ok }.
+  function refinar(jo, q0, D) {
+    let q = q0.slice(), Ls = cadena(jo, q), e = errorPose(Ls[6], D), n2 = e.p * e.p + e.r * e.r, lam = 1e-6, it = 0;
+    const J = _J, A = _A, g = _g, dq = _dq;
+    while (!(e.p <= TOL_POS && e.r <= TOL_ROT) && it < MAX_ITER) {
+      it++;
+      const P = Ls[6], px = P[3], py = P[7], pz = P[11];
+      for (let i = 0; i < 6; i++) { // columna i: [z × (p − o); z]
+        const T = Ls[i], zx = T[2], zy = T[6], zz = T[10], dx = px - T[3], dy = py - T[7], dz = pz - T[11], k = i * 6;
+        J[k] = zy * dz - zz * dy; J[k + 1] = zz * dx - zx * dz; J[k + 2] = zx * dy - zy * dx; J[k + 3] = zx; J[k + 4] = zy; J[k + 5] = zz;
+      }
+      const ep = e.ep, er = e.er;
+      for (let i = 0; i < 6; i++) {
+        const a = i * 6; g[i] = J[a] * ep[0] + J[a + 1] * ep[1] + J[a + 2] * ep[2] + J[a + 3] * er[0] + J[a + 4] * er[1] + J[a + 5] * er[2];
+        for (let j = 0; j <= i; j++) { const b = j * 6; const t = J[a] * J[b] + J[a + 1] * J[b + 1] + J[a + 2] * J[b + 2] + J[a + 3] * J[b + 3] + J[a + 4] * J[b + 4] + J[a + 5] * J[b + 5]; A[i * 6 + j] = A[j * 6 + i] = t; }
+        A[i * 6 + i] += lam;
+      }
+      if (!cholesky6(A, g, dq)) { lam = Math.min(lam * 10, 1e6); continue; }
+      const qn = [q[0] + dq[0], q[1] + dq[1], q[2] + dq[2], q[3] + dq[3], q[4] + dq[4], q[5] + dq[5]];
+      const Ln = cadena(jo, qn), en = errorPose(Ln[6], D), nn = en.p * en.p + en.r * en.r;
+      if (nn < n2) { q = qn; Ls = Ln; e = en; n2 = nn; lam = Math.max(lam / 10, 1e-12); } else lam = Math.min(lam * 10, 1e6);
+    }
+    return { q: q.map(wrap), it, p: e.p, r: e.r, ok: e.p <= TOL_POS && e.r <= TOL_ROT };
+  }
+  const NOMINAL = { calibrada: false, JO, W3T: W3_TOOL0, fk, fkLinks, ik, manip, stats: null,
+    ikDetalle: T => { const sols = ik(T); return { sols, semillas: sols.length, descartadas: 0, errPos: 0, errRot: 0 }; } };
+  // kinematics: la entrada `kinematics` de CALIBRACION.robots[id] (clave → { x, y, z, roll, pitch, yaw })
+  function calibrada(kinematics) {
+    const jo = CLAVES_CAL.map((k, i) => { const o = kinematics[k]; const m = org(o.x, o.y, o.z, o.roll, o.pitch, o.yaw); return i === 0 ? mul(rz(PI), m) : m; });
+    const fkLinksC = q => cadena(jo, q), fkC = q => cadena(jo, q)[6];
+    // stats se puede leer desde fuera: llamadas, ramas analíticas (semillas), semillas proyectadas al borde (extra),
+    // ramas que convergen, descartadas (no convergen), duplicadas (convergen a una postura ya hallada) e iteraciones de LM
+    const stats = { llamadas: 0, semillas: 0, extra: 0, convergidas: 0, descartadas: 0, duplicadas: 0, iteraciones: 0 };
+    // Dos ramas que convergen a la misma postura (todas las articulaciones a menos de DUP_Q rad) cuentan una sola vez
+    const igual = (a, b) => { for (let i = 0; i < 6; i++) if (Math.abs(wrap(a[i] - b[i])) >= DUP_Q) return false; return true; };
+    function ikDetalle(T) {
+      const forz = [], sem = ikHolgura(T, HOLGURA_SEMILLA, forz), sols = []; let desc = 0, conv = 0, dup = 0, errPos = 0, errRot = 0;
+      sem.forEach((s, k) => {
+        const r = refinar(jo, s, T); stats.iteraciones += r.it; if (!r.ok) { desc++; return; } conv++;
+        if (sols.some(o => igual(o, r.q))) { dup++; return; }
+        sols.push(r.q); errPos = Math.max(errPos, r.p); errRot = Math.max(errRot, r.r);
+      });
+      const extra = forz.filter(Boolean).length, semillas = sem.length - extra;
+      stats.llamadas++; stats.semillas += semillas; stats.extra += extra; stats.convergidas += conv; stats.descartadas += desc; stats.duplicadas += dup;
+      return { sols, semillas, extra, descartadas: desc, duplicadas: dup, errPos, errRot };
+    }
+    return { calibrada: true, JO: jo, W3T: W3_TOOL0, fk: fkC, fkLinks: fkLinksC, ik: T => ikDetalle(T).sols, ikDetalle, manip: q => manipDe(fkC, q), stats };
+  }
+
+  // ======== world ↔ base_link (T1.4 y T1.5) ========
+  // world: ejes de la mesa (el marco de la escena del gemelo) con origen en (x0, y0, z0), el centro de la base sobre el
+  // tablero. base_link gira yaw alrededor de z respecto a world (mount_yaw − π del xacro del curso). Es la única conversión
+  // entre los dos marcos. Con yaw = 0 es una resta (o una suma) exacta, sin pasar por senos y cosenos: con el robot nominal
+  // los números no cambian ni en el último bit (I8).
+  function marcoBase(x0, y0, z0, yaw) {
+    const c = Math.cos(yaw), s = Math.sin(yaw), giro = yaw !== 0;
+    return {
+      x0, y0, z0, yaw,
+      aBase: (x, y, z) => { const dx = x - x0, dy = y - y0; return giro ? [c * dx + s * dy, -s * dx + c * dy, z - z0] : [dx, dy, z - z0]; },
+      aMundo: (x, y, z) => giro ? [c * x - s * y + x0, s * x + c * y + y0, z + z0] : [x + x0, y + y0, z + z0],
+      vecAMundo: (x, y, z) => giro ? [c * x - s * y, s * x + c * y, z] : [x, y, z],
+      yawABase: a => a - yaw, yawAMundo: a => a + yaw,
+    };
+  }
+  return { fk, fkLinks, fkDH, ik, ikDH, mul, inv, rz, rx, ry, tr, org, manip, wrap, D1, A2, A3, D4, D5, D6, PRE, JO, W3T: W3_TOOL0,
+    nominal: NOMINAL, calibrada, marcoBase, TOL_POS, TOL_ROT, MAX_ITER, DUP_Q };
 })();
 // ======================= Utilidades y constantes =======================
 const PI = Math.PI, D2R = PI / 180, R2D = 180 / PI;
@@ -559,6 +705,7 @@ const ESC = { lista: [], papelera: [], cur: null, base: null, basada: null, ulti
 let EDITANDO = false; // mientras se arrastra algo no se recalculan los planes (es lo caro); se recalculan al soltar
 let OBS_EXTRA = []; // obstáculos previstos (la fruta que tendrá el plato cuando se coja)
 let VERSION_ESCENA = 0; // sube cada vez que cambia algo del entorno (objetos movidos, cogidos o soltados)
+let ROBOT_PEDIDO = false, AVISO_ROBOT = null; // cambio de robot desde el selector · aviso de robot pendiente (aplicarCinematica)
 class FalloDemo extends Error { constructor(msg, tipo = 'fallo', info = {}) { super(msg); this.tipo = tipo; this.info = { ...(typeof D !== 'undefined' ? D.ctx : {}), ...info }; } }
 
 const MESA = { w: 1.18, d: 0.83, h: 0.76, e: 0.03 };
@@ -580,13 +727,15 @@ const ARUCO = ['1011010100110010', '0000111110011010', '0011001100101101', '1001
 const LAYOUT = (() => {
   const VERSION = 9;        // versión que escribe esta página
   const MAX_TXT = 50000;    // reglas de Firestore: el layout es un texto de 50.000 caracteres como máximo (I2)
-  // Campos de la v9. `robotId` es el robot calibrado (T1.4 añadirá '203'–'206'); el campo `robot` sigue siendo la
-  // posición A/B del brazo en la celda. `perfil`: perfil de movimiento (D6). `sensor`: modelo de sensor de las cámaras
-  // (D10). En T1.1 ninguno cambia el comportamiento: T1.4, T1.6 y T1.7 les darán efecto.
-  const ROBOT_IDS = ['nominal'], PERFILES = ['curso', 'gemelo'], SENSORES = ['elp-ficha', 'gemelo-v8'];
-  const CAMPOS_V9 = ['version', 'robotId', 'perfil', 'sensor'];
-  const NUEVA = { robotId: 'nominal', perfil: 'curso', sensor: 'elp-ficha' };   // escena nueva (layoutDefecto)
-  const MIGRADA = { robotId: 'nominal', perfil: 'gemelo', sensor: 'gemelo-v8' }; // escena v8: conserva su comportamiento (I1, D6)
+  // Campos de la v9. `robotId` es el robot calibrado: 'nominal' o uno de los UR3e del laboratorio con su calibración del
+  // curso (T1.4, src/datos/calibracion.js); el campo `robot` sigue siendo la posición A/B del brazo en la celda. `perfil`:
+  // perfil de movimiento (D6). `sensor`: modelo de sensor de las cámaras (D10); T1.6 y T1.7 les darán efecto.
+  // `prefijoFrames` (T1.5): prefijo de los nombres de frame al exportar: '' con sim_<id> (un robot) o '<robotId>_' con el
+  // URDF doble del curso (doble_ur3e_<a>_<b>). Una v9 sin el campo (anterior a T1.5) se completa con ''.
+  const ROBOT_IDS = ['nominal', '203', '204', '205', '206'], PERFILES = ['curso', 'gemelo'], SENSORES = ['elp-ficha', 'gemelo-v8'];
+  const CAMPOS_V9 = ['version', 'robotId', 'perfil', 'sensor', 'prefijoFrames'];
+  const NUEVA = { robotId: 'nominal', perfil: 'curso', sensor: 'elp-ficha', prefijoFrames: '' };   // escena nueva (layoutDefecto)
+  const MIGRADA = { robotId: 'nominal', perfil: 'gemelo', sensor: 'gemelo-v8', prefijoFrames: '' }; // escena v8: conserva su comportamiento (I1, D6)
   const opcional = ruta => /^cams\.[^.]+\.roll$/.test(ruta); // giro de la imagen: 0 si falta (orientDe, espejo)
   const tipo = v => v === null ? 'null' : Array.isArray(v) ? 'array' : typeof v;
   const copia = o => JSON.parse(JSON.stringify(o));
@@ -632,6 +781,9 @@ const LAYOUT = (() => {
         if (l[k] === undefined) return `falta «${k}»`;
         if (!lista.includes(l[k])) return `«${k}» desconocido (${JSON.stringify(l[k])})`;
       }
+      const pf = l.prefijoFrames;
+      if (pf === undefined) return 'falta «prefijoFrames»';
+      if (pf !== '' && !(l.robotId !== 'nominal' && pf === `${l.robotId}_`)) return `«prefijoFrames» solo puede ser "" o "<robotId>_" (${JSON.stringify(pf)})`;
     }
     return null;
   }
@@ -639,7 +791,8 @@ const LAYOUT = (() => {
   // Entrada: el layout como objeto o como texto JSON. Nunca modifica la entrada.
   // Salida: { layout, soloLectura } si se puede abrir, o { error } con el motivo.
   //  · Sin `version` (v8 o anterior): se completa como hacía normalizar() (caja y pedido si faltan) y se le añaden
-  //    version 9, robotId 'nominal', perfil 'gemelo' y sensor 'gemelo-v8'. El resto se conserva tal cual.
+  //    version 9, robotId 'nominal', perfil 'gemelo', sensor 'gemelo-v8' y prefijoFrames ''. El resto se conserva tal cual.
+  //  · Una v9 sin `prefijoFrames` (creada antes de T1.5) se completa con ''.
   //  · Con una `version` mayor que la de esta página: se abre en solo lectura (no se guarda en local ni en el grupo).
   function migrarLayout(entrada, esq) {
     let l = entrada;
@@ -650,7 +803,7 @@ const LAYOUT = (() => {
       if (!l.caja) l.caja = copia(esq.ref.caja);
       if (!l.pedido) l.pedido = 2;
       Object.assign(l, { version: VERSION }, MIGRADA);
-    }
+    } else if (l.version === VERSION && l.prefijoFrames === undefined) l.prefijoFrames = '';
     const error = validarLayout(l, esq);
     return error ? { error } : { layout: l, soloLectura: l.version > VERSION };
   }
@@ -685,6 +838,94 @@ const RNG = (() => {
   const semillaPlan = p => fnv1a(canonico(p));
   return { aleat, fnv1a, canonico, semillaPlan };
 })();
+// GENERADO por tools/fixtures/fk_desde_xacro.py: no editar a mano (ver tools/fixtures/LEEME.md).
+// Calibración cinemática de los UR3e del laboratorio y su montaje respecto a «world».
+// Atribución (copiado con la decisión Q4 = A del plan v9; el repo del curso no declara licencia):
+//   repo ignacioDeusto/ros2_mucsi_26_27, commit 4e4e1a7 (4e4e1a74fe5ab81c3e1279120b33e9b235be198f),
+//   ros_workspace/src/launcher_robots_lab_robotica/calibration/calibration_<id>.yaml  -> kinematics, hash
+//   ros_workspace/src/launcher_robots_lab_robotica/urdf/ur3e_rg2_<id>.urdf.xacro      -> mount_yaw
+//   ros_workspace/src/launcher_robots_lab_robotica/urdf/doble_ur3e_<a>_<b>.urdf.xacro -> doble (x, y, yaw del robot en la escena de dos)
+// «nominal»: config/ur3e/default_kinematics.yaml de UniversalRobots/Universal_Robots_ROS2_Description (rama jazzy, commit 3852128,
+//   licencia BSD-3-Clause, Universal Robots A/S).
+// Cada entrada de kinematics es el <origin> (xyz en m, rpy en rad; R = Rz(yaw)·Ry(pitch)·Rx(roll)) de la
+// articulación de articulacionDe[clave]. world -> base_link = Rz(mount_yaw - pi) (+ x, y en la escena doble).
+// sospechoso: tool0 se aleja más de 50 mm del nominal (ver tests/fixtures/cinematica/<id>.json).
+const CALIBRACION = {
+  fuente: { repo: "ignacioDeusto/ros2_mucsi_26_27", commit: "4e4e1a74fe5ab81c3e1279120b33e9b235be198f" },
+  articulacionDe: { shoulder: "shoulder_pan_joint", upper_arm: "shoulder_lift_joint", forearm: "elbow_joint", wrist_1: "wrist_1_joint", wrist_2: "wrist_2_joint", wrist_3: "wrist_3_joint" },
+  robots: {
+    "nominal": {
+      mount_yaw: 3.141592653589793,
+      doble: null,
+      kinematics: {
+        shoulder: { x: 0, y: 0, z: 0.15185, roll: 0, pitch: 0, yaw: 0 },
+        upper_arm: { x: 0, y: 0, z: 0, roll: 1.570796327, pitch: 0, yaw: 0 },
+        forearm: { x: -0.24355, y: 0, z: 0, roll: 0, pitch: 0, yaw: 0 },
+        wrist_1: { x: -0.2132, y: 0, z: 0.13105, roll: 0, pitch: 0, yaw: 0 },
+        wrist_2: { x: 0, y: -0.08535, z: -1.750557762378351e-11, roll: 1.570796327, pitch: 0, yaw: 0 },
+        wrist_3: { x: 0, y: 0.0921, z: -1.8890025766262e-11, roll: 1.570796326589793, pitch: 3.141592653589793, yaw: 3.141592653589793 },
+      },
+      hash: "calib_16756443741236045476",
+      sospechoso: false,
+    },
+    "203": {
+      mount_yaw: 0.785398163,
+      doble: { fichero: "urdf/doble_ur3e_203_204.urdf.xacro", x: 0, y: 0, yaw: 0.785398163 },
+      kinematics: {
+        shoulder: { x: 0, y: 0, z: 0.151982148052407, roll: 0, pitch: 0, yaw: -1.252186961134272e-07 },
+        upper_arm: { x: -0.000117751414108642, y: 0, z: 0, roll: 1.570529532239682, pitch: 0, yaw: 6.651065255205953e-06 },
+        forearm: { x: -0.2438301105845021, y: 0, z: 0, roll: 3.140422330317566, pitch: 3.140175127557685, yaw: 3.141557960492696 },
+        wrist_1: { x: -0.2130137298406746, y: -0.0008374574461011085, z: 0.131604615239527, roll: 0.006363349347924476, pitch: 0.00401697960892016, yaw: 4.539196023121239e-06 },
+        wrist_2: { x: 6.007850950088259e-06, y: -0.08542863254646067, z: -8.597162561949335e-05, roll: 1.571802682556826, pitch: 0, yaw: -2.655106245398608e-06 },
+        wrist_3: { x: -5.693288443582482e-05, y: 0.09218998896546257, z: -4.447305315826958e-05, roll: 1.570313920297103, pitch: 3.141592653589793, yaw: 3.141592540005369 },
+      },
+      hash: "calib_15656952713550414269",
+      sospechoso: false,
+    },
+    "204": {
+      mount_yaw: 2.502802148,
+      doble: { fichero: "urdf/doble_ur3e_203_204.urdf.xacro", x: 0.0051, y: -0.9, yaw: 2.502802148 },
+      kinematics: {
+        shoulder: { x: 0, y: 0, z: 0.1521279453523494, roll: 0, pitch: 0, yaw: 2.041466800294101e-08 },
+        upper_arm: { x: -0.000126490720455529, y: 0, z: 0, roll: 1.570319637987853, pitch: 0, yaw: -3.505034055612523e-07 },
+        forearm: { x: -0.2438505136709801, y: 0, z: 0, roll: 3.14155051985654, pitch: 3.140466803531021, yaw: -7.084894948754381e-06 },
+        wrist_1: { x: -0.2135185211425481, y: 0.0004846921902928406, z: 0.1314220698336163, roll: 3.137904612506837, pitch: -3.140656470281812, yaw: -1.537537853229302e-08 },
+        wrist_2: { x: -1.154600175010752e-05, y: -0.08547949008565842, z: -2.708491974536627e-05, roll: 1.571113185480083, pitch: 0, yaw: 8.04165597882711e-07 },
+        wrist_3: { x: -9.775976460195503e-05, y: 0.09224742740592033, z: -0.0001459608408510609, roll: 1.569214052652985, pitch: 3.141592653589793, yaw: 3.141592618528382 },
+      },
+      hash: "calib_18117822752032744163",
+      sospechoso: true,
+    },
+    "205": {
+      mount_yaw: 3.141592653589793,
+      doble: { fichero: "urdf/doble_ur3e_205_206.urdf.xacro", x: 0, y: 0, yaw: 3.14159265358979 },
+      kinematics: {
+        shoulder: { x: 0, y: 0, z: 0.1519932046329507, roll: 0, pitch: 0, yaw: -1.218598534562937e-07 },
+        upper_arm: { x: -0.000133574490397829, y: 0, z: 0, roll: 1.571184054925294, pitch: 0, yaw: 3.46931133972767e-07 },
+        forearm: { x: -0.2436650957547605, y: 0, z: 0, roll: 3.141429134391114, pitch: 3.1413007534876, yaw: 3.141585104530758 },
+        wrist_1: { x: -0.2131937361714605, y: -0.0007020488731425266, z: 0.1309164554311118, roll: 0.00536252025231981, pitch: 0.0008389012176466991, yaw: 6.286415122585481e-06 },
+        wrist_2: { x: 8.773921560453022e-06, y: -0.08546373128392754, z: -7.049413943712751e-05, roll: 1.571621169361338, pitch: 0, yaw: -1.170707376603464e-06 },
+        wrist_3: { x: -0.0001118912945880604, y: 0.09206143807114163, z: -0.0001405802282309842, roll: 1.569269301778692, pitch: 3.141592653589793, yaw: -3.141592499182456 },
+      },
+      hash: "calib_7896003446683457052",
+      sospechoso: false,
+    },
+    "206": {
+      mount_yaw: 3.141592653589793,
+      doble: { fichero: "urdf/doble_ur3e_205_206.urdf.xacro", x: 0, y: -1.102, yaw: 3.14159265358979 },
+      kinematics: {
+        shoulder: { x: 0, y: 0, z: 0.1519047144003236, roll: 0, pitch: 0, yaw: -9.530599491829224e-08 },
+        upper_arm: { x: -0.0001107110555958654, y: 0, z: 0, roll: 1.570329613154402, pitch: 0, yaw: 3.417864421477842e-06 },
+        forearm: { x: -0.2437259737936491, y: 0, z: 0, roll: 0.001105848958660876, pitch: 0.0006034712402559254, yaw: -4.507836367124921e-06 },
+        wrist_1: { x: -0.2132584137315163, y: -0.0004232381093861393, z: 0.1311440944208638, roll: 0.003227264192714675, pitch: 0.0009285627531319139, yaw: 7.543943465429524e-07 },
+        wrist_2: { x: 0.000165700073623267, y: -0.08547162011592442, z: -0.0001881112192972863, roll: 1.572997184989922, pitch: 0, yaw: 1.978861212743183e-06 },
+        wrist_3: { x: -9.449984879160511e-05, y: 0.0920975245267849, z: -9.62025620790864e-05, roll: 1.569751754450705, pitch: 3.141592653589793, yaw: 3.141592261980481 },
+      },
+      hash: "calib_2954753171256876401",
+      sospechoso: false,
+    },
+  },
+};
 
 function layoutDefecto() {
   return {
@@ -833,11 +1074,13 @@ class Robot {
     const link = name => { const g = new THREE.Group(); this.porLink[name] = []; gltf.scene.traverse(o => { if (o.isMesh && o.name.startsWith(name + '__')) { const k = (o.name.split('__')[1].match(/^[a-z]+/) || ['gris'])[0]; if (!o.geometry.attributes.normal) o.geometry.computeVertexNormals(); const m = new THREE.Mesh(o.geometry, mats[k] || mats.gris); m.castShadow = !fantasma; m.receiveShadow = !fantasma; g.add(m); this.meshes.push(m); this.porLink[name].push(m); } }); return g; };
     const place = (g, v) => { g.matrixAutoUpdate = false; g.matrix.copy(m4(KIN.org(...v))); return g; };
     this.root.add(link('base'));
-    this.j = []; let parent = this.root; const names = ['shoulder', 'upperarm', 'forearm', 'wrist1', 'wrist2', 'wrist3'];
-    for (let i = 0; i < 6; i++) { const o = new THREE.Group(); o.matrixAutoUpdate = false; o.matrix.copy(m4(KIN.JO[i])); parent.add(o); const j = new THREE.Group(); o.add(j); j.add(place(link(names[i]), VIS[names[i]])); this.j.push(j); parent = j; }
+    this.j = []; this.o = []; let parent = this.root; const names = ['shoulder', 'upperarm', 'forearm', 'wrist1', 'wrist2', 'wrist3'];
+    for (let i = 0; i < 6; i++) { const o = new THREE.Group(); o.matrixAutoUpdate = false; o.matrix.copy(m4(KIN.JO[i])); parent.add(o); this.o.push(o); const j = new THREE.Group(); o.add(j); j.add(place(link(names[i]), VIS[names[i]])); this.j.push(j); parent = j; }
     this.tool0 = new THREE.Group(); this.tool0.matrixAutoUpdate = false; this.tool0.matrix.copy(m4(KIN.W3T)); parent.add(this.tool0);
     this.q = [0, -PI / 2, 0, -PI / 2, 0, 0]; this.setQ(this.q);
   }
+  // Orígenes de articulación de otra cinemática (T1.4): el brazo se dibuja con la misma cadena que usan la IK y la colisión
+  setCinematica(C) { for (let i = 0; i < 6; i++) this.o[i].matrix.copy(m4(C.JO[i])); this.tool0.matrix.copy(m4(C.W3T)); this.root.updateMatrixWorld(true); }
   setQ(q) { this.q = q.slice(); for (let i = 0; i < 6; i++) this.j[i].rotation.z = q[i]; this.root.updateMatrixWorld(true); }
   place(x, y, yaw) { this.root.position.set(x, y, MESA.h); this.root.rotation.set(0, 0, yaw); this.root.updateMatrixWorld(true); }
   puntos() { const p = []; const v = new THREE.Vector3(); for (let i = 0; i < 6; i++) { this.j[i].getWorldPosition(v); p.push(v.clone()); } this.tool0.getWorldPosition(v); p.push(v.clone()); return p; }
@@ -1124,7 +1367,28 @@ function actualizarCam(k) {
 
 // ======================= Cinemática aplicada =======================
 let robot = null, otro = null; const pinza = new Pinza();
-let REF_MANIP = 1;
+let REF_MANIP = 1; const Q_REF_MANIP = [0, -1.9, 1.9, -1.57, -1.57, 0];
+// ----- Robot calibrado activo (T1.4, D7) y conversión world ↔ base_link (T1.5) -----
+// L.robotId elige la cinemática: 'nominal' (la de src/kin.js tal cual, IK analítica sin refinar) o la calibración del curso
+// de 203–206 (src/datos/calibracion.js, IK analítica refinada). También fija el giro de base_link respecto a world, que
+// sale de los datos: mount_yaw − π de su xacro (nominal, 205 y 206: 0). L.robot sigue siendo la posición A/B en la celda.
+// Solo hay un robot activo: la IK, la colisión y el dibujo del brazo usan CIN. El brazo «otro» (decorativo) es nominal.
+const ROBOTS = {};
+function robotDe(id) {
+  if (!ROBOTS[id]) { const datos = CALIBRACION.robots[id]; ROBOTS[id] = { id, datos, cin: id === 'nominal' ? KIN.nominal : KIN.calibrada(datos.kinematics), yaw: datos.mount_yaw - PI }; }
+  return ROBOTS[id];
+}
+// Un layout de una versión más nueva (solo lectura) puede traer un robot que esta página no conoce: se dibuja con el nominal
+const idValido = id => Object.hasOwn(CALIBRACION.robots, id) && LAYOUT.ROBOT_IDS.includes(id) ? id : 'nominal';
+let ROB = robotDe(idValido(L.robotId)), CIN = ROB.cin;
+// Marco de base_link del robot activo en su posición de la celda: la única conversión entre world (la escena, con los ejes
+// de la mesa) y base_link (KIN.marcoBase). Todo lo que pasa de un marco a otro la usa: planificación, colisión, dibujo,
+// exportación y textos.
+let _marco = { k: '', m: null };
+function marco() { const b = BASES[L.robot], k = `${L.robot}|${ROB.id}`; if (_marco.k !== k) _marco = { k, m: KIN.marcoBase(b.x, b.y, MESA.h, ROB.yaw) }; return _marco.m; }
+function mundoABase(p) { const r = marco().aBase(p.x, p.y, p.z); return new THREE.Vector3(r[0], r[1], r[2]); }
+function baseAMundo(x, y, z) { const r = marco().aMundo(x, y, z); return new THREE.Vector3(r[0], r[1], r[2]); }
+const yawABase = a => marco().yawABase(a);
 function poseVertical(pb, yawb) { const c = Math.cos(yawb), s = Math.sin(yawb); return [c, s, 0, pb.x, s, -c, 0, pb.y, 0, 0, -1, pb.z, 0, 0, 0, 1]; }
 // Pinza horizontal: eje de la herramienta en el plano de la mesa (yaw) y dedos en vertical (flip = ±1)
 // Pinza «horizontal»: eje de la herramienta casi horizontal hacia yaw y bajando un ángulo pitch; dedos que se abren en el plano vertical (flip = ±1)
@@ -1135,19 +1399,22 @@ function poseHoriz(pb, yawb, flip, pitch = 0) {
   return [x[0], y[0], z[0], pb.x, x[1], y[1], z[1], pb.y, x[2], y[2], z[2], pb.z, 0, 0, 0, 1];
 }
 function qValida(q, minZ = 0.02) {
-  const Ls = KIN.fkLinks(q);
+  const Ls = CIN.fkLinks(q);
   for (let i = 2; i < 7; i++) { const z = Ls[i][11]; if (z < minZ) return false; if (i >= 3 && z < 0.30 && Math.hypot(Ls[i][3], Ls[i][7]) < 0.085) return false; }
   return true;
 }
-function mundoABase(p) { return p.clone().applyMatrix4(robot.root.matrixWorld.clone().invert()); }
-// IK del TCP en el mundo. opts: horiz (pinza horizontal), flip (fijo si se lleva el plato), sym, w (apertura), minZ
-function ikTCP(pw, yaw, qNear, opts = {}) {
+// Poses de tool0 en base_link que piden ikTCP para un TCP en el mundo (pw, yaw): una por cada variante (flip o yaw + 180°)
+function posesTCP(pw, yaw, opts = {}) {
   const w = opts.w ?? pinza.w; const tz = pinza.tcpZ(w);
   const tool = opts.horiz ? pw.clone().addScaledVector(ejeHoriz(yaw, opts.pitch || 0), -tz) : new THREE.Vector3(pw.x, pw.y, pw.z + tz);
-  const pb = mundoABase(tool); const yb = yaw - robot.root.rotation.z;
+  const pb = mundoABase(tool); const yb = yawABase(yaw);
   const cands = opts.horiz ? (opts.flip ? [[yb, opts.flip]] : [[yb, 1], [yb, -1]]) : (opts.sym === false ? [[yb]] : [[yb], [yb + PI]]);
+  return cands.map(cd => opts.horiz ? poseHoriz(pb, cd[0], cd[1], opts.pitch || 0) : poseVertical(pb, cd[0]));
+}
+// IK del TCP en el mundo. opts: horiz (pinza horizontal), flip (fijo si se lleva el plato), sym, w (apertura), minZ
+function ikTCP(pw, yaw, qNear, opts = {}) {
   let best = null, bestC = Infinity;
-  for (const cd of cands) for (const s of KIN.ik(opts.horiz ? poseHoriz(pb, cd[0], cd[1], opts.pitch || 0) : poseVertical(pb, cd[0]))) {
+  for (const T of posesTCP(pw, yaw, opts)) for (const s of CIN.ik(T)) {
     if (!qValida(s, opts.minZ ?? 0.02)) continue;
     const q = enLimites(qNear ? s.map((v, i) => qNear[i] + angDiff(v, qNear[i])) : s.slice()); if (!q) continue; // límites del UR3e (codo ±180°)
     if (!opts.sinColision && choqueEn(q, ctxDe(opts))) continue; // ni autocolisión ni choque con el entorno
@@ -1156,17 +1423,25 @@ function ikTCP(pw, yaw, qNear, opts = {}) {
   }
   return best;
 }
+// ¿Tiene el TCP (pw, yaw) ramas de la IK analítica nominal y ninguna converge en la IK calibrada? (T1.4-5). Es lo que
+// distingue «IK calibrada no converge» de «fuera de alcance» (sin ninguna rama). Con el nominal no hay refinado: nunca.
+function ikNoConverge(pw, yaw, opts = {}) {
+  if (!CIN.calibrada) return false; let semillas = 0, sols = 0;
+  for (const T of posesTCP(pw, yaw, opts)) { const d = CIN.ikDetalle(T); semillas += d.semillas; sols += d.sols.length; }
+  return semillas > 0 && sols === 0;
+}
+const causaSinIK = (pw, yaw, opts) => ikNoConverge(pw, yaw, opts) ? 'ik_calibrada' : 'alcance';
 function tcpMundo() { pinza.tcp.updateMatrixWorld(true); return pinza.tcp.getWorldPosition(new THREE.Vector3()); }
 function ejesHerramienta() { const m = new THREE.Matrix4().extractRotation(robot.tool0.matrixWorld); return { x: new THREE.Vector3(1, 0, 0).applyMatrix4(m), z: new THREE.Vector3(0, 0, 1).applyMatrix4(m) }; }
 function yawHerramienta() { const e = ejesHerramienta(); return Math.atan2(e.x.y, e.x.x); }
 
 // Alcance con la pinza vertical en un punto (mundo) a una altura h sobre la mesa
 function alcance(xw, yw, h) {
-  const b = BASES[L.robot]; const tz = pinza.tcpZ(0.02);
-  const pb = { x: xw - b.x, y: yw - b.y, z: h + tz };
+  const tz = pinza.tcpZ(0.02); const b = marco().aBase(xw, yw, MESA.h);
+  const pb = { x: b[0], y: b[1], z: h + tz };
   let feas = 0, m = 0;
   for (let k = 0; k < 6; k++) {
-    let ok = false; for (const q of KIN.ik(poseVertical(pb, k * PI / 6))) { if (qValida(q)) { ok = true; m = Math.max(m, KIN.manip(q) / REF_MANIP); if (m > 0.6) break; } }
+    let ok = false; for (const q of CIN.ik(poseVertical(pb, k * PI / 6))) { if (qValida(q)) { ok = true; m = Math.max(m, CIN.manip(q) / REF_MANIP); if (m > 0.6) break; } }
     if (ok) feas++;
   }
   return { feas, m, cls: feas === 0 ? 0 : (feas >= 4 && m >= 0.35 ? 2 : 1) };
@@ -1176,7 +1451,7 @@ function calcularPerfil() {
   const out = [];
   for (let h = 0; h <= 0.40001; h += 0.01) {
     let rmin = null, rmax = null;
-    for (let r = 0; r <= 0.62; r += 0.005) { const tz = pinza.tcpZ(0.02); let ok = false; for (let k = 0; k < 3 && !ok; k++) for (const q of KIN.ik(poseVertical({ x: r, y: 0, z: h + tz }, k * PI / 3))) if (qValida(q)) { ok = true; break; } if (ok) { if (rmin === null) rmin = r; rmax = r; } }
+    for (let r = 0; r <= 0.62; r += 0.005) { const tz = pinza.tcpZ(0.02); let ok = false; for (let k = 0; k < 3 && !ok; k++) for (const q of CIN.ik(poseVertical({ x: r, y: 0, z: h + tz }, k * PI / 3))) if (qValida(q)) { ok = true; break; } if (ok) { if (rmin === null) rmin = r; rmax = r; } }
     out.push({ h, rmin, rmax });
   }
   perfilAlc = out;
@@ -1278,8 +1553,9 @@ function iniciarColision() {
   COL.listo = true;
 }
 // Coloca todas las esferas para una postura q (marco base_link). Devuelve cuántas hay activas.
-function colocar(q, w, carga) {
-  const Ls = KIN.fkLinks(q); COL.loc.set(esferasPinza(w), COL.n0 * 4);
+// kin: la cinemática del brazo (la del robot activo, CIN; el brazo «otro» usa la nominal, T1.4)
+function colocar(q, w, carga, kin = CIN) {
+  const Ls = kin.fkLinks(q); COL.loc.set(esferasPinza(w), COL.n0 * 4);
   let nC = 0; if (carga) { nC = Math.min(carga.length / 4, NC_MAX); COL.loc.set(carga.subarray(0, nC * 4), COL.N * 4); }
   const n = COL.N + nC, Lc = COL.loc, X = COL.X, G = COL.grp;
   for (let i = 0; i < n; i++) {
@@ -1299,15 +1575,19 @@ function colocar(q, w, carga) {
   COL.nAct = n; COL.nC = nC; return n;
 }
 
-// Obstáculos en el marco base_link: mesa, cajas, platos, fruta, bandeja, persona, cámaras y el otro robot
+// Obstáculos en el marco base_link: mesa, cajas, platos, fruta, bandeja, persona, cámaras y el otro robot.
+// Pasan del mundo a base_link con marco() (traslación y giro de la base, T1.4); con el nominal, la misma resta que antes.
 let _obsCache = { key: '', lista: null }, _otroCache = { key: '', lista: null };
 function obstaculos() {
-  const key = `${VERSION_ESCENA}|${L.robot}|${simT.toFixed(4)}`; if (_obsCache.key === key) return _obsCache.lista;
-  const b = BASES[L.robot], bx = b.x, by = b.y, bz = MESA.h, o = [];
-  const esf = (x, y, z, r, tag, m, blando) => o.push({ t: 1, x: x - bx, y: y - by, z: z - bz, r, tag, m, blando, R: r });
-  const cap = (a, c, r, tag, m) => { const ax = a.x - bx, ay = a.y - by, az = a.z - bz, cx = c.x - bx, cy = c.y - by, cz = c.z - bz; o.push({ t: 2, ax, ay, az, cx, cy, cz, r, tag, m, x: (ax + cx) / 2, y: (ay + cy) / 2, z: (az + cz) / 2, R: r + Math.hypot(cx - ax, cy - ay, cz - az) / 2 }); };
-  const obb = (cxw, cyw, czw, hx, hy, hz, yaw, tag, m) => o.push({ t: 3, x: cxw - bx, y: cyw - by, z: czw - bz, hx, hy, hz, c: Math.cos(yaw), s: Math.sin(yaw), tag, m, R: Math.hypot(hx, hy, hz) });
-  o.push({ t: 0, x: -bx, y: -by, z: 0, hx: MESA.w / 2, hy: MESA.d / 2, tag: 'mesa', m: 0.004, R: 9 });
+  const key = `${VERSION_ESCENA}|${L.robot}|${ROB.id}|${simT.toFixed(4)}`; if (_obsCache.key === key) return _obsCache.lista;
+  const mb = marco(), o = [];
+  const esf = (x, y, z, r, tag, m, blando) => { const p = mb.aBase(x, y, z); o.push({ t: 1, x: p[0], y: p[1], z: p[2], r, tag, m, blando, R: r }); };
+  const cap = (a, c, r, tag, m) => { const pa = mb.aBase(a.x, a.y, a.z), pc = mb.aBase(c.x, c.y, c.z); const ax = pa[0], ay = pa[1], az = pa[2], cx = pc[0], cy = pc[1], cz = pc[2]; o.push({ t: 2, ax, ay, az, cx, cy, cz, r, tag, m, x: (ax + cx) / 2, y: (ay + cy) / 2, z: (az + cz) / 2, R: r + Math.hypot(cx - ax, cy - ay, cz - az) / 2 }); };
+  const obb = (cxw, cyw, czw, hx, hy, hz, yaw, tag, m) => { const p = mb.aBase(cxw, cyw, czw), yb = mb.yawABase(yaw); o.push({ t: 3, x: p[0], y: p[1], z: p[2], hx, hy, hz, c: Math.cos(yb), s: Math.sin(yb), tag, m, R: Math.hypot(hx, hy, hz) }); };
+  { // tablero: sus ejes son los del mundo; en base_link giran −yaw de la base. El giro solo se añade si lo hay: todos los
+    // campos de un obstáculo entran en la semilla del RRT (RNG.semillaPlan) y con el nominal no debe cambiar (I8)
+    const p = mb.aBase(0, 0, MESA.h), yb = mb.yawABase(0), mesa = { t: 0, x: p[0], y: p[1], z: p[2], hx: MESA.w / 2, hy: MESA.d / 2, tag: 'mesa', m: 0.004, R: 9 };
+    if (yb !== 0) Object.assign(mesa, { giro: true, c: Math.cos(yb), s: Math.sin(yb) }); o.push(mesa); }
   if (L.caja.on) for (const k of ['1', '2']) { const cj = OBJ['caja' + k]; if (!cj.visible) continue; obb(cj.position.x, cj.position.y, MESA.h + L.caja.h / 2, CAJA_LADO / 2, CAJA_LADO / 2, L.caja.h / 2, cj.rotation.z, 'caja:plato' + k, 0.002); }
   const v = new THREE.Vector3();
   for (const pk of ['plato1', 'plato2']) { const P = OBJ[pk]; if (P.parent === pinza.tcp || !P.visible) continue; const e = esferasObjeto(P, null); const enBandeja = P.parent === bandeja; for (let i = 0; i < e.length; i += 4) esf(e[i], e[i + 1], e[i + 2], e[i + 3], 'plato:' + pk, 0.002, enBandeja); }
@@ -1319,7 +1599,7 @@ function obstaculos() {
   cap(pw(0, 0, 0.97), pw(0, 0, 1.38), 0.17, 'persona', 0.03); { const h = pw(0, 0, 1.63); esf(h.x, h.y, h.z, 0.12, 'persona', 0.03); }
   for (let k = 0; k < 4; k++) { const m = brazos[k]; const d = new THREE.Vector3(0, 1, 0).applyQuaternion(m.quaternion); const l = m.scale.y / 2; const a = m.position.clone().addScaledVector(d, -l), c = m.position.clone().addScaledVector(d, l); if (k % 2) { c.addScaledVector(d, -0.03); cap(a, c, 0.03, 'manos', 0.005); } else cap(a, c, 0.035, 'persona', 0.03); }
   for (const k in CAMS) { const R = CAMS[k]; R.cam.updateMatrixWorld(true); for (const [z, r] of [[0.008, 0.032], [-0.02, 0.022]]) { const p = new THREE.Vector3(0, 0, z).applyMatrix4(R.cam.matrixWorld); esf(p.x, p.y, p.z, r, 'camara:' + k, 0.01); } for (const s of R.seg) { const d = new THREE.Vector3(0, 1, 0).applyQuaternion(s.quaternion); const l = s.scale.y / 2; cap(s.position.clone().addScaledVector(d, -l), s.position.clone().addScaledVector(d, l), 0.0115, 'camara:' + k, 0.01); } esf(R.codo.position.x, R.codo.position.y, R.codo.position.z, 0.03, 'camara:' + k, 0.01); esf(R.clamp.position.x, R.clamp.position.y, R.clamp.position.z, 0.045, 'camara:' + k, 0.005); }
-  if (otro && otro.root.visible) { const ob = otro.root.position; const kq = `${ob.x}|${ob.y}|${otro.q.join(',')}`; if (_otroCache.key !== kq) { colocar(otro.q, 0.06, null); const l = []; for (let i = 0; i < COL.N; i++) l.push(COL.X[i * 4] + ob.x, COL.X[i * 4 + 1] + ob.y, COL.X[i * 4 + 2] + MESA.h, COL.X[i * 4 + 3]); _otroCache = { key: kq, lista: l }; } const l = _otroCache.lista; for (let i = 0; i < l.length; i += 4) esf(l[i], l[i + 1], l[i + 2], l[i + 3], 'robot A', 0.01); }
+  if (otro && otro.root.visible) { const ob = otro.root.position; const kq = `${ob.x}|${ob.y}|${otro.q.join(',')}`; if (_otroCache.key !== kq) { colocar(otro.q, 0.06, null, KIN.nominal); const l = []; for (let i = 0; i < COL.N; i++) l.push(COL.X[i * 4] + ob.x, COL.X[i * 4 + 1] + ob.y, COL.X[i * 4 + 2] + MESA.h, COL.X[i * 4 + 3]); _otroCache = { key: kq, lista: l }; } const l = _otroCache.lista; for (let i = 0; i < l.length; i += 4) esf(l[i], l[i + 1], l[i + 2], l[i + 3], 'robot A', 0.01); }
   _obsCache = { key, lista: o }; return o;
 }
 const NOM_OBS = t => t === 'mesa' ? 'la mesa' : t.startsWith('caja') ? 'una caja' : t.startsWith('plato') ? 'un plato' : t.startsWith('pieza') ? 'una pieza de fruta' : t === 'bandeja' ? 'la bandeja' : t === 'manos' ? 'las manos de la persona' : t === 'persona' ? 'la persona' : t.startsWith('camara') ? `la cámara ${t.split(':')[1]} o su brazo` : 'el robot A';
@@ -1351,7 +1631,7 @@ function choqueEn(q, ctx = {}) {
         else if (B[g * 4 + 2] - B[g * 4 + 3] > o.m) continue;
       for (let i = ga; i < ge; i++) {
         const k = i * 4, x = X[k], y = X[k + 1], z = X[k + 2], r = X[k + 3];
-        if (o.t === 0) { if (Math.abs(x - o.x) < o.hx && Math.abs(y - o.y) < o.hy && z - r < o.m) return { tipo: 'entorno', a: G[i], b: o.tag, p: [x, y, z - r] }; continue; }
+        if (o.t === 0) { const dx = x - o.x, dy = y - o.y, lx = o.giro ? dx * o.c + dy * o.s : dx, ly = o.giro ? -dx * o.s + dy * o.c : dy; if (Math.abs(lx) < o.hx && Math.abs(ly) < o.hy && z - r < o.m) return { tipo: 'entorno', a: G[i], b: o.tag, p: [x, y, z - r] }; continue; }
         const dx = x - o.x, dy = y - o.y, dz = z - o.z, lim = o.R + r + o.m; if (dx * dx + dy * dy + dz * dz > lim * lim) continue; // descarte rápido
         if (distObs(o, x, y, z) < r + o.m) return { tipo: 'entorno', a: G[i], b: o.tag, p: [x, y, z] };
       }
@@ -1447,7 +1727,7 @@ function rutaCartesiana(q0, puntos, opts) {
     const a = puntos[s - 1], b = puntos[s], d = a.p.distanceTo(b.p), dy = angDiff(b.yaw, a.yaw); const n = Math.max(1, Math.ceil(Math.max(d / 0.004, Math.abs(dy) / 0.02)));
     for (let k = 1; k <= n; k++) {
       const prev = ruta[ruta.length - 1], t = k / n; const q = ikTCP(a.p.clone().lerp(b.p, t), a.yaw + dy * t, prev, opts);
-      if (!q) { const pp = a.p.clone().lerp(b.p, t); const q2 = ikTCP(pp, a.yaw + dy * t, prev, { ...opts, sinColision: true }); const c = q2 && choqueEn(q2, ctx); return mal(c ? `chocaría ${textoChoque(c)}` : 'se sale del alcance', { causa: causaDe(c) || 'alcance', choque: c || null, q: q2 || prev, p: pp }); }
+      if (!q) { const pp = a.p.clone().lerp(b.p, t); const q2 = ikTCP(pp, a.yaw + dy * t, prev, { ...opts, sinColision: true }); const c = q2 && choqueEn(q2, ctx); const causa = causaDe(c) || (q2 ? 'alcance' : causaSinIK(pp, a.yaw + dy * t, opts)); return mal(c ? `chocaría ${textoChoque(c)}` : causa === 'ik_calibrada' ? 'IK calibrada no converge' : 'se sale del alcance', { causa, choque: c || null, q: q2 || prev, p: pp }); }
       if (Math.max(...q.map((v, i) => Math.abs(v - prev[i]))) > 0.15) { const q2 = ikTCP(a.p.clone().lerp(b.p, t), a.yaw + dy * t, prev, { ...opts, sinColision: true }); const c = q2 && Math.max(...q2.map((v, i) => Math.abs(v - prev[i]))) <= 0.15 && choqueEn(q2, ctx); const m = mal(c ? `chocaría ${textoChoque(c)}` : 'la postura salta (cerca de una singularidad)', { causa: causaDe(c) || 'singularidad', choque: c || null, q: q2 || q, p: a.p.clone().lerp(b.p, t) }); m.dbg = { prev: prev.map(v => +(v * R2D).toFixed(1)), q: q.map(v => +(v * R2D).toFixed(1)), p: a.p.clone().lerp(b.p, t), seg: s, n: puntos.length }; return m; }
       if (!tramoLibre(prev, q, ctx)) { const c = choqueEn(q, ctx) || choqueEn(prev.map((v, i) => (v + q[i]) / 2), ctx); return mal(c ? `chocaría ${textoChoque(c)}` : 'chocaría en el camino', { causa: causaDe(c) || 'choque', choque: c, q, p: a.p.clone().lerp(b.p, t) }); }
       ruta.push(q); hecho += d / n;
@@ -1455,7 +1735,8 @@ function rutaCartesiana(q0, puntos, opts) {
   }
   return { ruta, largo };
 }
-function tcpDeQ(q, w = pinza.w) { const T = KIN.fk(q), tz = pinza.tcpZ(w), b = BASES[L.robot]; return { p: new THREE.Vector3(T[3] + T[2] * tz + b.x, T[7] + T[6] * tz + b.y, T[11] + T[10] * tz + MESA.h), ejeZ: new THREE.Vector3(T[2], T[6], T[10]), ejeX: new THREE.Vector3(T[0], T[4], T[8]) }; }
+// TCP (en el mundo) y ejes de la herramienta para una postura, con la cinemática activa y marco() (T1.4)
+function tcpDeQ(q, w = pinza.w) { const T = CIN.fk(q), tz = pinza.tcpZ(w), mb = marco(); const z = mb.vecAMundo(T[2], T[6], T[10]), x = mb.vecAMundo(T[0], T[4], T[8]); return { p: baseAMundo(T[3] + T[2] * tz, T[7] + T[6] * tz, T[11] + T[10] * tz), ejeZ: new THREE.Vector3(z[0], z[1], z[2]), ejeX: new THREE.Vector3(x[0], x[1], x[2]) }; }
 function yawDeQ(q, horiz) { const t = tcpDeQ(q); return horiz ? Math.atan2(t.ejeZ.y, t.ejeZ.x) : Math.atan2(t.ejeX.y, t.ejeX.x); }
 // Movimiento recto de la pinza; si no es posible, movimiento articular planificado (salvo opts.estricto)
 async function moveL(p, yaw, opts = {}, desc = 'un punto') {
@@ -1501,7 +1782,7 @@ function servo(qObj, dt, ctx, desc) {
 // Vigilancia independiente de autocolisiones en lo que se ve (debe quedarse en 0)
 function vigilarAuto() {
   const c = choqueEn(robot.q, { sinEntorno: true });
-  if (c && !D.autoAhora) { D.autocol++; $('#dAuto').textContent = D.autocol; pintarCalidad(); const b = BASES[L.robot]; marcaChoque.position.set(c.p[0] + b.x, c.p[1] + b.y, c.p[2] + MESA.h); marcaChoque.visible = true; D.marcaHasta = simT + 2; publicar('/seguridad/autocolision [PROPUESTA]', ['segur'], { fase: D.estado, entre: textoChoque(c) }); }
+  if (c && !D.autoAhora) { D.autocol++; $('#dAuto').textContent = D.autocol; pintarCalidad(); marcaChoque.position.copy(baseAMundo(c.p[0], c.p[1], c.p[2])); marcaChoque.visible = true; D.marcaHasta = simT + 2; publicar('/seguridad/autocolision [PROPUESTA]', ['segur'], { fase: D.estado, entre: textoChoque(c) }); }
   D.autoAhora = !!c;
 }
 // Volúmenes de colisión visibles (capa de la escena)
@@ -1524,7 +1805,7 @@ function diagnosticarPunto(p, yaw, opts = {}) {
   for (const y of yaws) for (const fl of opts.horiz && !opts.flip ? [1, -1] : [opts.flip]) { const q = ikTCP(p, y, robot.q, { ...opts, flip: fl, sinColision: true }); if (q && !sols.some(s => Math.max(...s.map((v, i) => Math.abs(v - q[i]))) < 0.05)) sols.push(q); }
   if (!sols.length) { // ¿existe postura si se deja bajar la muñeca por debajo del tablero? entonces lo que estorba es la mesa
     const qm = ikTCP(p, yaw, robot.q, { ...opts, minZ: -1, sinColision: true });
-    return qm ? { ...base, causa: 'choque', q: qm, detalleChoque: 'el brazo con la mesa (la muñeca o la pinza tendrían que pasar por debajo del tablero)' } : base;
+    return qm ? { ...base, causa: 'choque', q: qm, detalleChoque: 'el brazo con la mesa (la muñeca o la pinza tendrían que pasar por debajo del tablero)' } : { ...base, causa: causaSinIK(p, yaw, opts) };
   }
   const ctx = ctxDe(opts); const cs = sols.map(q => ({ q, c: choqueEn(q, ctx) }));
   const elegido = cs.find(x => x.c && x.c.tipo !== 'auto') || cs.find(x => x.c) || cs[0];
@@ -1566,6 +1847,9 @@ function explicar(info) {
       o.porque = `El punto está a ${mm(r)} mm del eje de la base y a ${mm(bp ? bp.z : 0)} mm sobre la mesa. Con la pinza ${info.horiz ? 'horizontal (20 cm por delante de la muñeca)' : 'vertical'} el UR3e no llega ahí${o.dir === 'cerca' ? ': está demasiado pegado a la base' : o.dir === 'lejos' ? ': está demasiado lejos' : ''}.${extra}`;
       o.real = 'No hay solución de cinemática inversa: MoveIt no puede planificar el paso y el coordinador pasa a error.'; break;
     }
+    case 'ik_calibrada': // T1.4-5: hay ramas de la IK analítica nominal, pero ninguna converge con la calibración
+      o.porque = `IK calibrada no converge. La cinemática inversa analítica del UR3e nominal tiene solución para ese punto (a ${mm(r)} mm del eje de la base y ${mm(bp ? bp.z : 0)} mm sobre la mesa), pero ninguna de sus ramas converge con la calibración del robot ${ROB.id}: el gemelo no sabe si el robot calibrado llega.`;
+      o.real = `MoveIt resuelve la cinemática inversa con su propio método sobre el URDF calibrado y puede encontrar una postura o no: compruébalo en sim_${ROB.id} antes de dar el punto por imposible.`; break;
     case 'autocolision':
       o.porque = `Para llegar, el brazo tendría que plegarse sobre sí mismo: chocaría ${textoChoque(info.choque)}. Pasa cuando el objetivo queda muy cerca de la base, muy bajo o la muñeca tiene que doblarse hacia atrás.`;
       o.real = 'MoveIt rechaza la postura por autocolisión; si se forzara, el robot se golpearía a sí mismo.'; break;
@@ -1620,8 +1904,8 @@ function mostrarFalloInfo(e, titulo, tipo) {
 function verFallo(info) {
   if (info.causa === 'previo' && D.posturaImposible) { verPosturaImposible(); return; }
   if (!info.q) return; D.activo = false; robot.setQ(info.q); sincronizarSliders(); actualizarHUD();
-  const b = BASES[L.robot]; const c = info.choque;
-  if (c) { marcaChoque.position.set(c.p[0] + b.x, c.p[1] + b.y, c.p[2] + MESA.h); marcaChoque.visible = true; D.marcaHasta = simT + 1e9; }
+  const c = info.choque;
+  if (c) { marcaChoque.position.copy(baseAMundo(c.p[0], c.p[1], c.p[2])); marcaChoque.visible = true; D.marcaHasta = simT + 1e9; }
   else if (info.punto) { objetivo.position.copy(info.punto); objetivo.visible = true; objetivo.userData.anillo.material.color.set(css('--bad')); }
   const t = info.punto || tcpMundo(); animarCam(new THREE.Vector3(t.x - 0.5, t.y - 0.6, t.z + 0.4), t.clone());
 }
@@ -1741,7 +2025,7 @@ function planAgarrePlato(pc, qRef, o = {}) { // o.pk: plato; o.forzar: ignora el
     if (caja) { caja.rotation.z = yaw; caja.updateMatrixWorld(true); VERSION_ESCENA++; } // la caja se orienta con una cara hacia la pinza
     const base = { horiz: true, pitch, w: 0.03, minZ: -0.3, carga: null, sinEntorno: !!o.forzar };
     const qPre = ikTCP(pre, yaw, qRef, base); if (!qPre) continue;
-    const flip = Math.sign(KIN.fk(qPre)[8]) || 1;
+    const flip = Math.sign(CIN.fk(qPre)[8]) || 1;
     const q = ikTCP(tcp, yaw, qPre, { ...base, flip, permitir: ['plato:' + o.pk] }); if (!q) continue;
     const arriba = tcp.clone(); arriba.z += 0.08; if (!o.forzar && !ikTCP(arriba, yaw, q, { ...base, w: 0.006, flip, permitir: ['caja:' + o.pk] })) continue; // tiene que poder levantarlo
     const hol = holguraEn(q, 0.03); const hp = holguraEn(qPre, 0.03); const hmin = Math.min(hol.min, hp.min);
@@ -1765,7 +2049,7 @@ function planColocar(zw, qRef, flip, carga = null, pitch = 0, todos = false) {
     const qPre = ikTCP(pre, yaw, qRef, o); if (!qPre) continue;
     const q = ikTCP(tcp, yaw, qPre, { ...o, permitir: ['bandeja'] }); if (!q) continue;
     const salida = tcp.clone().addScaledVector(eje, -0.08); const qS = ikTCP(salida, yaw, q, { ...o, w: 0.03, carga: null, permitir: ['bandeja'] }); if (!qS) continue;
-    const c = { yaw, pitch, d, eje, tcp, pre, salida, q, qPre, k, flip: Math.sign(KIN.fk(q)[8]) || flip || 1 }; if (!todos) return c; lista.push(c);
+    const c = { yaw, pitch, d, eje, tcp, pre, salida, q, qPre, k, flip: Math.sign(CIN.fk(q)[8]) || flip || 1 }; if (!todos) return c; lista.push(c);
   }
   return todos ? lista : null;
 }
@@ -1859,7 +2143,7 @@ function moverAObjetivo() {
   const p = objetivo.position; const q = ikTCP(p, objetivo.rotation.z, robot.q);
   objetivo.userData.anillo.material.color.set(q ? '#e6b422' : css('--bad'));
   if (q) { robot.setQ(q); sincronizarSliders(); }
-  const n = KIN.ik(poseVertical(mundoABase(new THREE.Vector3(p.x, p.y, p.z + pinza.tcpZ())), objetivo.rotation.z - robot.root.rotation.z)).filter(s => qValida(s)).length;
+  const n = CIN.ik(poseVertical(mundoABase(new THREE.Vector3(p.x, p.y, p.z + pinza.tcpZ())), yawABase(objetivo.rotation.z))).filter(s => qValida(s)).length;
   $('#ikInfo').textContent = q ? `Posturas válidas para este punto: ${n} de 8. Se elige la más cercana a la actual.` : 'Ese punto queda fuera del alcance con la pinza vertical.';
 }
 // Selección y arrastre directo: pulsar un objeto lo selecciona y arrastrarlo lo mueve sobre el plano horizontal
@@ -2073,7 +2357,13 @@ function comprobarPlan0(opts) {
     ctxI = { fase: 'fruta' }; const pz = piezas.find(p => p.tipo === tipo); const c = pz.obj.getWorldPosition(new THREE.Vector3());
     const okA = ikTCP(new THREE.Vector3(c.x, c.y, zTr), 0, q0) || ikTCP(new THREE.Vector3(c.x, c.y, zTr), PI / 2, q0);
     const okG = llegaVertical(new THREE.Vector3(c.x, c.y, MESA.h + alturaAgarre(pz.F)), q0);
-    if (okA && okG) add('ok', `Coger ${pz.F.nombre.toLowerCase()} en la zona de fruta`); else add('bad', `${pz.F.nombre}: fuera de alcance para cogerla en vertical`, true);
+    if (okA && okG) add('ok', `Coger ${pz.F.nombre.toLowerCase()} en la zona de fruta`);
+    else { // T1.4-5: si en las poses que fallan hay ramas analíticas y ninguna converge, no es «fuera de alcance»
+      const pA = new THREE.Vector3(c.x, c.y, zTr), pG = new THREE.Vector3(c.x, c.y, MESA.h + alturaAgarre(pz.F));
+      const poses = !okA ? [[pA, 0], [pA, PI / 2]] : [0, PI / 4, PI / 2, -PI / 4].map(y => [pG, y]);
+      ctxI.causa = poses.every(([p, y]) => causaSinIK(p, y, {}) === 'ik_calibrada') ? 'ik_calibrada' : 'alcance';
+      add('bad', ctxI.causa === 'ik_calibrada' ? `${pz.F.nombre}: IK calibrada no converge para cogerla en vertical (la IK analítica nominal tiene ramas, pero ninguna converge con la calibración del ${ROB.id})` : `${pz.F.nombre}: fuera de alcance para cogerla en vertical`, true);
+    }
   }
   // platos: soltar la fruta y coger en horizontal
   for (const [pk] of platosActivos()) {
@@ -2102,7 +2392,7 @@ function comprobarPlan0(opts) {
 function pintarCheck(lista) { $('#dCheck').innerHTML = lista.map(c => `<li class="${c.cls}">${c.txt}</li>`).join(''); }
 function verPosturaImposible() {
   const P = D.posturaImposible; if (!P) return; D.activo = false; robot.setQ(P.q); pinza.setApertura(P.w); sincronizarSliders(); actualizarHUD(); // modo manual: el HUD dice con qué choca
-  if (P.c) { const b = BASES[L.robot]; marcaChoque.position.set(P.c.p[0] + b.x, P.c.p[1] + b.y, P.c.p[2] + MESA.h); marcaChoque.visible = true; D.marcaHasta = simT + 1e9; }
+  if (P.c) { marcaChoque.position.copy(baseAMundo(P.c.p[0], P.c.p[1], P.c.p[2])); marcaChoque.visible = true; D.marcaHasta = simT + 1e9; }
   const pc = OBJ[P.pk].getWorldPosition(new THREE.Vector3()); animarCam(new THREE.Vector3(pc.x - 0.45, pc.y - 0.55, pc.z + 0.35), pc);
 }
 function mostrarFallo(titulo, txt, tipo = 'fallo') { if (D.buscando) return; const f = $('#dFallo'); f.hidden = false; f.className = 'card fallo' + (tipo === 'abort' ? ' abort' : ''); f.innerHTML = `<div><b>${titulo}</b>${txt}</div>`; }
@@ -2129,7 +2419,7 @@ async function demo() {
     paso(4); estado('ESPERANDO_BANDEJA');
     await anim(1.6, s => { trayState.subida = smooth(s); }); trayState.balanceo = true; if (!uno) ladoZonas(); await esperar(0.8);
     publicar('/v1/tray_status', ['tstat'], { estado: 'lista', desviacion_mm: 0 });
-    const bp = poseBandeja(simT); publicar('/v1/tray_pose', ['tpose'], { marco: 'base_link', x: +(bp.x - BASES[L.robot].x).toFixed(3), y: +(bp.y - BASES[L.robot].y).toFixed(3), z: +(bp.z - MESA.h).toFixed(3), yaw_deg: +(bp.yaw * R2D).toFixed(1), marcadores_vistos: 3 }); await esperar(0.6);
+    const bp = poseBandeja(simT), tb = enBase(bp); publicar('/v1/tray_pose', ['tpose'], { marco: 'base_link', x: +tb.x.toFixed(3), y: +tb.y.toFixed(3), z: +tb.z.toFixed(3), yaw_deg: gradosBase(bp.yaw), marcadores_vistos: 3 }); await esperar(0.6);
     paso(5); publicar('/v2/fruits', ['img', 'det', 'fruits'], { marco: 'base_link', piezas: piezas.filter(p => !p.usada).map(p => `${p.id}: ${p.tipo}`) }); await esperar(0.5);
     await servirPlato('plato1', 'manzana', 2, zonaDe('plato1'), 1);
     if (!uno) { paso(6); await servirPlato('plato2', 'uvas', 1, 'zona_segundo', 2); }
@@ -2159,7 +2449,7 @@ async function demo() {
 async function retirarSeguro() {
   const ax = ejesHerramienta(); const p = tcpMundo(); const arriba = p.clone().add(new THREE.Vector3(0, 0, 0.06));
   if (Math.abs(ax.z.z) < 0.7) {
-    const yaw = Math.atan2(ax.z.y, ax.z.x); const flip = Math.sign(KIN.fk(robot.q)[8]) || 1; const o = { horiz: true, flip, pitch: Math.asin(clamp(-ax.z.z, -1, 1)), minZ: -0.3, permitir: ['bandeja', 'plato:*'] };
+    const yaw = Math.atan2(ax.z.y, ax.z.x); const flip = Math.sign(CIN.fk(robot.q)[8]) || 1; const o = { horiz: true, flip, pitch: Math.asin(clamp(-ax.z.z, -1, 1)), minZ: -0.3, permitir: ['bandeja', 'plato:*'] };
     const b = BASES[L.robot]; const hacia = new THREE.Vector3(b.x - p.x, b.y - p.y, 0).normalize();
     await moveL(arriba, yaw, o, 'la retirada'); await moveL(arriba.clone().addScaledVector(hacia, 0.1), yaw, o, 'la retirada');
   } else { await moveL(arriba, yawHerramienta(), {}, 'la retirada'); await irA(posReposo(), PI / 2, {}, 'la postura de reposo'); }
@@ -2174,7 +2464,7 @@ async function servirPlato(pk, tipo, n, zona, num) {
     const wAb = Math.min(0.11, pz.F.w + 0.024); const ag = planAgarreFruta(pz, wAb, robot.q);
     if (!ag) throw new FalloDemo(`No hay ninguna orientación de la pinza para coger ${pz.F.nombre.toLowerCase()} (pieza ${pz.id})`, 'fallo', { causa: 'fruta', detalle: 'Ninguna orientación de la pinza vertical llega a la pieza sin chocar.' });
     const c = ag.c, yaw = ag.yaw;
-    publicar('servir_pieza [PROPUESTA]', ['accion'], { pieza: pz.id, tipo, plato: pk, agarre_z_m: +pz.F.h.toFixed(3), giro_pinza_deg: Math.round(angDiff(yaw, 0) * R2D), hueco_con_vecinas_mm: ag.hol === Infinity ? '—' : mm(ag.hol) });
+    publicar('servir_pieza [PROPUESTA]', ['accion'], { pieza: pz.id, tipo, plato: pk, agarre_z_m: +pz.F.h.toFixed(3), giro_pinza_deg: Math.round(gradosBase(yaw)), marco_giro: 'base_link', hueco_con_vecinas_mm: ag.hol === Infinity ? '—' : mm(ag.hol) });
     await pinzaA(wAb);
     await irA(new THREE.Vector3(c.x, c.y, zTr), yaw, {}, `la vertical de ${pz.F.nombre.toLowerCase()}`);
     const dz = alturaAgarre(pz.F) - pz.F.h, cierre = Math.max(0.01, Math.min(pz.F.w, 2 * Math.sqrt(Math.max(0, pz.F.r ** 2 - dz ** 2))) - 0.004); // ancho de la pieza a la altura de la yema
@@ -2278,12 +2568,12 @@ $('#dPlay').addEventListener('click', async () => {
 $('#dReset').addEventListener('click', () => { D.activo = false; reiniciarDemo(); actualizarCheck(); });
 
 // ======================= Evaluación, HUD y paneles =======================
-function enBase(p) { const b = BASES[L.robot]; return { x: p.x - b.x, y: p.y - b.y, z: p.z - MESA.h }; }
+function enBase(p) { return mundoABase(p); } // punto del mundo en base_link: la misma conversión que la planificación (marco(), T1.5)
 const CACHE_PLAN = {};
-// todo lo que entra en la escena de colisión o en la cadena: plato, el otro plato, caja (y su altura), zona de fruta, persona, bandeja, cámaras (posición y hacia dónde miran) y pedido
+// todo lo que entra en la escena de colisión o en la cadena: robot (posición A/B y cinemática, T1.4), plato, el otro plato, caja (y su altura), zona de fruta, persona, bandeja, cámaras (posición y hacia dónde miran) y pedido
 function clavePlan(pk) {
   const P = L.persona, B = L.bandeja; const r3 = v => (+v).toFixed(3), ps = o => `${r3(o.x)},${r3(o.y)}`;
-  return [L.robot, r3(L[pk].x), r3(L[pk].y), r3(zPlato()), L.caja.on, r3(L.caja.h), ps(L.plato1), ps(L.plato2), ps(L.zona), r3(L.zona.yaw), ps(P), r3(P.yaw), B.alt, B.ade, L.pedido, Object.values(L.cams).map(c => ps(c.pos) + ',' + r3(c.pos.z) + ',' + ps(c.mira) + ',' + r3(c.roll || 0)).join(';')].join('|');
+  return [L.robot, ROB.id, r3(L[pk].x), r3(L[pk].y), r3(zPlato()), L.caja.on, r3(L.caja.h), ps(L.plato1), ps(L.plato2), ps(L.zona), r3(L.zona.yaw), ps(P), r3(P.yaw), B.alt, B.ade, L.pedido, Object.values(L.cams).map(c => ps(c.pos) + ',' + r3(c.pos.z) + ',' + ps(c.mira) + ',' + r3(c.roll || 0)).join(';')].join('|');
 }
 const planAlDia = pk => CACHE_PLAN[pk]?.key === clavePlan(pk);
 const planesAlDia = () => !robot || platosActivos().every(([pk]) => planAlDia(pk));
@@ -2366,7 +2656,7 @@ function pintarSel() {
   const extra = sel.cam ? `<div class="seg" id="segParte">${['pos', 'mira', 'clamp'].map(pt => `<button data-v="${pt}" aria-pressed="${sel.parte === pt}">${{ pos: 'Cámara', mira: 'Punto de mira', clamp: 'Pinza de mesa' }[pt]}</button>`).join('')}</div>${slidersOrient(sel.cam, 'so')}
     <p class="hint">Con <b>Girar</b> activado, arrastra la cámara en la escena para apuntarla (derecha e izquierda giran, arriba y abajo inclinan) o usa sus anillos: rojo inclina, verde gira y azul gira la imagen.</p>` : '';
   c.innerHTML = `<header><h3>${sel.nombre}</h3><span class="pill ${gp}">${gt}</span></header>${extra}
-   <dl class="kv"><dt>Posición en base_link</dt><dd>${mm(b.x)}, ${mm(b.y)}, ${mm(b.z)} mm</dd>${['zona', 'persona', 'objetivo'].includes(sel.key) ? `<dt>Giro</dt><dd>${fmt(sel.obj.rotation.z * R2D, 0)}°</dd>` : ''}
+   <dl class="kv"><dt>Posición en base_link</dt><dd>${mm(b.x)}, ${mm(b.y)}, ${mm(b.z)} mm</dd>${['zona', 'persona', 'objetivo'].includes(sel.key) ? `<dt>Giro en base_link</dt><dd>${fmt(angDiff(yawABase(sel.obj.rotation.z), 0) * R2D, 0)}°</dd>` : ''}
    ${e ? `<dt>Alcance</dt><dd><span class="pill ${['bad', 'warn', 'ok'][e.cls]}">${e.pend ? 'sin calcular' : ['no llega', 'justo', 'holgado'][e.cls]}</span></dd><dt></dt><dd>${e.txt}</dd>` : ''}</dl>`;
   const sp = $('#segParte'); if (sp) sp.addEventListener('click', ev => { const bt = ev.target.closest('button'); if (!bt) return; const map = { pos: 'cam:', mira: 'mira:', clamp: 'clamp:' }; seleccionar(map[bt.dataset.v] + sel.cam); });
 }
@@ -2390,9 +2680,11 @@ function pintarCaja() {
   $('#cajaInfo').innerHTML = platosActivos().map(([k]) => { const pl = planPlatoCache(k); const n = k === 'plato1' ? '1º' : '2º'; if (!pl) { const f = planForzado(k); return `<dt>Coger el plato ${n}</dt><dd><span class="pill bad">${f && f.choque ? `imposible: ${textoChoque(f.choque)}${f.hol.min < 0 ? `, ${mm(-f.hol.min)} mm` : ''}` : 'sin dirección posible'}</span></dd>`; } const h = pl.hol.min; return `<dt>Holgura al coger el plato ${n}</dt><dd><span class="pill ${h < -0.002 ? 'bad' : h < 0.01 ? 'warn' : 'ok'}">${h < -0.002 ? `choca con la ${pl.hol.contra}: ${mm(h)} mm` : `${mm(h)} mm`}</span></dd>`; }).join('');
 }
 function actualizarCheck() { if ($('[data-panel="demo"]').hidden || D.activo || !robot) return; if (sinPlan()) { pintarCheck([{ cls: 'warn', txt: 'Hay cambios sin calcular. Pulsa «Calcular trayectorias» o reproduce la demo, que calcula antes de mover el brazo.' }]); return; } pintarCheck(comprobarPlan()); }
-function toast(t) { const el = $('#toast'); el.textContent = t; el.classList.add('on'); clearTimeout(el._t); el._t = setTimeout(() => el.classList.remove('on'), 2800); }
+function toast(t) { if (AVISO_ROBOT) { t = t ? `${t} · ${AVISO_ROBOT}` : AVISO_ROBOT; AVISO_ROBOT = null; } const el = $('#toast'); el.textContent = t; el.classList.add('on'); clearTimeout(el._t); el._t = setTimeout(() => el.classList.remove('on'), 2800); }
 // Aviso visible de solo lectura (T1.1), junto a las etiquetas de la cabecera
 $('.chips').insertAdjacentHTML('afterbegin', '<span class="chip" id="chipSoloLectura" role="status" hidden style="border-color:var(--bad);color:var(--bad);font-weight:600"></span>');
+// Aviso de calibración sospechosa del robot elegido (T1.4-4), visible desde cualquier pestaña; el detalle va en Escena
+$('.chips').insertAdjacentHTML('afterbegin', '<span class="chip" id="chipRobot" role="status" hidden style="border-color:var(--bad);color:var(--bad);font-weight:600"></span>');
 function pintarSoloLectura() {
   const el = $('#chipSoloLectura'), s = soloLectura(); el.hidden = !s;
   el.textContent = s ? `SOLO LECTURA · disposición v${L.version}, esta página es la v${LAYOUT.VERSION}` : '';
@@ -2411,10 +2703,109 @@ $('#segRobot').addEventListener('click', e => {
   L = espejo(L); L.robot = b.dataset.v; $$('#segRobot button').forEach(x => x.setAttribute('aria-pressed', x === b));
   colocarRobots(); aplicarLayout(); toast(`Robot del grupo: ${b.dataset.v}. Distribución reflejada al otro lado.`);
 });
+// ----- Robot calibrado (T1.4 y T1.5) -----
+// Activa la cinemática de L.robotId (decisión 2 del brief): IK, colisión (esferas y pares permitidos, iniciarColision) y
+// dibujo del brazo. Lo que depende de ella se invalida: los planes (clavePlan lleva ROB.id), los obstáculos en base_link
+// (su clave también), el HUD (VERSION_ESCENA), el perfil y el mapa de alcance (aplicarLayout llama a calcularMapa).
+// Si el robot cambia porque se abre, se importa o se aplica una disposición con otro robotId, se avisa (corrección 9 de la
+// revisión). El selector (cambiarRobotId) avisa por su cuenta: ROBOT_PEDIDO.
+function aplicarCinematica() {
+  const id = idValido(L.robotId);
+  if (id !== ROB.id) {
+    const de = ROB; ROB = robotDe(id); CIN = ROB.cin; VERSION_ESCENA++;
+    if (robot) { robot.setCinematica(CIN); REF_MANIP = CIN.manip(Q_REF_MANIP); if (COL.listo) iniciarColision(); calcularPerfil(); }
+    if (robot && !ROBOT_PEDIDO) avisoRobot(L.robotId !== id ? `Esta escena usa el robot «${L.robotId}», que esta versión del gemelo no conoce: se usa la cinemática nominal`
+      : Math.abs(angDiff(ROB.yaw, de.yaw)) < 1e-9 ? `Esta escena usa el robot ${id}: cambia la cinemática (el giro de la base es el mismo)`
+      : `Esta escena usa el robot ${id}: cambian la cinemática y el giro de la base (${gradosTxt(ROB.yaw)})`);
+  }
+  pintarRobotId();
+}
+// El aviso del robot se suma al siguiente aviso de la página (abrir o importar ponen el suyo justo después) o sale solo
+function avisoRobot(t) { AVISO_ROBOT = t; setTimeout(() => { if (AVISO_ROBOT) toast(''); }, 0); }
+// Postura en la que arranca el hardware simulado de sim_<id> (initial_positions.yaml del curso; configuraciones[1] de
+// tests/fixtures/cinematica/<id>.json): es la del aviso de calibración sospechosa
+const Q_INICIAL_SIM = [0, -1.57, 0, -1.57, 0, 0];
+const gradosTxt = a => `${fmt(a * R2D, 1).replace('-', '−')}°`;
+// Giro del mundo pasado a base_link, en grados en (−180, 180] con 0,1° (topics simulados, corrección 7)
+function gradosBase(a) { let g = Math.round(angDiff(yawABase(a), 0) * R2D * 10) / 10; if (g <= -180) g += 360; return g; }
+// Campo del prefijo de frames (T1.5-4): '' siempre; '<id>_' solo si el robot tiene URDF doble en el curso
+function pintarPrefijo() {
+  const s = $('#prefijo'), d = ROB.datos.doble, id = ROB.id, pf = L.prefijoFrames ?? '';
+  const ops = [['', `Ninguno (sim_${id === 'nominal' ? '<id>' : id}, un robot)`]]; if (d) ops.push([`${id}_`, `${id}_ (URDF doble ${d.fichero.split('/').pop().replace('.urdf.xacro', '')})`]);
+  s.innerHTML = ops.map(([v, t]) => `<option value="${v}">${t}</option>`).join(''); s.value = ops.some(o => o[0] === pf) ? pf : ''; s.disabled = ops.length < 2 || soloLectura();
+}
+$('#prefijo').addEventListener('change', e => { if (soloLectura()) return; L.prefijoFrames = e.target.value; guardarLocal(); pintarDatos(); toast(L.prefijoFrames ? `Frames con el prefijo «${L.prefijoFrames}» (URDF doble)` : 'Frames sin prefijo (sim_<id>)'); });
+function pintarRobotId() {
+  const d = ROB.datos, id = ROB.id; pintarPrefijo();
+  $$('#segRobotId button').forEach(x => x.setAttribute('aria-pressed', x.dataset.v === id));
+  $('#robotNota').textContent = id !== 'nominal' ? `Cinemática calibrada del robot ${id} (calibration_${id}.yaml del curso) con la IK analítica refinada. Su base_link está girado ${gradosTxt(ROB.yaw)} respecto a world (los ejes de la mesa).`
+    : L.robotId === 'nominal' ? 'Robot sin identificar: cinemática nominal. Elige su id cuando lo sepáis.'
+      : `Robot «${L.robotId}» desconocido en esta versión del gemelo: se usa la cinemática nominal.`;
+  // Aviso permanente si los datos marcan la calibración como sospechosa (T1.4-4): sale del campo `sospechoso`, no del id
+  const av = $('#robotAviso'), chip = $('#chipRobot'); av.hidden = chip.hidden = !d.sospechoso;
+  if (!d.sospechoso) return;
+  const T = CIN.fk(Q_INICIAL_SIM), N = KIN.fk(Q_INICIAL_SIM), pos = M => `(${[M[3], M[7], M[11]].map(v => fmt(v * 1000, 1)).join('; ')}) mm`;
+  const txt = `Calibración ${id} sospechosa (SIN VALIDAR): compruébala en sim_${id} antes de usarla`;
+  chip.textContent = `CALIBRACIÓN ${id} SOSPECHOSA · SIN VALIDAR`; chip.title = txt;
+  av.innerHTML = `<b>${txt}.</b><span>Con esta calibración, tool0 queda a ${mm(Math.hypot(T[3] - N[3], T[7] - N[7], T[11] - N[11]))} mm de donde lo pone el UR3e nominal en la misma postura. El gemelo calcula con ella tal cual, sin corregirla.</span>
+    <ol class="falloLista"><li>En el contenedor del curso: <code>ros2 launch launcher_robots_lab_robotica sim_${id}.launch.py</code> (arranca en q = (${Q_INICIAL_SIM.map(v => fmt(v, 2)).join('; ')}) rad).</li>
+    <li>Sin mover el robot: <code>ros2 run tf2_ros tf2_echo base_link tool0</code>. Este gemelo predice ${pos(T)}; el nominal, ${pos(N)}.</li>
+    <li>Si tf2_echo da lo que predice el gemelo, ROS ve el mismo desplazamiento y la anomalía está en calibration_${id}.yaml: pregunta al profesor antes de usar el ${id}.</li></ol>`;
+}
+// Cambiar de robot nunca mueve nada sin avisar (T1.5-3). Si cambia el giro de base_link, se pregunta qué se mantiene:
+// la mesa (los objetos se quedan donde están, el brazo gira y cambian sus coordenadas en base_link) o la disposición
+// respecto al robot (los objetos giran alrededor de la base y conservan sus coordenadas en base_link). Si no cambia el
+// giro (nominal, 205 y 206), se cambia sin preguntar y se avisa.
+let PREG_ROBOT = null;
+// Mientras corre la demo, el cálculo o la búsqueda de una disposición no se cambia de robot (correcciones 1 y 2)
+const ocupadoRobot = () => D.playing ? 'Pausa la demo para cambiar de robot' : CALC.activo ? 'Espera a que termine el cálculo para cambiar de robot' : D.buscando ? 'Espera a que termine la búsqueda de una disposición para cambiar de robot' : null;
+function pedirRobotId(id) {
+  if (!robot || !LAYOUT.ROBOT_IDS.includes(id)) return;
+  const oc = ocupadoRobot(); if (oc) { toast(oc); return; }
+  if (soloLectura()) { toast('Disposición de solo lectura (versión más nueva): no se cambia el robot'); return; }
+  if (id === ROB.id && id === L.robotId) { cerrarPreguntaRobot(); return; }
+  const dy = angDiff(robotDe(id).yaw, ROB.yaw);
+  if (Math.abs(dy) < 1e-9) { cambiarRobotId(id, 'mesa'); return; }
+  PREG_ROBOT = id;
+  $('#robotPregTit').textContent = `Cambiar al robot ${id}: ¿qué se mantiene?`;
+  $('#robotPregTxt').innerHTML = `El base_link del ${id} está girado ${gradosTxt(robotDe(id).yaw)} respecto a world (los ejes de la mesa); el del ${ROB.id}, ${gradosTxt(ROB.yaw)}.<br>
+    <b>Mantener la mesa</b>: los objetos se quedan donde están; el brazo gira ${gradosTxt(dy)} y cambian sus coordenadas en base_link.<br>
+    <b>Mantener la disposición respecto al robot</b>: los objetos, la persona y las cámaras giran ${gradosTxt(dy)} alrededor de la base y conservan sus coordenadas en base_link (las pinzas de las cámaras se pegan al borde de la mesa más cercano). Pueden quedar fuera de la mesa.`;
+  $('#robotPregunta').hidden = false;
+}
+function cerrarPreguntaRobot() { PREG_ROBOT = null; $('#robotPregunta').hidden = true; }
+// Gira la disposición `d` rad alrededor de la base b: sus coordenadas en un base_link que gira lo mismo no cambian
+function girarDisposicion(l, b, d) {
+  const c = Math.cos(d), s = Math.sin(d); const g = o => { const x = o.x - b.x, y = o.y - b.y; o.x = b.x + c * x - s * y; o.y = b.y + s * x + c * y; };
+  [l.zona, l.plato1, l.plato2, l.persona, ...l.arucoE].forEach(g); l.zona.yaw = angDiff(l.zona.yaw + d, 0); l.persona.yaw = angDiff(l.persona.yaw + d, 0);
+  for (const k in l.cams) { g(l.cams[k].clamp); g(l.cams[k].pos); g(l.cams[k].mira); }
+}
+// modo: 'mesa' | 'robot' (ver pedirRobotId). El prefijo de frames, si lo había, pasa a ser el del robot nuevo (o '' si no
+// tiene URDF doble).
+function cambiarRobotId(id, modo) {
+  const de = ROB, a = robotDe(id), dy = angDiff(a.yaw, de.yaw), pre0 = L.prefijoFrames;
+  if (modo === 'robot' && dy) girarDisposicion(L, BASES[L.robot], dy);
+  L.robotId = id; L.prefijoFrames = pre0 && a.datos.doble ? `${id}_` : '';
+  cerrarPreguntaRobot(); D.activo = false; ROBOT_PEDIDO = true; try { aplicarLayout(); } finally { ROBOT_PEDIDO = false; }
+  const pre = pre0 !== L.prefijoFrames ? ` Prefijo de frames: ${L.prefijoFrames ? `«${L.prefijoFrames}»` : 'ninguno'}.` : '';
+  toast(!dy ? `Robot ${id}: base_link con el mismo giro que el ${de.id}; nada se mueve. Recalcula las trayectorias.${pre}`
+    : modo === 'mesa' ? `Robot ${id}: se mantiene la mesa. El brazo gira ${gradosTxt(dy)} y cambian las coordenadas en base_link.${pre}`
+      : `Robot ${id}: la disposición gira ${gradosTxt(dy)} alrededor de la base y conserva sus coordenadas en base_link.${pre}`);
+}
+$('#segRobotId').addEventListener('click', e => { const b = e.target.closest('button'); if (b) pedirRobotId(b.dataset.v); });
+function responderRobot(modo) {
+  if (!PREG_ROBOT) return; const oc = ocupadoRobot();
+  if (oc) { cerrarPreguntaRobot(); toast(`${oc}: el robot no cambia`); return; } // la pregunta se abrió antes de empezar: no vale
+  cambiarRobotId(PREG_ROBOT, modo);
+}
+$('#rpMesa').addEventListener('click', () => responderRobot('mesa'));
+$('#rpRobot').addEventListener('click', () => responderRobot('robot'));
+$('#rpCancel').addEventListener('click', () => { cerrarPreguntaRobot(); toast('El robot no cambia'); });
 $('#segCaja').addEventListener('click', e => { const b = e.target.closest('button'); if (!b || D.playing) return; L.caja.on = b.dataset.v === '1'; if (!D.activo) reiniciarDemo(); actualizarPlatos(); pintarCaja(); evaluar(); guardarLocal(); toast(L.caja.on ? 'Platos sobre la caja' : 'Platos sobre la mesa: mira la holgura al cogerlos'); });
 $('#cajaH').addEventListener('input', e => { if (D.playing) return; L.caja.h = e.target.value / 100; $('#cajaHOut').textContent = `${e.target.value} cm`; EDITANDO = true; actualizarPlatos(); clearTimeout(pintarCaja._t); pintarCaja._t = setTimeout(() => { EDITANDO = false; actualizarPlatos(); pintarCaja(); evaluar(); }, 300); guardarLocal(); });
 $('#apertura').addEventListener('input', e => { pinza.setApertura(e.target.value / 1000); $('#aperturaOut').textContent = `${e.target.value} mm`; actualizarHUD(); });
-$('#btnReset').addEventListener('click', () => { const r = L.robot; L = layoutDefecto(); if (r === 'A') { L = espejo(L); L.robot = 'A'; } aplicarLayout(); toast('Distribución de partida restaurada'); });
+// Restablecer devuelve los objetos a la disposición de partida; el robot (A/B y su id calibrado) no cambia (T1.4)
+$('#btnReset').addEventListener('click', () => { const r = L.robot, pf = L.prefijoFrames; L = layoutDefecto(); if (r === 'A') { L = espejo(L); L.robot = 'A'; } L.robotId = ROB.id; L.prefijoFrames = pf === `${ROB.id}_` ? pf : ''; aplicarLayout(); toast('Distribución de partida restaurada'); });
 $('#btnHome').addEventListener('click', () => { if (robot) { robot.setQ(qReposo()); sincronizarSliders(); actualizarHUD(); } });
 $('#btnObjetivo').addEventListener('click', () => { if (!robot) return; objetivo.visible = true; objetivo.position.copy(tcpMundo()); objetivo.rotation.set(0, 0, yawHerramienta()); seleccionar('objetivo'); toast('Arrastra el objetivo: el brazo lo sigue con cinemática inversa'); });
 const JN = ['Base', 'Hombro', 'Codo', 'Muñeca 1', 'Muñeca 2', 'Muñeca 3'];
@@ -2533,21 +2924,39 @@ $$('[data-h]').forEach(b => b.addEventListener('click', () => { let h = b.datase
 
 // ======================= Datos: YAML, importar, propuestas =======================
 function r3(v) { return (Math.round(v * 1000) / 1000).toFixed(3); }
+const rad3 = a => r3(angDiff(a, 0)); // ángulo en [−π, π], redondeado a 0,001 rad (I7)
+// posiciones.yaml (T1.5, I7): todo en el base_link del robot elegido con la conversión de la planificación (enBase), en
+// metros y radianes, con redondeo fijo de 1 mm y 0,001 rad y el origen de cada valor al final de su línea
 function generarYaml() {
-  const b = BASES[L.robot]; const P = o => `{x: ${r3(o.x - b.x)}, y: ${r3(o.y - b.y)}, z: ${r3((o.z ?? MESA.h) - MESA.h)}}`;
+  const B = o => enBase({ x: o.x, y: o.y, z: o.z ?? MESA.h }), P = o => { const b = B(o); return `{x: ${r3(b.x)}, y: ${r3(b.y)}, z: ${r3(b.z)}}`; };
   const tp = poseBandeja(0); bandeja.updateMatrixWorld(true); const zw = k => zonasB[k].getWorldPosition(new THREE.Vector3());
-  let y = `# posiciones.yaml · gemelo de la celda UR3e · BORRADOR\n# Marco: base_link del robot ${L.robot} (${L.robot === 'B' ? 'derecha' : 'izquierda'} en la foto cenital). Metros y grados.\n# Distribución de partida [PROPUESTA]; ninguna posición está medida todavía salvo mesa y base.\n`;
-  y += `fecha: ${new Date().toISOString().slice(0, 10)}\nrobot: ${L.robot}\npinza: {modelo: OnRobot RG2, tcp_z_m: ${r3(pinza.tcpZ(0))}, carrera_m: 0.110}\n`;
-  y += `mesa: {ancho_m: 1.180, fondo_m: 0.830, alto_m: 0.760, centro_en_base_link: {x: ${r3(-b.x)}, y: ${r3(-b.y)}}}\n`;
-  y += `pedido: ${L.pedido === 1 ? 'un_plato  # al centro de la bandeja' : 'dos_platos  # primero y segundo'}\n`;
-  y += `platos: {sobre_caja: ${L.caja.on}, caja_alto_m: ${r3(L.caja.h)}, caja_lado_m: ${r3(CAJA_LADO)}, agarre: horizontal_por_el_borde, radio_agarre_m: ${r3(R_AGARRE)}}\n`;
-  y += `objetos:\n  zona_fruta: {x: ${r3(L.zona.x - b.x)}, y: ${r3(L.zona.y - b.y)}, z: 0.000, yaw_deg: ${(L.zona.yaw * R2D).toFixed(1)}, ancho_m: ${r3(L.zona.w)}, fondo_m: ${r3(L.zona.d)}}\n`;
-  for (const pk of ['plato1', 'plato2']) y += `  ${pk.replace('plato', 'plato_')}: {x: ${r3(L[pk].x - b.x)}, y: ${r3(L[pk].y - b.y)}, z: ${r3(zPlato() - MESA.h)}}\n`;
-  L.arucoE.forEach((a, i) => y += `  marcador_entrega_${i + 1}: {id: ${4 + i}, diccionario: DICT_4X4_50, x: ${r3(a.x - b.x)}, y: ${r3(a.y - b.y)}, z: 0.000}\n`);
-  y += `  bandeja_recepcion: {x: ${r3(tp.x - b.x)}, y: ${r3(tp.y - b.y)}, z: ${r3(tp.z - MESA.h)}, yaw_deg: ${(tp.yaw * R2D).toFixed(1)}}\n`;
-  y += `  zona_primero: ${P(zw('zona_primero'))}\n  zona_segundo: ${P(zw('zona_segundo'))}\n`;
-  y += `  persona: {x: ${r3(L.persona.x - b.x)}, y: ${r3(L.persona.y - b.y)}, yaw_deg: ${(L.persona.yaw * R2D).toFixed(1)}}\ncamaras:\n`;
-  for (const k in L.cams) { const c = L.cams[k]; y += `  camara_${k}: {grupo: ${c.grupo}, modelo: ELP-USB12MP01-UFV, focal_mm: ${c.f.toFixed(1)}, modo: ${c.modo}, hfov_deg: ${(hfovDe(c) * R2D).toFixed(1)}, posicion: ${P(c.pos)}, mira: ${P(c.mira)}, orientacion_deg: {giro: ${(orientDe(c).pan * R2D).toFixed(1)}, inclinacion: ${(orientDe(c).tilt * R2D).toFixed(1)}, alabeo: ${(orientDe(c).roll * R2D).toFixed(1)}}, pinza_mesa: ${P(c.clamp)}}\n`; }
+  const id = ROB.id, d = ROB.datos, pf = L.prefijoFrames || '', frame = `${pf}base_link`, sup = '# SUPUESTO (disposición propuesta, sin medir)';
+  // Una disposición de solo lectura puede traer un robot que esta versión no conoce: se dice y se usa el nominal (corrección 5)
+  const desconocido = L.robotId !== id, doble = pf && d.doble ? d.doble.fichero.split('/').pop().replace('.urdf.xacro', '') : null;
+  // Lo que depende del giro world → base_link (mount_yaw − π) es SUPUESTO mientras no se valide en ROS (corrección 6)
+  const conGiro = ROB.yaw !== 0, giroSup = 'SUPUESTO (giro world→base_link sin validar en ROS)';
+  let y = `# posiciones.yaml · gemelo de la celda UR3e · BORRADOR (generado por IA)\n`;
+  y += `# Robot: ${desconocido ? `«${L.robotId}» (desconocido para esta versión del gemelo: se usa la cinemática nominal)` : id === 'nominal' ? 'nominal (sin identificar: cinemática nominal del UR3e)' : `${id} (calibration_${id}.yaml del curso${d.sospechoso ? '; calibración sospechosa, SIN VALIDAR' : ''})`}, en la posición ${L.robot} de la celda (${L.robot === 'B' ? 'derecha' : 'izquierda'} en la foto cenital).\n`;
+  y += `# Frame: ${frame}${doble ? ` (prefijo «${pf}» del URDF doble ${doble}.urdf.xacro)` : pf ? ` (prefijo «${pf}» de la disposición; esta versión del gemelo no conoce su URDF doble)` : ' (sin prefijo, como en sim_<id>)'}. Metros y radianes (REP-103), redondeo a 1 mm y 0,001 rad.\n`;
+  y += `# world: el world del gemelo, con los ejes de la mesa y el origen en el centro de la base sobre el tablero [SUPUESTO hasta comprobarlo en el laboratorio].\n`;
+  y += `# ${frame} está girado ${rad3(ROB.yaw)} rad (${gradosTxt(ROB.yaw)}) respecto a ese world: mount_yaw − π del xacro del curso [SIN VALIDAR en ROS; docs/estado/frames.md].\n`;
+  y += `# Origen de cada valor, al final de su línea: MEDIDO, FABRICANTE o SUPUESTO. Las cámaras dan el giro desde +y de ${frame} hacia +x.\n`;
+  y += `fecha: ${new Date().toISOString().slice(0, 10)}\nrobot: ${L.robot}  # MEDIDO (posición de la base en la celda)\nrobot_id: ${desconocido ? `${L.robotId}  # de la disposición; el gemelo no lo conoce y usa la cinemática nominal` : `${id}  # elegido en el gemelo`}\n`;
+  y += `frame: ${frame}\nprefijo_frames: '${pf}'\nworld_a_base_link: {x: 0.000, y: 0.000, z: 0.000, yaw_rad: ${rad3(ROB.yaw)}}  # world del gemelo (ejes de la mesa): SUPUESTO · giro: mount_yaw − π del xacro del curso, SUPUESTO (sin validar en ROS)\n`;
+  if (doble) y += `pose_en_world_doble: {frame: ${frame}, x: ${r3(d.doble.x)}, y: ${r3(d.doble.y)}, z: 0.000, yaw_rad: ${rad3(d.doble.yaw - PI)}}  # xacro del curso, ${doble}: SUPUESTO (sin validar en ROS)\n`;
+  y += `pinza: {modelo: OnRobot RG2, tcp_z_m: ${r3(pinza.tcpZ(0))}, carrera_m: 0.110}  # tcp_z: SUPUESTO (modelo simplificado) · carrera: MEDIDO\n`;
+  const mc = B({ x: 0, y: 0 });
+  y += `mesa: {ancho_m: 1.180, fondo_m: 0.830, alto_m: 0.760, centro_en_base_link: {x: ${r3(mc.x)}, y: ${r3(mc.y)}}, yaw_rad: ${rad3(yawABase(0))}}  # ${conGiro ? `medidas: MEDIDO · centro_en_base_link y yaw_rad: ${giroSup}` : 'MEDIDO'}\n`;
+  y += `pedido: ${L.pedido === 1 ? 'un_plato  # al centro de la bandeja' : 'dos_platos  # primero y segundo'} · elegido en el gemelo\n`;
+  y += `platos: {sobre_caja: ${L.caja.on}, caja_alto_m: ${r3(L.caja.h)}, caja_lado_m: ${r3(CAJA_LADO)}, agarre: horizontal_por_el_borde, radio_agarre_m: ${r3(R_AGARRE)}}  # SUPUESTO\n`;
+  const zf = B(L.zona);
+  y += `objetos:\n  zona_fruta: {x: ${r3(zf.x)}, y: ${r3(zf.y)}, z: ${r3(zf.z)}, yaw_rad: ${rad3(yawABase(L.zona.yaw))}, ancho_m: ${r3(L.zona.w)}, fondo_m: ${r3(L.zona.d)}}  ${sup}\n`;
+  for (const pk of ['plato1', 'plato2']) y += `  ${pk.replace('plato', 'plato_')}: ${P({ x: L[pk].x, y: L[pk].y, z: zPlato() })}  ${sup}\n`;
+  L.arucoE.forEach((a, i) => { const m = B(a); y += `  marcador_entrega_${i + 1}: {id: ${4 + i}, diccionario: DICT_4X4_50, x: ${r3(m.x)}, y: ${r3(m.y)}, z: ${r3(m.z)}}  ${sup}\n`; });
+  const bt = B(tp); y += `  bandeja_recepcion: {x: ${r3(bt.x)}, y: ${r3(bt.y)}, z: ${r3(bt.z)}, yaw_rad: ${rad3(yawABase(tp.yaw))}}  ${sup}\n`;
+  y += `  zona_primero: ${P(zw('zona_primero'))}  ${sup}\n  zona_segundo: ${P(zw('zona_segundo'))}  ${sup}\n`;
+  const pe = B(L.persona); y += `  persona: {x: ${r3(pe.x)}, y: ${r3(pe.y)}, yaw_rad: ${rad3(yawABase(L.persona.yaw))}}  ${sup}\ncamaras:\n`;
+  for (const k in L.cams) { const c = L.cams[k], o = orientDe({ pos: B(c.pos), mira: B(c.mira), roll: c.roll }); y += `  camara_${k}: {grupo: ${c.grupo}, modelo: ELP-USB12MP01-UFV, focal_mm: ${c.f.toFixed(1)}, modo: ${c.modo}, hfov_rad: ${r3(hfovDe(c))}, posicion: ${P(c.pos)}, mira: ${P(c.mira)}, orientacion_rad: {giro: ${rad3(o.pan)}, inclinacion: ${rad3(o.tilt)}, alabeo: ${rad3(o.roll)}}, pinza_mesa: ${P(c.clamp)}}  # pose: SUPUESTO · modelo: MEDIDO · focal y modo: elegidos · hfov: SUPUESTO (lente ideal)\n`; }
   y += `# layout-json: ${JSON.stringify(L)}\n`;
   return y;
 }
@@ -2856,7 +3265,7 @@ $('#btnImport').addEventListener('click', () => {
   vaciarGuardado(); L = r.layout; aplicarLayout(); toast(r.soloLectura ? 'Distribución aplicada en solo lectura: es de una versión más nueva del gemelo' : 'Distribución aplicada');
 });
 function aplicarLayout() {
-  aplicarPedido(); $$('#segRobot button').forEach(x => x.setAttribute('aria-pressed', x.dataset.v === L.robot));
+  cerrarPreguntaRobot(); aplicarPedido(); $$('#segRobot button').forEach(x => x.setAttribute('aria-pressed', x.dataset.v === L.robot));
   colocarRobots(); actualizarZona(); actualizarPlatos(); actualizarAruco(); for (const k in L.cams) actualizarCam(k); aplicarBandeja(simT);
   reiniciarDemo(); pintarCaja(); evaluar(); calcularMapa(); pintarSoloLectura(); guardarLocal(); if (!$('[data-panel="datos"]').hidden) pintarDatos();
 }
@@ -2886,14 +3295,20 @@ const FUENTES = [
   ['Nodos de Robótica', 'coordinador, pedidos, movimiento, pinza, seguridad', 's', 'Propuesta; D3 sin congelar'],
   ['Topics de Visión', '/v1/*, /v2/*, /menu, /service_state', 'm', 'Contexto de Visión del 7-11'],
 ];
-function pintarFuentes() { $('#srcTbl tbody').innerHTML = FUENTES.map(([a, b, t, c]) => `<tr><td>${a}<br><span class="hint">${c}</span></td><td>${b}</td><td><span class="tag ${t}">${{ m: 'MEDIDO', f: 'FABRICANTE', s: 'SUPUESTO' }[t]}</span></td></tr>`).join(''); }
+// Filas que dependen del robot elegido (T1.4 y T1.5): cinemática y orientación de base_link
+function fuentesRobot() {
+  const id = ROB.id, d = ROB.datos;
+  return FUENTES.map(f => f[0] === 'Cinemática del UR3e' && id !== 'nominal' ? [f[0], `calibración del robot ${id}; IK analítica nominal refinada con Levenberg–Marquardt (1e-6 m y 1e-6 rad)`, d.sospechoso ? 's' : 'm', `calibration_${id}.yaml del repo del curso (4e4e1a7)${d.sospechoso ? ', sospechosa' : ''}; SIN VALIDAR en ROS`]
+    : f[0] === 'Orientación de base_link' ? [f[0], `girado ${gradosTxt(ROB.yaw)} respecto a world; world con los ejes de la mesa`, 's', 'Giro: mount_yaw − π del xacro del curso. Ejes de world: comprobar en el laboratorio (docs/estado/frames.md)'] : f);
+}
+function pintarFuentes() { $('#srcTbl tbody').innerHTML = fuentesRobot().map(([a, b, t, c]) => `<tr><td>${a}<br><span class="hint">${c}</span></td><td>${b}</td><td><span class="tag ${t}">${{ m: 'MEDIDO', f: 'FABRICANTE', s: 'SUPUESTO' }[t]}</span></td></tr>`).join(''); }
 
 // ======================= Colocación y evaluación =======================
 function colocarRobots() {
-  const o = L.robot === 'B' ? 'A' : 'B';
-  robot.place(BASES[L.robot].x, BASES[L.robot].y, 0); otro.place(BASES[o].x, BASES[o].y, 0);
+  const o = L.robot === 'B' ? 'A' : 'B'; aplicarCinematica();
+  robot.place(BASES[L.robot].x, BASES[L.robot].y, ROB.yaw); otro.place(BASES[o].x, BASES[o].y, 0); // base_link girado según su id (T1.4)
   circ.position.set(BASES[L.robot].x, BASES[L.robot].y, MESA.h + 0.003);
-  $('#chipConf').textContent = `UR3e ${L.robot} · RG2 · ELP IMX577`;
+  $('#chipConf').textContent = `UR3e ${L.robot} · ${ROB.id} · RG2 · ELP IMX577`;
   otro.setQ([L.robot === 'B' ? 0 : PI, -1.9, 1.75, -1.45, -1.57, 0]);
 }
 function evaluar() { pintarLista(); pintarSel(); pintarCaja(); actualizarHUD(); if (!$('[data-panel="alcance"]').hidden) actualizarTablaAlcance(); if (!$('[data-panel="camaras"]').hidden) pintarCamaras(); if (!$('[data-panel="datos"]').hidden) pintarDatos(); actualizarCheck(); }
@@ -2970,7 +3385,7 @@ async function ensayo(cfg = {}) {
 // ======================= Arranque =======================
 let D_ready = false;
 aplicarPedido(); dibujarGrafo(); pintarPasos(-1);
-actualizarZona(); actualizarPlatos(); actualizarAruco(); for (const k in L.cams) actualizarCam(k); aplicarTema(); pintarCaja(); pintarSoloLectura();
+actualizarZona(); actualizarPlatos(); actualizarAruco(); for (const k in L.cams) actualizarCam(k); aplicarTema(); pintarCaja(); pintarSoloLectura(); pintarRobotId();
 $$('#segRobot button').forEach(x => x.setAttribute('aria-pressed', x.dataset.v === L.robot));
 $('#segPedido').addEventListener('click', e => { const b = e.target.closest('button'); if (!b || D.playing) return; L.pedido = +b.dataset.v; D.activo = false; aplicarPedido(); reiniciarDemo(); actualizarPlatos(); evaluar(); guardarLocal(); toast(L.pedido === 1 ? 'Pide un solo plato: va al centro de la bandeja' : 'Pide primero y segundo'); });
 $('#segRate').addEventListener('click', e => { const b = e.target.closest('button'); if (!b) return; D.rate = +b.dataset.v; $$('#segRate button').forEach(x => x.setAttribute('aria-pressed', x === b)); });
@@ -2983,7 +3398,7 @@ function fallo(err) { $('#loading').textContent = 'No se ha podido cargar el mod
 function cargado(g) {
   robot = new Robot(g, 'robot'); otro = new Robot(g, 'otro', true); scene.add(robot.root, otro.root);
   robot.tool0.add(pinza.g);
-  REF_MANIP = KIN.manip([0, -1.9, 1.9, -1.57, -1.57, 0]);
+  robot.setCinematica(CIN); REF_MANIP = CIN.manip(Q_REF_MANIP); // el robot de la disposición abierta (T1.4)
   colocarRobots(); aplicarBandeja(simT); iniciarColision(); crearVolumenes(); pintarCalidad(); robot.setQ(qReposo()); sincronizarSliders();
   marcoTF('mesa', scene).position.set(0, 0, MESA.h + 0.002); marcoTF('base_link', robot.root); marcoTF('tool0', robot.tool0); marcoTF('tcp', pinza.tcp);
   for (const k in CAMS) marcoTF('camara_' + k, CAMS[k].optical);

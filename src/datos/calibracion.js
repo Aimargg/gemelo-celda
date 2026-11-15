@@ -10,7 +10,6 @@
 // Cada entrada de kinematics es el <origin> (xyz en m, rpy en rad; R = Rz(yaw)·Ry(pitch)·Rx(roll)) de la
 // articulación de articulacionDe[clave]. world -> base_link = Rz(mount_yaw - pi) (+ x, y en la escena doble).
 // sospechoso: tool0 se aleja más de 50 mm del nominal (ver tests/fixtures/cinematica/<id>.json).
-// Aún no entra en el build: se carga en T1.4.
 const CALIBRACION = {
   fuente: { repo: "ignacioDeusto/ros2_mucsi_26_27", commit: "4e4e1a74fe5ab81c3e1279120b33e9b235be198f" },
   articulacionDe: { shoulder: "shoulder_pan_joint", upper_arm: "shoulder_lift_joint", forearm: "elbow_joint", wrist_1: "wrist_1_joint", wrist_2: "wrist_2_joint", wrist_3: "wrist_3_joint" },

@@ -31,24 +31,24 @@ test('el esquema de prueba sale de src/app.js: bases A y B y los cinco modos de 
   assert.ok(ESQ.modos.includes('1920x1080'));
 });
 
-test('migrarLayout(v8) conserva intactos todos los campos de la v8 y añade solo version, robotId, perfil y sensor', () => {
+test('migrarLayout(v8) conserva intactos todos los campos de la v8 y añade solo version, robotId, perfil, sensor y prefijoFrames', () => {
   assert.equal(V8.length, 3);
   for (const { f, layout } of V8) {
     const antes = copia(layout);
     const r = migrarLayout(layout, ESQ);
     assert.equal(r.error, undefined, f);
     assert.deepEqual(layout, antes, `${f}: la entrada no se modifica`);
-    assert.deepEqual(Object.keys(r.layout).filter(k => !(k in layout)).sort(), ['perfil', 'robotId', 'sensor', 'version'], f);
+    assert.deepEqual(Object.keys(r.layout).filter(k => !(k in layout)).sort(), ['perfil', 'prefijoFrames', 'robotId', 'sensor', 'version'], f);
     for (const k of Object.keys(layout)) assert.deepEqual(r.layout[k], layout[k], `${f}: ${k}`);
-    assert.deepEqual({ version: r.layout.version, robotId: r.layout.robotId, perfil: r.layout.perfil, sensor: r.layout.sensor },
-      { version: 9, robotId: 'nominal', perfil: 'gemelo', sensor: 'gemelo-v8' }, f);
+    assert.deepEqual({ version: r.layout.version, robotId: r.layout.robotId, perfil: r.layout.perfil, sensor: r.layout.sensor, prefijoFrames: r.layout.prefijoFrames },
+      { version: 9, robotId: 'nominal', perfil: 'gemelo', sensor: 'gemelo-v8', prefijoFrames: '' }, f);
     assert.equal(r.soloLectura, false, f);
   }
 });
 
 test('las escenas nuevas usan robot nominal, perfil «curso» y sensor de la ficha; las migradas, «gemelo» y «gemelo-v8»', () => {
-  assert.deepEqual(NUEVA, { robotId: 'nominal', perfil: 'curso', sensor: 'elp-ficha' });
-  assert.deepEqual(MIGRADA, { robotId: 'nominal', perfil: 'gemelo', sensor: 'gemelo-v8' });
+  assert.deepEqual(NUEVA, { robotId: 'nominal', perfil: 'curso', sensor: 'elp-ficha', prefijoFrames: '' });
+  assert.deepEqual(MIGRADA, { robotId: 'nominal', perfil: 'gemelo', sensor: 'gemelo-v8', prefijoFrames: '' });
   assert.equal(VERSION, 9);
 });
 
@@ -56,7 +56,7 @@ test('una disposición anterior sin caja ni pedido se completa como hacía norma
   const l = copia(V8[0].layout); delete l.caja; delete l.pedido;
   const r = migrarLayout(l, ESQ);
   assert.deepEqual({ caja: r.layout.caja, pedido: r.layout.pedido }, { caja: ESQ.ref.caja, pedido: 2 });
-  assert.deepEqual(Object.keys(r.layout).filter(k => !(k in l)).sort(), ['caja', 'pedido', 'perfil', 'robotId', 'sensor', 'version']);
+  assert.deepEqual(Object.keys(r.layout).filter(k => !(k in l)).sort(), ['caja', 'pedido', 'perfil', 'prefijoFrames', 'robotId', 'sensor', 'version']);
 });
 
 test('migrar es idempotente y admite el layout como texto JSON', () => {
@@ -108,11 +108,15 @@ const ROTOS = [
   ['v9 sin perfil', l => { Object.assign(l, { version: 9, ...NUEVA }); delete l.perfil; }, 'falta «perfil»'],
   ['v9 con perfil desconocido', l => { Object.assign(l, { version: 9, ...NUEVA, perfil: 'rapido' }); }, '«perfil» desconocido ("rapido")'],
   ['v9 con sensor desconocido', l => { Object.assign(l, { version: 9, ...NUEVA, sensor: 'otro' }); }, '«sensor» desconocido ("otro")'],
-  ['v9 con un robot aún sin calibrar (T1.4)', l => { Object.assign(l, { version: 9, ...NUEVA, robotId: '203' }); }, '«robotId» desconocido ("203")'],
+  ['v9 con prefijo de otro robot (T1.5)', l => { Object.assign(l, { version: 9, ...NUEVA, robotId: '203', prefijoFrames: '204_' }); }, '«prefijoFrames» solo puede ser "" o "<robotId>_" ("204_")'],
+  ['v9 nominal con prefijo (no tiene URDF doble)', l => { Object.assign(l, { version: 9, ...NUEVA, prefijoFrames: 'nominal_' }); }, '«prefijoFrames» solo puede ser "" o "<robotId>_" ("nominal_")'],
+  ['v9 con prefijo que no es texto', l => { Object.assign(l, { version: 9, ...NUEVA, robotId: '205', prefijoFrames: 205 }); }, '«prefijoFrames» solo puede ser "" o "<robotId>_" (205)'],
+  ['v9 con un robot sin calibración (T1.4: solo nominal y 203–206)', l => { Object.assign(l, { version: 9, ...NUEVA, robotId: '207' }); }, '«robotId» desconocido ("207")'],
 ];
 test('validarLayout: una disposición v8 válida pasa; cada rotura da su motivo y migrarLayout no devuelve layout', () => {
   for (const { f, layout } of V8) assert.equal(validarLayout(layout, ESQ), null, f);
   assert.equal(validarLayout({ ...copia(V8[0].layout), version: 9, ...NUEVA }, ESQ), null);
+  for (const robotId of ['nominal', '203', '204', '205', '206']) assert.equal(validarLayout({ ...copia(V8[0].layout), version: 9, ...NUEVA, robotId }, ESQ), null, robotId); // T1.4
   for (const [nombre, romper, motivo] of ROTOS) {
     const l = copia(V8[0].layout); romper(l); const antes = structuredClone(l);
     assert.equal(validarLayout(l, ESQ), motivo, nombre);
@@ -120,6 +124,17 @@ test('validarLayout: una disposición v8 válida pasa; cada rotura da su motivo 
     assert.deepEqual(r, { error: motivo }, nombre);
     assert.deepEqual(l, antes, `${nombre}: la entrada no se modifica`);
   }
+});
+
+test('prefijoFrames (T1.5, decisión 9): "" o "<robotId>_"; una v9 sin el campo se completa con ""', () => {
+  const v9 = extra => ({ ...copia(V8[0].layout), version: 9, ...NUEVA, ...extra });
+  for (const [robotId, prefijoFrames] of [['nominal', ''], ['203', ''], ['203', '203_'], ['206', '206_']]) assert.equal(validarLayout(v9({ robotId, prefijoFrames }), ESQ), null, `${robotId} «${prefijoFrames}»`);
+  const sin = v9({ robotId: '204' }); delete sin.prefijoFrames; const antes = copia(sin);
+  const r = migrarLayout(sin, ESQ);
+  assert.equal(r.error, undefined); assert.equal(r.layout.prefijoFrames, ''); assert.deepEqual(sin, antes, 'la entrada no se modifica');
+  assert.equal(validarLayout(sin, ESQ), 'falta «prefijoFrames»', 'validarLayout sola no completa: lo hace migrarLayout');
+  const v10 = { ...copia(V8[0].layout), version: 10, robotId: '207', perfil: 'x', sensor: 'y' }; // una versión más nueva no se toca
+  assert.equal('prefijoFrames' in migrarLayout(v10, ESQ).layout, false);
 });
 
 test('una cámara llamada como una propiedad heredada (toString, constructor, __proto__) es desconocida', () => {
