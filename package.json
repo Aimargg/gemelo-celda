@@ -1,0 +1,19 @@
+{
+  "name": "gemelo-celda",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Gemelo digital de la celda UR3e (generado por IA). Pruebas: npm test.",
+  "scripts": {
+    "build": "bash tools/build_web.sh",
+    "test": "npm run build && npm run test:unit && npm run test:e2e",
+    "test:rapido": "npm run build && npm run test:unit && node --test --test-force-exit --test-reporter=spec tests/e2e/carga.test.mjs",
+    "test:unit": "node --test --test-force-exit --test-reporter=spec 'tests/unit/*.test.mjs'",
+    "test:e2e": "node --test --test-force-exit --test-reporter=spec --test-concurrency=1 'tests/e2e/*.test.mjs'",
+    "caracterizar": "npm run build && node tests/fixtures/generar.mjs",
+    "medir": "npm run build && node tests/medidas/linea-base.mjs"
+  },
+  "devDependencies": {
+    "playwright": "1.63.0",
+    "three": "0.160.0"
+  }
+}

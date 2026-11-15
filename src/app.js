@@ -1,0 +1,1517 @@
+// ======================= Utilidades y constantes =======================
+const PI = Math.PI, D2R = PI / 180, R2D = 180 / PI;
+const $ = (s, r = document) => r.querySelector(s);
+const $$ = (s, r = document) => [...r.querySelectorAll(s)];
+const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
+const smooth = t => t * t * (3 - 2 * t);
+const angDiff = (a, b) => { let d = a - b; while (d > PI) d -= 2 * PI; while (d < -PI) d += 2 * PI; return d; };
+const fmt = (v, d = 1) => v.toFixed(d).replace('.', ',');
+const mm = v => Math.round(v * 1000);
+const m4 = a => new THREE.Matrix4().set(...a);
+const css = v => getComputedStyle(document.documentElement).getPropertyValue(v).trim();
+const STOP = new Error('stop');
+// Escena del grupo abierta (cur) o «Tu mesa» (cur = null); base = disposición al abrirla, para saber si se ha modificado
+const ESC = { lista: [], papelera: [], cur: null, base: null, basada: null, ultima: null, cargando: true, borrarId: null };
+let EDITANDO = false; // mientras se arrastra algo no se recalculan los planes (es lo caro); se recalculan al soltar
+let OBS_EXTRA = []; // obstáculos previstos (la fruta que tendrá el plato cuando se coja)
+let VERSION_ESCENA = 0; // sube cada vez que cambia algo del entorno (objetos movidos, cogidos o soltados)
+class FalloDemo extends Error { constructor(msg, tipo = 'fallo', info = {}) { super(msg); this.tipo = tipo; this.info = { ...(typeof D !== 'undefined' ? D.ctx : {}), ...info }; } }
+
+const MESA = { w: 1.18, d: 0.83, h: 0.76, e: 0.03 };
+const BASES = { A: { x: -0.439, y: 0.300 }, B: { x: 0.434, y: 0.269 } };
+const RG2 = { carrera: 0.110, piv: 0.021, cuerpo: 0.130, L: 0.065, tip: 0.018, ancho: 0.064, esp: 0.036 };
+const SENSOR = { w: 6.287, h: 4.712 }; // mm, IMX577 4056×3040 a 1,55 µm
+const MODOS = { '1920x1080': { w: 1920, h: 1080, fps: 120 }, '1280x960': { w: 1280, h: 960, fps: 120 }, '2048x1536': { w: 2048, h: 1536, fps: 30 }, '3840x2160': { w: 3840, h: 2160, fps: 30 }, '1280x720': { w: 1280, h: 720, fps: 120 } };
+const BRAZO_MANFROTTO = 0.53;
+const VMAX = [180, 180, 180, 360, 360, 360].map(v => v * D2R); // rad/s UR3e
+const GRUPO_COL = () => ({ V1: css('--v1'), V2: css('--v2'), ROB: css('--rob') });
+const PLATO_R = 0.08, R_AGARRE = 0.082, H_BORDE = 0.022; // el centro de la yema queda 2 mm por fuera del borde del ala // radio del plato, radio y altura del punto de agarre del borde
+const H_TR = 0.12, H_AP = 0.06; // altura de traslado sobre la mesa y de aproximación sobre la bandeja
+const CAJA_LADO = 0.10;
+// ArUco reales del diccionario DICT_4X4_50 (ids 0–15), bits interiores por filas
+const ARUCO = ['1011010100110010', '0000111110011010', '0011001100101101', '1001100101000110', '0101010010011110', '0111100111001101', '1001111000101110', '1100010011110010', '1111111011011010', '1100111101010110', '1111100110010001', '0001000110100111', '0000111010110111', '0010101000001111', '0010010010110001', '0010011000111110'];
+
+function layoutDefecto() {
+  return {
+    robot: 'B',
+    zona: { x: 0.12, y: 0.27, yaw: 0, w: 0.22, d: 0.16 },
+    plato1: { x: 0.265, y: -0.049 }, plato2: { x: 0.122, y: 0.089 }, // a 36 cm de la base, a -118° y -150°: agarre horizontal y fruta desde arriba
+    caja: { on: true, h: 0.10 }, pedido: 2,
+    persona: { x: 1.28, y: 0.32, yaw: PI }, bandeja: { alt: 1.00, ade: 0.40 }, // lateral derecho, de frente al robot; bandeja a 1 m del suelo, a su derecha
+    arucoE: [{ x: 0.48, y: 0.10 }, { x: 0.55, y: -0.05 }],
+    cams: {
+      cenital: { grupo: 'V2', nombre: 'Cenital', f: 3.6, modo: '1920x1080', clamp: { x: 0.17, y: -0.415 }, pos: { x: 0.17, y: -0.17, z: 1.17 }, mira: { x: 0.18, y: 0.10, z: 0.76 }, roll: 0 },
+      entrega: { grupo: 'V1', nombre: 'Entrega', f: 3.6, modo: '1920x1080', clamp: { x: 0.55, y: -0.415 }, pos: { x: 0.55, y: -0.395, z: 1.25 }, mira: { x: 0.68, y: 0.10, z: 0.90 }, roll: 0 },
+      persona: { grupo: 'V1', nombre: 'Persona', f: 4.5, modo: '1920x1080', clamp: { x: 0.30, y: -0.415 }, pos: { x: 0.30, y: -0.365, z: 1.25 }, mira: { x: 1.20, y: 0.32, z: 1.30 }, roll: 0 },
+    },
+  };
+}
+function espejo(L) { // cambia el lado: x → −x
+  const c = JSON.parse(JSON.stringify(L));
+  const fx = o => { o.x = -o.x; };
+  [c.zona, c.plato1, c.plato2, c.persona, ...c.arucoE].forEach(fx);
+  c.zona.yaw = -c.zona.yaw; c.persona.yaw = PI - c.persona.yaw;
+  for (const k in c.cams) { fx(c.cams[k].clamp); fx(c.cams[k].pos); fx(c.cams[k].mira); c.cams[k].roll = -(c.cams[k].roll || 0); }
+  return c;
+}
+function normalizar(l) { const d = layoutDefecto(); if (!l || !l.zona || !l.cams) return d; if (!l.caja) l.caja = d.caja; if (!l.pedido) l.pedido = 2; return l; }
+const CLAVE = 'gemelo-ur3e-v4';
+let L = normalizar(cargarLocal());
+function cargarLocal() { try { const s = localStorage.getItem(CLAVE); return s ? JSON.parse(s) : null; } catch (e) { return null; } }
+let saveT = 0;
+function guardarLocal() { if (ESC.cur) return; clearTimeout(saveT); // una escena del grupo abierta no pisa tu mesa
+  saveT = setTimeout(() => { try { localStorage.setItem(CLAVE, JSON.stringify(L)); } catch (e) { } }, 400); }
+
+// ======================= Texturas procedurales =======================
+function aleat(seed) { let s = seed >>> 0 || 1; return () => { s ^= s << 13; s ^= s >>> 17; s ^= s << 5; return ((s >>> 0) % 100000) / 100000; }; }
+function lienzo(w, h, dibujar, { color = true, rep = null } = {}) {
+  const c = document.createElement('canvas'); c.width = w; c.height = h; dibujar(c.getContext('2d'), w, h);
+  const t = new THREE.CanvasTexture(c); if (color) t.colorSpace = THREE.SRGBColorSpace; t.wrapS = t.wrapT = THREE.RepeatWrapping; t.anisotropy = 8; if (rep) t.repeat.set(...rep); return t;
+}
+function ruido(x, w, h, n, a, b, seed, rmin = 0.5, rmax = 1.5) { const r = aleat(seed); for (let i = 0; i < n; i++) { const v = a + (b - a) * r(); x.fillStyle = `rgba(${v},${v},${v},${0.08 + 0.2 * r()})`; const s = rmin + (rmax - rmin) * r(); x.fillRect(r() * w, r() * h, s, s); } }
+const TEX = {};
+TEX.suelo = lienzo(256, 256, (x, w, h) => { // baldosa de 30 cm como la del laboratorio
+  x.fillStyle = '#cfccc5'; x.fillRect(0, 0, w, h); const r = aleat(7);
+  for (let i = 0; i < 3500; i++) { const v = 150 + 90 * r(); x.fillStyle = `rgba(${v},${v - 4},${v - 10},${0.25 + 0.3 * r()})`; const s = 0.6 + 1.8 * r(); x.fillRect(r() * w, r() * h, s, s); }
+  x.fillStyle = 'rgba(120,115,108,0.55)'; x.fillRect(0, 0, w, 2); x.fillRect(0, 0, 2, h);
+}, { rep: [33, 33] });
+TEX.cepillado = lienzo(256, 256, (x, w, h) => { x.fillStyle = '#7a7a7a'; x.fillRect(0, 0, w, h); const r = aleat(3); for (let i = 0; i < 900; i++) { const v = 90 + 110 * r(); x.fillStyle = `rgba(${v},${v},${v},0.35)`; x.fillRect(0, r() * h, w, 0.6 + r()); } }, { color: false, rep: [2, 2] });
+TEX.carton = lienzo(256, 256, (x, w, h) => { x.fillStyle = '#b58d5d'; x.fillRect(0, 0, w, h); const r = aleat(11); for (let i = 0; i < 2600; i++) { const v = r(); x.fillStyle = v > 0.5 ? 'rgba(90,60,30,0.10)' : 'rgba(230,200,150,0.10)'; x.fillRect(r() * w, r() * h, 1 + 6 * r(), 0.8); } for (let y = 0; y < h; y += 9) { x.fillStyle = 'rgba(80,55,25,0.06)'; x.fillRect(0, y, w, 3); } });
+TEX.cartonTop = lienzo(256, 256, (x, w, h) => { x.drawImage(TEX.carton.image, 0, 0); x.fillStyle = 'rgba(214,190,140,0.85)'; x.fillRect(w * 0.38, 0, w * 0.24, h); x.fillStyle = 'rgba(255,255,255,0.18)'; x.fillRect(w * 0.40, 0, 3, h); x.strokeStyle = 'rgba(70,45,20,0.35)'; x.lineWidth = 1.5; x.beginPath(); x.moveTo(0, h / 2); x.lineTo(w, h / 2); x.stroke(); });
+TEX.hoyuelos = lienzo(256, 128, (x, w, h) => { x.fillStyle = '#808080'; x.fillRect(0, 0, w, h); const r = aleat(5); for (let i = 0; i < 1600; i++) { const v = r() > 0.5 ? 60 : 200; x.fillStyle = `rgba(${v},${v},${v},0.35)`; x.beginPath(); x.arc(r() * w, r() * h, 0.8 + 1.4 * r(), 0, 7); x.fill(); } }, { color: false });
+TEX.manzana = lienzo(512, 256, (x, w, h) => { // rojo con zona amarillenta abajo, vetas finas difuminadas y lenticelas
+  const g = x.createLinearGradient(0, 0, 0, h); g.addColorStop(0, '#e0a64a'); g.addColorStop(0.18, '#cf4a2c'); g.addColorStop(0.6, '#b52024'); g.addColorStop(1, '#8a161b'); x.fillStyle = g; x.fillRect(0, 0, w, h);
+  const r = aleat(9); x.filter = 'blur(2px)'; for (let i = 0; i < 220; i++) { x.fillStyle = `rgba(245,${150 + 70 * r()},70,${0.05 + 0.07 * r()})`; x.fillRect(r() * w, h * 0.1 * r(), 1 + 2 * r(), h * (0.3 + 0.5 * r())); }
+  x.filter = 'none'; for (let i = 0; i < 260; i++) { x.fillStyle = `rgba(255,230,170,${0.25 + 0.3 * r()})`; x.beginPath(); x.arc(r() * w, r() * h, 0.6 + 0.8 * r(), 0, 7); x.fill(); } });
+TEX.pera = lienzo(256, 128, (x, w, h) => { const g = x.createLinearGradient(0, 0, 0, h); g.addColorStop(0, '#c9d65a'); g.addColorStop(1, '#a6c23c'); x.fillStyle = g; x.fillRect(0, 0, w, h); const r = aleat(13); for (let i = 0; i < 500; i++) { x.fillStyle = `rgba(120,110,40,${0.2 + 0.3 * r()})`; x.fillRect(r() * w, r() * h, 1.2, 1.2); } });
+TEX.tela = lienzo(128, 128, (x, w, h) => { x.fillStyle = '#808080'; x.fillRect(0, 0, w, h); for (let y = 0; y < h; y += 2) { x.fillStyle = 'rgba(0,0,0,0.12)'; x.fillRect(0, y, w, 1); } for (let i = 0; i < w; i += 2) { x.fillStyle = 'rgba(255,255,255,0.06)'; x.fillRect(i, 0, 1, h); } }, { color: false, rep: [6, 6] });
+TEX.bandeja = lienzo(256, 256, (x, w, h) => { x.fillStyle = '#808080'; x.fillRect(0, 0, w, h); ruido(x, w, h, 4000, 40, 220, 17); }, { color: false, rep: [3, 3] });
+TEX.moleteado = lienzo(64, 64, (x, w, h) => { x.fillStyle = '#808080'; x.fillRect(0, 0, w, h); for (let i = 0; i < w; i += 4) { x.fillStyle = '#3a3a3a'; x.fillRect(i, 0, 2, h); } }, { color: false, rep: [10, 1] });
+
+// ======================= Renderizador y escena =======================
+const view = $('#view');
+const renderer = new THREE.WebGLRenderer({ antialias: true, preserveDrawingBuffer: true });
+renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+renderer.outputColorSpace = THREE.SRGBColorSpace;
+renderer.toneMapping = THREE.ACESFilmicToneMapping; renderer.toneMappingExposure = 0.9;
+renderer.shadowMap.enabled = true; renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+renderer.autoClear = false;
+view.prepend(renderer.domElement);
+const labels = new CSS2DRenderer(); labels.domElement.className = 'labels'; view.appendChild(labels.domElement);
+const scene = new THREE.Scene();
+{ const pm = new THREE.PMREMGenerator(renderer); scene.environment = pm.fromScene(new RoomEnvironment(renderer), 0.04).texture; pm.dispose(); }
+const cam = new THREE.PerspectiveCamera(38, 1, 0.02, 40); cam.up.set(0, 0, 1);
+cam.layers.enable(1);
+const orbit = new OrbitControls(cam, renderer.domElement); orbit.enableDamping = true; orbit.dampingFactor = 0.12;
+orbit.maxPolarAngle = PI * 0.495;
+const hemi = new THREE.HemisphereLight(0xffffff, 0x8a8f96, 0.3); hemi.position.set(0, 0, 1); scene.add(hemi);
+const sun = new THREE.DirectionalLight(0xfff6ea, 1.9); sun.position.set(1.2, -1.4, 3.2); sun.castShadow = true;
+sun.shadow.mapSize.set(2048, 2048); Object.assign(sun.shadow.camera, { left: -1.3, right: 1.3, top: 1.3, bottom: -1.3, near: 0.5, far: 6 });
+sun.shadow.bias = -0.0003; sun.shadow.normalBias = 0.002; sun.shadow.radius = 3; sun.target.position.set(0, 0, MESA.h); scene.add(sun, sun.target);
+const fill = new THREE.DirectionalLight(0xe8f0ff, 0.35); fill.position.set(-2, 1.5, 2); scene.add(fill);
+
+const floorMat = new THREE.MeshStandardMaterial({ map: TEX.suelo, roughness: 0.85, metalness: 0 });
+const floor = new THREE.Mesh(new THREE.PlaneGeometry(10, 10), floorMat); floor.receiveShadow = true; scene.add(floor);
+function aplicarTema() {
+  const bg = new THREE.Color(css('--scene-bg')); scene.background = bg; renderer.setClearColor(bg);
+  scene.fog = new THREE.Fog(bg, 4.5, 9);
+  const oscuro = (getComputedStyle(document.documentElement).colorScheme || '').includes('dark');
+  floorMat.color.set(oscuro ? '#4a4f55' : '#ffffff');
+  dibujarGrafo(); if (perfilAlc) dibujarGrafica();
+}
+matchMedia('(prefers-color-scheme: dark)').addEventListener('change', aplicarTema);
+new MutationObserver(aplicarTema).observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
+
+// --- Mesa ---
+const mesa = new THREE.Group(); scene.add(mesa);
+{
+  const top = new THREE.Mesh(new RoundedBoxGeometry(MESA.w, MESA.d, MESA.e, 3, 0.006), new THREE.MeshPhysicalMaterial({ color: '#1b1e21', roughness: 0.38, clearcoat: 0.35, clearcoatRoughness: 0.5 }));
+  top.position.z = MESA.h - MESA.e / 2; top.receiveShadow = true; top.castShadow = true; mesa.add(top);
+  const legM = new THREE.MeshStandardMaterial({ color: '#2c3034', roughness: 0.5, metalness: 0.4 });
+  for (const sx of [-1, 1]) for (const sy of [-1, 1]) {
+    const lg = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.05, MESA.h - MESA.e), legM);
+    lg.position.set(sx * (MESA.w / 2 - 0.06), sy * (MESA.d / 2 - 0.06), (MESA.h - MESA.e) / 2); lg.castShadow = true; mesa.add(lg);
+  }
+  const trav = new THREE.Mesh(new THREE.BoxGeometry(MESA.w - 0.12, 0.03, 0.05), legM); trav.position.set(0, MESA.d / 2 - 0.06, 0.18); mesa.add(trav);
+  const trav2 = trav.clone(); trav2.position.y = -(MESA.d / 2 - 0.06); mesa.add(trav2);
+}
+const fotoMat = new THREE.MeshStandardMaterial({ roughness: 0.6, transparent: true, opacity: 0.95 });
+const foto = new THREE.Mesh(new THREE.PlaneGeometry(MESA.w - 0.004, MESA.d - 0.004), fotoMat); foto.position.z = MESA.h + 0.0006; foto.receiveShadow = true; mesa.add(foto);
+new THREE.TextureLoader().load('mesa.jpg', t => { t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = 8; fotoMat.map = t; fotoMat.needsUpdate = true; }, undefined, () => { foto.visible = false; });
+
+// Capa del mapa de alcance
+const alcCanvas = document.createElement('canvas');
+const alcTex = new THREE.CanvasTexture(alcCanvas); alcTex.magFilter = THREE.NearestFilter; alcTex.colorSpace = THREE.SRGBColorSpace;
+const alcPlane = new THREE.Mesh(new THREE.PlaneGeometry(MESA.w, MESA.d), new THREE.MeshBasicMaterial({ map: alcTex, transparent: true, depthWrite: false, toneMapped: false }));
+alcPlane.position.z = MESA.h + 0.0015; alcPlane.renderOrder = 2; scene.add(alcPlane); alcPlane.visible = false;
+
+// ======================= Robots =======================
+const VIS = { shoulder: [0, 0, 0, 0, 0, PI], upperarm: [0, 0, 0.120, PI / 2, 0, -PI / 2], forearm: [0, 0, 0.027, PI / 2, 0, -PI / 2], wrist1: [0, 0, -0.104, PI / 2, 0, 0], wrist2: [0, 0, -0.08535, 0, 0, 0], wrist3: [0, 0, -0.0921, PI / 2, 0, 0] };
+class Robot {
+  constructor(gltf, nombre, fantasma) {
+    this.root = new THREE.Group(); this.root.name = nombre; this.meshes = []; this.porLink = {};
+    const t = fantasma ? { transparent: true, opacity: 0.45, depthWrite: false } : {};
+    const mats = {
+      gris: new THREE.MeshStandardMaterial({ color: '#585b5f', roughness: 0.42, metalness: 0.12, ...t }),
+      negro: new THREE.MeshStandardMaterial({ color: '#161718', roughness: 0.55, ...t }),
+      azul: new THREE.MeshPhysicalMaterial({ color: '#9cc2db', roughness: 0.4, clearcoat: 0.25, clearcoatRoughness: 0.4, ...t }),
+      plata: new THREE.MeshStandardMaterial({ color: '#c9cdd1', roughness: 0.26, metalness: 0.9, ...t }),
+    };
+    const link = name => { const g = new THREE.Group(); this.porLink[name] = []; gltf.scene.traverse(o => { if (o.isMesh && o.name.startsWith(name + '__')) { const k = (o.name.split('__')[1].match(/^[a-z]+/) || ['gris'])[0]; if (!o.geometry.attributes.normal) o.geometry.computeVertexNormals(); const m = new THREE.Mesh(o.geometry, mats[k] || mats.gris); m.castShadow = !fantasma; m.receiveShadow = !fantasma; g.add(m); this.meshes.push(m); this.porLink[name].push(m); } }); return g; };
+    const place = (g, v) => { g.matrixAutoUpdate = false; g.matrix.copy(m4(KIN.org(...v))); return g; };
+    this.root.add(link('base'));
+    this.j = []; let parent = this.root; const names = ['shoulder', 'upperarm', 'forearm', 'wrist1', 'wrist2', 'wrist3'];
+    for (let i = 0; i < 6; i++) { const o = new THREE.Group(); o.matrixAutoUpdate = false; o.matrix.copy(m4(KIN.JO[i])); parent.add(o); const j = new THREE.Group(); o.add(j); j.add(place(link(names[i]), VIS[names[i]])); this.j.push(j); parent = j; }
+    this.tool0 = new THREE.Group(); this.tool0.matrixAutoUpdate = false; this.tool0.matrix.copy(m4(KIN.W3T)); parent.add(this.tool0);
+    this.q = [0, -PI / 2, 0, -PI / 2, 0, 0]; this.setQ(this.q);
+  }
+  setQ(q) { this.q = q.slice(); for (let i = 0; i < 6; i++) this.j[i].rotation.z = q[i]; this.root.updateMatrixWorld(true); }
+  place(x, y, yaw) { this.root.position.set(x, y, MESA.h); this.root.rotation.set(0, 0, yaw); this.root.updateMatrixWorld(true); }
+  puntos() { const p = []; const v = new THREE.Vector3(); for (let i = 0; i < 6; i++) { this.j[i].getWorldPosition(v); p.push(v.clone()); } this.tool0.getWorldPosition(v); p.push(v.clone()); return p; }
+}
+
+// ======================= Pinza RG2 paramétrica =======================
+const MAT = {
+  alu: new THREE.MeshPhysicalMaterial({ color: '#aeb4ba', metalness: 0.8, roughness: 0.4, roughnessMap: TEX.cepillado, anisotropy: 0.6 }),
+  goma: new THREE.MeshStandardMaterial({ color: '#131415', roughness: 0.92, roughnessMap: TEX.hoyuelos }),
+  azulAnod: new THREE.MeshPhysicalMaterial({ color: '#1e6fc4', metalness: 0.65, roughness: 0.3, clearcoat: 0.3 }),
+  negroMate: new THREE.MeshStandardMaterial({ color: '#1d1f21', roughness: 0.6, metalness: 0.2 }),
+  negroBrillo: new THREE.MeshPhysicalMaterial({ color: '#141516', roughness: 0.3, metalness: 0.3, clearcoat: 0.6 }),
+  cromo: new THREE.MeshStandardMaterial({ color: '#e6e8ea', metalness: 1, roughness: 0.12 }),
+  cristal: new THREE.MeshPhysicalMaterial({ color: '#0d1620', roughness: 0.04, metalness: 0.1, clearcoat: 1, clearcoatRoughness: 0.02, envMapIntensity: 1.6 }),
+};
+class Pinza {
+  constructor() {
+    this.g = new THREE.Group(); this.w = 0.06; const P = RG2; this.P = P;
+    const cyl = (r, h, m, seg = 40) => { const c = new THREE.Mesh(new THREE.CylinderGeometry(r, r, h, seg), m); c.rotation.x = PI / 2; c.castShadow = true; return c; };
+    const a = cyl(0.032, 0.007, MAT.negroMate); a.position.z = 0.0035; this.g.add(a);
+    const b = cyl(0.0355, 0.015, MAT.azulAnod); b.position.z = 0.0145; this.g.add(b);
+    const len = P.cuerpo - 0.022, hw = P.ancho / 2, sh = new THREE.Shape(); const r = 0.012;
+    sh.moveTo(-hw + r, 0); sh.lineTo(hw - r, 0); sh.quadraticCurveTo(hw, 0, hw, r); sh.lineTo(hw * 0.78, len * 0.5); sh.lineTo(hw, len - r); sh.quadraticCurveTo(hw, len, hw - r, len);
+    sh.lineTo(-hw + r, len); sh.quadraticCurveTo(-hw, len, -hw, len - r); sh.lineTo(-hw * 0.78, len * 0.5); sh.lineTo(-hw, r); sh.quadraticCurveTo(-hw, 0, -hw + r, 0);
+    const bg = new THREE.ExtrudeGeometry(sh, { depth: P.esp, bevelEnabled: true, bevelSize: 0.002, bevelThickness: 0.002, bevelSegments: 3, curveSegments: 10 });
+    bg.rotateX(PI / 2); bg.translate(0, P.esp / 2, 0.022);
+    const body = new THREE.Mesh(bg, MAT.alu); body.castShadow = true; this.g.add(body);
+    for (const s of [-1, 1]) { const tapa = new THREE.Mesh(new THREE.CircleGeometry(0.008, 24), MAT.negroMate); tapa.position.set(0, s * (P.esp / 2 + 0.0021), 0.03 + len * 0.2); tapa.rotation.x = s * PI / 2; this.g.add(tapa); }
+    this.zPiv = P.cuerpo - 0.012;
+    this.dedos = [];
+    for (const s of [-1, 1]) {
+      const piv = new THREE.Mesh(new THREE.CylinderGeometry(0.011, 0.011, P.esp + 0.004, 32), MAT.alu); piv.position.set(s * P.piv, 0, this.zPiv); piv.castShadow = true; this.g.add(piv);
+      for (const sy of [-1, 1]) { const tor = new THREE.Mesh(new THREE.CylinderGeometry(0.004, 0.004, 0.002, 12), MAT.cromo); tor.position.set(s * P.piv, sy * (P.esp / 2 + 0.003), this.zPiv); this.g.add(tor); }
+      const f = new THREE.Group(); f.position.set(s * P.piv, 0, this.zPiv); this.g.add(f);
+      const link = new THREE.Mesh(new RoundedBoxGeometry(0.009, P.esp * 0.85, P.L, 2, 0.002), MAT.alu); link.position.z = P.L / 2; link.castShadow = true; f.add(link);
+      const cover = new THREE.Mesh(new RoundedBoxGeometry(0.005, P.esp * 0.7, P.L * 0.8, 2, 0.0015), MAT.goma); cover.position.set(-s * 0.006, 0, P.L / 2); f.add(cover);
+      const tip = new THREE.Group(); tip.position.z = P.L; f.add(tip);
+      const tb = new THREE.Mesh(new RoundedBoxGeometry(0.012, P.esp * 0.9, 0.042, 2, 0.002), MAT.alu); tb.position.set(0, 0, P.tip); tb.castShadow = true; tip.add(tb);
+      const pad = new THREE.Mesh(new RoundedBoxGeometry(0.005, P.esp * 0.8, 0.034, 2, 0.0015), MAT.goma); pad.position.set(-s * 0.0075, 0, P.tip); tip.add(pad);
+      const yema = new THREE.Object3D(); yema.position.set(0, 0, P.tip); tip.add(yema);
+      this.dedos.push({ s, f, tip, yema });
+    }
+    this.tcp = new THREE.Group(); this.g.add(this.tcp);
+    const mk = new THREE.Mesh(new THREE.SphereGeometry(0.005, 12, 8), new THREE.MeshBasicMaterial({ color: '#e6b422' })); mk.layers.set(1); mk.userData.noCol = true; this.tcp.add(mk);
+    this.setApertura(0.06);
+  }
+  ang(w) { return Math.asin(clamp((w / 2 - this.P.piv + 0.010) / this.P.L, -0.95, 0.95)); }
+  tcpZ(w = this.w) { return this.zPiv + this.P.L * Math.cos(this.ang(w)) + this.P.tip; }
+  setApertura(w) {
+    this.w = clamp(w, 0, this.P.carrera); const th = this.ang(this.w);
+    for (const d of this.dedos) { d.f.rotation.y = d.s * th; d.tip.rotation.y = -d.s * th; }
+    this.tcp.position.set(0, 0, this.tcpZ());
+  }
+  mallas() { const m = []; this.g.traverse(o => { if (o.isMesh && !o.userData.noCol) m.push(o); }); return m; }
+}
+
+// ======================= Geometría de objetos =======================
+function arucoTex(id) {
+  const c = document.createElement('canvas'); c.width = c.height = 96; const x = c.getContext('2d');
+  x.fillStyle = '#fff'; x.fillRect(0, 0, 96, 96); x.fillStyle = '#000'; x.fillRect(8, 8, 80, 80);
+  const bits = ARUCO[id % ARUCO.length];
+  for (let r = 0; r < 4; r++) for (let k = 0; k < 4; k++) if (bits[r * 4 + k] === '1') { x.fillStyle = '#fff'; x.fillRect(8 + 13.33 * (k + 1), 8 + 13.33 * (r + 1), 13.4, 13.4); }
+  const t = new THREE.CanvasTexture(c); t.magFilter = THREE.NearestFilter; t.colorSpace = THREE.SRGBColorSpace; return t;
+}
+function aruco(id, lado = 0.05) {
+  const g = new THREE.Group();
+  const papel = new THREE.Mesh(new THREE.PlaneGeometry(lado * 1.25, lado * 1.25), new THREE.MeshStandardMaterial({ color: '#f4f2ee', roughness: 0.9 })); papel.receiveShadow = true; g.add(papel);
+  const m = new THREE.Mesh(new THREE.PlaneGeometry(lado, lado), new THREE.MeshStandardMaterial({ map: arucoTex(id), roughness: 0.85 })); m.position.z = 0.0002; m.receiveShadow = true; g.add(m);
+  g.userData.id = id; return g;
+}
+const plastico = (o) => new THREE.MeshPhysicalMaterial({ roughness: 0.32, clearcoat: 0.7, clearcoatRoughness: 0.18, ...o });
+function lathe(pts, mat, seg = 48) {
+  const g = new THREE.LatheGeometry(pts.map(p => new THREE.Vector2(p[0], p[1])), seg); g.rotateX(PI / 2);
+  const m = new THREE.Mesh(g, mat); m.castShadow = true; m.receiveShadow = true; return m;
+}
+const FRUTAS = {
+  manzana: { nombre: 'Manzana', w: 0.068, h: 0.034, r: 0.034, make() { const g = new THREE.Group(); const s = lathe([[0, -0.031], [0.02, -0.03], [0.032, -0.02], [0.035, -0.002], [0.032, 0.018], [0.02, 0.029], [0.008, 0.026], [0, 0.022]], plastico({ map: TEX.manzana, bumpMap: TEX.hoyuelos, bumpScale: 0.0004 }), 40); g.add(s); const st = new THREE.Mesh(new THREE.CylinderGeometry(0.0018, 0.0024, 0.016), new THREE.MeshStandardMaterial({ color: '#5a3a1e', roughness: 0.8 })); st.rotation.x = PI / 2; st.rotation.y = 0.25; st.position.z = 0.03; g.add(st); const hoja = new THREE.Mesh(new THREE.SphereGeometry(0.009, 12, 8), plastico({ color: '#3f8f3a' })); hoja.scale.set(1.6, 0.6, 0.2); hoja.position.set(0.007, 0, 0.035); hoja.rotation.y = -0.5; g.add(hoja); return g; } },
+  pera: { nombre: 'Pera', w: 0.06, h: 0.03, r: 0.031, make() { const g = new THREE.Group(); g.add(lathe([[0, -0.03], [0.02, -0.029], [0.03, -0.02], [0.031, -0.008], [0.025, 0.006], [0.017, 0.022], [0.013, 0.036], [0.007, 0.046], [0, 0.048]], plastico({ map: TEX.pera, bumpMap: TEX.hoyuelos, bumpScale: 0.0003 }), 40)); const st = new THREE.Mesh(new THREE.CylinderGeometry(0.0016, 0.002, 0.014), new THREE.MeshStandardMaterial({ color: '#5a3a1e' })); st.rotation.x = PI / 2; st.position.z = 0.053; g.add(st); return g; } },
+  uvas: { nombre: 'Uvas', w: 0.052, h: 0.03, r: 0.03, make() { const g = new THREE.Group(); const mt = plastico({ color: '#5b3a9c', roughness: 0.22, clearcoat: 1 }); const geo = new THREE.SphereGeometry(0.0115, 16, 12); const rows = [[0.024, 6], [0.018, 5], [0.011, 3], [0, 1]]; rows.forEach(([r, n], k) => { for (let i = 0; i < n; i++) { const a = i / n * 2 * PI + k; const s = new THREE.Mesh(geo, mt); s.position.set(Math.cos(a) * r, Math.sin(a) * r, 0.012 - k * 0.011); s.castShadow = true; g.add(s); } }); const ra = new THREE.Mesh(new THREE.CylinderGeometry(0.002, 0.002, 0.016), new THREE.MeshStandardMaterial({ color: '#4d6b2a' })); ra.rotation.x = PI / 2; ra.position.z = 0.022; g.add(ra); g.rotation.x = PI / 2.4; return g; } },
+  limon: { nombre: 'Limón', w: 0.058, h: 0.029, r: 0.03, make() { const s = new THREE.Mesh(new THREE.SphereGeometry(0.029, 32, 20), plastico({ color: '#f2d33c', bumpMap: TEX.hoyuelos, bumpScale: 0.0012, roughness: 0.4 })); s.scale.set(1.3, 1, 1); s.castShadow = true; const g = new THREE.Group(); g.add(s); for (const sx of [-1, 1]) { const p = new THREE.Mesh(new THREE.ConeGeometry(0.006, 0.01, 12), s.material); p.rotation.z = -sx * PI / 2; p.position.x = sx * 0.04; g.add(p); } return g; } },
+  frambuesa: { nombre: 'Frambuesa', w: 0.045, h: 0.022, r: 0.022, make() { const g = new THREE.Group(); const mt = plastico({ color: '#cf2f55', roughness: 0.45, clearcoat: 0.4 }); const geo = new THREE.SphereGeometry(0.0085, 12, 8); for (let i = 0; i < 26; i++) { const u = (i + 0.5) / 26, th = Math.acos(1 - 2 * u), ph = i * 2.4; const s = new THREE.Mesh(geo, mt); s.position.set(Math.sin(th) * Math.cos(ph) * 0.016, Math.sin(th) * Math.sin(ph) * 0.016, Math.cos(th) * 0.019); s.castShadow = true; g.add(s); } return g; } },
+  naranja: { nombre: 'Naranja', w: 0.066, h: 0.033, r: 0.033, make() { const s = new THREE.Mesh(new THREE.SphereGeometry(0.033, 32, 20), plastico({ color: '#ee8526', bumpMap: TEX.hoyuelos, bumpScale: 0.0015, roughness: 0.5 })); s.castShadow = true; return s; } },
+};
+const PIEZAS_DEF = [ // en la zona de fruta, coordenadas locales (separadas: plan A)
+  { tipo: 'manzana', u: -0.072, v: 0.04 }, { tipo: 'pera', u: 0, v: 0.04 }, { tipo: 'manzana', u: 0.072, v: 0.04 },
+  { tipo: 'uvas', u: -0.072, v: -0.04 }, { tipo: 'frambuesa', u: 0, v: -0.04 }, { tipo: 'limon', u: 0.072, v: -0.04 },
+];
+const platoPts = [[0, 0.002], [0.045, 0.002], [0.05, 0.0005], [0.052, 0.003], [0.06, 0.008], [0.074, 0.019], [0.08, 0.023], [0.0795, 0.025], [0.0735, 0.0225], [0.059, 0.012], [0.049, 0.0055], [0, 0.0055]];
+const platoMat = new THREE.MeshPhysicalMaterial({ color: '#f4f2ec', roughness: 0.28, clearcoat: 0.8, clearcoatRoughness: 0.12, side: THREE.DoubleSide });
+
+// --- Construcción de la escena de objetos ---
+const pickables = []; const OBJ = {}; const LBL = {};
+function etiqueta(texto, cls = '') { const d = document.createElement('div'); d.className = 'lbl ' + cls; d.textContent = texto; return new CSS2DObject(d); }
+
+// Zona de fruta
+OBJ.zona = new THREE.Group(); scene.add(OBJ.zona);
+const zonaBorde = new THREE.LineLoop(new THREE.BufferGeometry(), new THREE.LineBasicMaterial({ color: '#e6b422' }));
+OBJ.zona.add(zonaBorde);
+const zonaFondo = new THREE.Mesh(new THREE.PlaneGeometry(1, 1), new THREE.MeshBasicMaterial({ color: '#e6b422', transparent: true, opacity: 0.08, depthWrite: false })); zonaFondo.position.z = 0.0009; OBJ.zona.add(zonaFondo);
+const zonaMarc = []; for (let i = 0; i < 4; i++) { const a = aruco(i, 0.04); a.position.z = 0.0012; OBJ.zona.add(a); zonaMarc.push(a); }
+LBL.zona = etiqueta('Zona de fruta · V2'); OBJ.zona.add(LBL.zona);
+let piezas = [];
+function crearPiezas() { VERSION_ESCENA++;
+  piezas.forEach(p => p.obj.parent && p.obj.parent.remove(p.obj));
+  piezas = PIEZAS_DEF.map((d, i) => { const F = FRUTAS[d.tipo]; const o = F.make(); o.position.set(d.u, d.v, F.h); o.rotation.z = (i * 1.7) % PI; OBJ.zona.add(o); return { id: i, tipo: d.tipo, F, obj: o, u: d.u, v: d.v, usada: false, enPinza: false }; });
+}
+crearPiezas();
+function actualizarZona() {
+  const z = L.zona; OBJ.zona.position.set(z.x, z.y, MESA.h); OBJ.zona.rotation.z = z.yaw;
+  const hw = z.w / 2, hd = z.d / 2;
+  zonaBorde.geometry.setFromPoints([new THREE.Vector3(-hw, -hd, 0.001), new THREE.Vector3(hw, -hd, 0.001), new THREE.Vector3(hw, hd, 0.001), new THREE.Vector3(-hw, hd, 0.001)]);
+  zonaFondo.scale.set(z.w, z.d, 1);
+  [[-1, -1], [1, -1], [1, 1], [-1, 1]].forEach(([sx, sy], i) => zonaMarc[i].position.set(sx * (hw + 0.026), sy * (hd + 0.026), 0.0012));
+  LBL.zona.position.set(0, hd + 0.05, 0.02);
+}
+pickables.push({ key: 'zona', obj: OBJ.zona, nombre: 'Zona de fruta', grupo: 'V2' });
+
+// Platos y cajas
+const cajaMats = [new THREE.MeshStandardMaterial({ map: TEX.carton, roughness: 0.9 }), new THREE.MeshStandardMaterial({ map: TEX.carton, roughness: 0.9 }), new THREE.MeshStandardMaterial({ map: TEX.carton, roughness: 0.9 }), new THREE.MeshStandardMaterial({ map: TEX.carton, roughness: 0.9 }), new THREE.MeshStandardMaterial({ map: TEX.cartonTop, roughness: 0.85 }), new THREE.MeshStandardMaterial({ map: TEX.carton, roughness: 0.9 })];
+for (const k of ['plato1', 'plato2']) {
+  const g = new THREE.Group(); const p = lathe(platoPts, platoMat, 64); g.add(p); scene.add(g); OBJ[k] = g;
+  LBL[k] = etiqueta(k === 'plato1' ? 'Plato 1º' : 'Plato 2º'); LBL[k].position.set(0, 0, 0.07); g.add(LBL[k]);
+  const caja = new THREE.Group(); const cm = new THREE.Mesh(new RoundedBoxGeometry(CAJA_LADO, CAJA_LADO, 1, 2, 0.003), cajaMats); cm.castShadow = true; cm.receiveShadow = true; caja.add(cm); caja.userData.malla = cm; scene.add(caja); OBJ['caja' + k.slice(-1)] = caja;
+  pickables.push({ key: k, obj: g, nombre: k === 'plato1' ? 'Plato 1º' : 'Plato 2º', grupo: 'ROB' });
+}
+function zPlato() { return MESA.h + (L.caja.on ? L.caja.h : 0); }
+function actualizarPlatos() {
+  for (const k of ['plato1', 'plato2']) {
+    const caja = OBJ['caja' + k.slice(-1)];
+    caja.visible = L.caja.on && (k === 'plato1' || L.pedido !== 1); const h = L.caja.h; caja.userData.malla.scale.z = h; caja.userData.malla.position.z = h / 2;
+    caja.position.set(L[k].x, L[k].y, MESA.h);
+    const b = BASES[L.robot]; caja.rotation.z = Math.atan2(L[k].y - b.y, L[k].x - b.x); caja.updateMatrixWorld(true);
+    if (OBJ[k].parent === scene) OBJ[k].position.set(L[k].x, L[k].y, zPlato());
+    const pl = robot && L.caja.on && !EDITANDO && planAlDia(k) ? CACHE_PLAN[k].pl : null; if (pl) { caja.rotation.z = pl.yaw; caja.updateMatrixWorld(true); }
+  }
+}
+
+// Marcadores fijos de la cámara de entrega
+OBJ.arucoE = L.arucoE.map((p, i) => { const a = aruco(4 + i, 0.06); scene.add(a); pickables.push({ key: 'arucoE' + i, obj: a, nombre: `Marcador ${i + 1} (id ${4 + i})`, grupo: 'V1', idx: i }); return a; });
+function actualizarAruco() { OBJ.arucoE.forEach((a, i) => a.position.set(L.arucoE[i].x, L.arucoE[i].y, MESA.h + 0.0013)); }
+
+// Persona y bandeja
+const persona = new THREE.Group(); scene.add(persona); OBJ.persona = persona;
+const pielM = new THREE.MeshStandardMaterial({ color: '#b9a99a', roughness: 0.75 });
+const camisaM = new THREE.MeshStandardMaterial({ color: '#6f8396', roughness: 0.95, roughnessMap: TEX.tela, bumpMap: TEX.tela, bumpScale: 0.0006 });
+const pantM = new THREE.MeshStandardMaterial({ color: '#2f3a48', roughness: 0.95, roughnessMap: TEX.tela, bumpMap: TEX.tela, bumpScale: 0.0006 });
+function capsula(r, l, m) { const g = new THREE.CapsuleGeometry(r, l, 8, 16); g.rotateX(PI / 2); const c = new THREE.Mesh(g, m); c.castShadow = true; return c; }
+{
+  for (const s of [-1, 1]) { const lg = capsula(0.065, 0.72, pantM); lg.position.set(0, s * 0.1, 0.43); persona.add(lg); const zap = new THREE.Mesh(new RoundedBoxGeometry(0.26, 0.1, 0.06, 2, 0.02), new THREE.MeshStandardMaterial({ color: '#2a2a2a', roughness: 0.7 })); zap.position.set(0.05, s * 0.1, 0.03); zap.castShadow = true; persona.add(zap); }
+  const tor = capsula(0.16, 0.42, camisaM); tor.position.set(0, 0, 1.17); tor.scale.set(0.72, 1.05, 1); persona.add(tor);
+  const cue = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.05, 0.08, 16), pielM); cue.rotation.x = PI / 2; cue.position.z = 1.5; persona.add(cue);
+  const cab = new THREE.Mesh(new THREE.SphereGeometry(0.105, 28, 18), pielM); cab.scale.set(0.95, 0.85, 1.12); cab.position.z = 1.63; cab.castShadow = true; persona.add(cab);
+  const pelo = new THREE.Mesh(new THREE.SphereGeometry(0.108, 28, 18, 0, 2 * PI, 0, PI * 0.55), new THREE.MeshStandardMaterial({ color: '#2b211b', roughness: 0.8 })); pelo.rotation.x = PI / 2; pelo.rotation.z = PI; pelo.scale.set(0.97, 0.87, 1.14); pelo.position.set(-0.008, 0, 1.645); persona.add(pelo);
+  persona.userData.cara = new THREE.Object3D(); persona.userData.cara.position.set(0.09, 0, 1.64); persona.add(persona.userData.cara);
+}
+const brazos = []; for (let i = 0; i < 4; i++) { const c = new THREE.Mesh(new THREE.CylinderGeometry(0.035, 0.032, 1, 14), i % 2 ? pielM : camisaM); c.castShadow = true; scene.add(c); brazos.push(c); }
+LBL.persona = etiqueta('Persona'); LBL.persona.position.set(0, 0, 1.85); persona.add(LBL.persona);
+pickables.push({ key: 'persona', obj: persona, nombre: 'Persona y bandeja', grupo: 'V1' });
+
+const bandeja = new THREE.Group(); scene.add(bandeja); OBJ.bandeja = bandeja;
+const BAND = { w: 0.45, d: 0.33, e: 0.012 }; // bandeja de autoservicio típica [SUPUESTO]: con 36 cm, el borde de los platos caía sobre los dedos de quien la sujeta
+{
+  const m = new THREE.MeshPhysicalMaterial({ color: '#7f95a6', roughness: 0.55, clearcoat: 0.2, bumpMap: TEX.bandeja, bumpScale: 0.0004 });
+  const b = new THREE.Mesh(new RoundedBoxGeometry(BAND.d, BAND.w, BAND.e, 3, 0.004), m); b.position.z = -BAND.e / 2; b.castShadow = true; b.receiveShadow = true; bandeja.add(b);
+  const rimM = new THREE.MeshPhysicalMaterial({ color: '#6b8193', roughness: 0.5, clearcoat: 0.2 });
+  for (const [sx, sy, lx, ly] of [[1, 0, 0.008, BAND.w + 0.016], [-1, 0, 0.008, BAND.w + 0.016], [0, 1, BAND.d, 0.008], [0, -1, BAND.d, 0.008]]) { const r = new RoundedBoxGeometry(lx, ly, 0.012, 2, 0.003); const rm = new THREE.Mesh(r, rimM); rm.position.set(sx * (BAND.d / 2 + 0.004), sy * (BAND.w / 2 + 0.004), -0.002); rm.castShadow = true; bandeja.add(rm); }
+  [[0.14, -0.17], [0.14, 0.0], [0.14, 0.17], [-0.05, 0.205]].forEach(([u, v], i) => { const a = aruco(6 + i, 0.032); a.position.set(u, v, 0.0006); bandeja.add(a); });
+}
+const zonasB = {};
+for (const [k, v] of [['zona_primero', 0.10], ['zona_segundo', -0.10], ['zona_centro', 0]]) {
+  const z = new THREE.Group(); z.position.set(-0.02, v, 0.0005); bandeja.add(z); zonasB[k] = z;
+  const ln = new THREE.LineLoop(new THREE.BufferGeometry().setFromPoints([[-0.085, -0.08], [0.085, -0.08], [0.085, 0.08], [-0.085, 0.08]].map(([a, b]) => new THREE.Vector3(a, b, 0.0004))), new THREE.LineBasicMaterial({ color: '#ffffff' }));
+  z.add(ln); const l = etiqueta(k); l.element.classList.add('tf'); l.position.set(0, 0, 0.01); z.add(l); z.userData.lbl = l;
+}
+// Versión del pedido: 1 plato (al centro de la bandeja) o 2 platos (primero y segundo, uno a cada lado)
+function platosActivos() { return L.pedido === 1 ? [['plato1', 'zona_centro']] : [['plato1', 'zona_primero'], ['plato2', 'zona_segundo']]; }
+function zonaDe(pk) { const a = platosActivos().find(x => x[0] === pk); return a ? a[1] : 'zona_segundo'; }
+function aplicarPedido() {
+  const uno = L.pedido === 1; OBJ.plato2.visible = !uno; OBJ.caja2.visible = !uno && L.caja.on; zonasB.zona_centro.visible = uno; zonasB.zona_primero.visible = zonasB.zona_segundo.visible = !uno; for (const k in zonasB) zonasB[k].userData.lbl.visible = zonasB[k].visible; LBL.plato2.visible = !uno; // las etiquetas HTML no heredan la visibilidad
+  PASOS = uno ? PASOS1 : PASOS2; $$('#segPedido button').forEach(x => x.setAttribute('aria-pressed', +x.dataset.v === L.pedido)); VERSION_ESCENA++;
+  const it = pickables.find(p => p.key === 'plato2'); if (it) it.oculto = uno;
+}
+function ladoZonas() { // la zona del primero queda del lado del robot
+  const b = BASES[L.robot]; bandeja.updateMatrixWorld(true);
+  const a = zonasB.zona_primero.getWorldPosition(new THREE.Vector3()), c = zonasB.zona_segundo.getWorldPosition(new THREE.Vector3());
+  if (Math.hypot(a.x - b.x, a.y - b.y) > Math.hypot(c.x - b.x, c.y - b.y)) { const t = zonasB.zona_primero.position.y; zonasB.zona_primero.position.y = zonasB.zona_segundo.position.y; zonasB.zona_segundo.position.y = t; }
+}
+const BALANCEO = t => ({ dx: 0.55 * Math.sin(2 * PI * 0.33 * t) + 0.35 * Math.sin(2 * PI * 0.87 * t + 1.1), dy: 0.6 * Math.sin(2 * PI * 0.47 * t + 2.0) + 0.25 * Math.sin(2 * PI * 1.1 * t), dz: 0.3 * Math.sin(2 * PI * 0.71 * t + 0.4), dyaw: 0.9 * Math.sin(2 * PI * 0.29 * t + 0.7) });
+const trayState = { subida: 1, balanceo: false };
+function poseBandeja(t) {
+  const P = L.persona, B = L.bandeja; const A = (D.amp || 0) * (trayState.balanceo ? 1 : 0);
+  const o = BALANCEO(t + D.fase); const s = trayState.subida;
+  const ade = 0.18 + (B.ade - 0.18) * s, alt = (B.alt - 0.22) + 0.22 * s;
+  const yaw = P.yaw + o.dyaw * A * 1.6; const lx = ade + o.dx * A, ly = o.dy * A;
+  return { x: P.x + Math.cos(P.yaw) * lx - Math.sin(P.yaw) * ly, y: P.y + Math.sin(P.yaw) * lx + Math.cos(P.yaw) * ly, z: alt + o.dz * A, yaw };
+}
+function aplicarBandeja(t) {
+  const p = poseBandeja(t); bandeja.position.set(p.x, p.y, p.z); bandeja.rotation.set(0, 0, p.yaw); bandeja.updateMatrixWorld(true);
+  persona.position.set(L.persona.x + D.personaOff * Math.cos(L.persona.yaw + PI), L.persona.y + D.personaOff * Math.sin(L.persona.yaw + PI), 0); persona.rotation.z = L.persona.yaw; persona.updateMatrixWorld(true);
+  for (let k = 0; k < 2; k++) {
+    const s = k ? 1 : -1;
+    const hombro = new THREE.Vector3(0.02, s * 0.2, 1.42).applyMatrix4(persona.matrixWorld);
+    const mano = new THREE.Vector3(-0.02, s * (BAND.w / 2 + 0.01), -0.005).applyMatrix4(bandeja.matrixWorld);
+    const codo = hombro.clone().lerp(mano, 0.5); codo.z -= 0.12; codo.add(new THREE.Vector3(0, s * 0.06, 0).applyEuler(persona.rotation));
+    cilindroEntre(brazos[k * 2], hombro, codo); cilindroEntre(brazos[k * 2 + 1], codo, mano);
+  }
+}
+function cilindroEntre(c, a, b) { const d = b.clone().sub(a); const l = d.length(); c.position.copy(a).addScaledVector(d, 0.5); c.scale.set(1, l, 1); c.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), d.normalize()); }
+
+// ======================= Cámaras =======================
+const CAMS = {};
+function hfovDe(c) { return 2 * Math.atan(SENSOR.w / 2 / c.f); }
+function vfovDe(c) { const M = MODOS[c.modo]; return 2 * Math.atan(Math.min(SENSOR.h, SENSOR.w * M.h / M.w) / 2 / c.f); }
+function crearCam(k) {
+  const c = L.cams[k]; const R = { k };
+  R.cam = new THREE.PerspectiveCamera(vfovDe(c) * R2D, MODOS[c.modo].w / MODOS[c.modo].h, 0.03, 8); R.cam.up.set(0, 0, 1); scene.add(R.cam);
+  const cuerpo = new THREE.Group(); R.cam.add(cuerpo);
+  const caja = new THREE.Mesh(new RoundedBoxGeometry(0.044, 0.044, 0.026, 3, 0.004), MAT.negroMate); caja.position.z = 0.013; caja.castShadow = true; cuerpo.add(caja);
+  const tubo = new THREE.Mesh(new THREE.CylinderGeometry(0.0165, 0.0165, 0.036, 32), MAT.negroBrillo); tubo.rotation.x = PI / 2; tubo.position.z = -0.018; cuerpo.add(tubo);
+  const anilloM = new THREE.MeshStandardMaterial({ color: '#2a2c2f', roughness: 0.55, bumpMap: TEX.moleteado, bumpScale: 0.002 });
+  for (const z of [-0.008, -0.026]) { const an = new THREE.Mesh(new THREE.CylinderGeometry(0.0178, 0.0178, 0.007, 32), anilloM); an.rotation.x = PI / 2; an.position.z = z; cuerpo.add(an); }
+  const vidrio = new THREE.Mesh(new THREE.CircleGeometry(0.0125, 32), MAT.cristal); vidrio.position.z = -0.0362; vidrio.rotation.y = PI; cuerpo.add(vidrio);
+  R.cuerpo = cuerpo;
+  R.clamp = new THREE.Group(); { const cb = new THREE.Mesh(new RoundedBoxGeometry(0.05, 0.045, 0.075, 2, 0.006), MAT.negroMate); cb.castShadow = true; R.clamp.add(cb); const pomo = new THREE.Mesh(new THREE.CylinderGeometry(0.012, 0.012, 0.035, 16), MAT.negroMate); pomo.position.set(0, 0, -0.05); pomo.rotation.x = PI / 2; R.clamp.add(pomo); const esp = new THREE.Mesh(new THREE.CylinderGeometry(0.008, 0.008, 0.03, 16), MAT.cromo); esp.rotation.x = PI / 2; esp.position.z = 0.05; R.clamp.add(esp); } scene.add(R.clamp);
+  R.seg = [0, 1].map(() => { const s = new THREE.Mesh(new THREE.CylinderGeometry(0.0105, 0.0105, 1, 16), MAT.negroBrillo); s.castShadow = true; scene.add(s); return s; });
+  R.codo = new THREE.Group(); { const disco = new THREE.Mesh(new THREE.CylinderGeometry(0.02, 0.02, 0.03, 24), MAT.negroMate); R.codo.add(disco); const pomo = new THREE.Mesh(new THREE.CylinderGeometry(0.028, 0.028, 0.012, 6), MAT.negroBrillo); pomo.position.y = 0.024; R.codo.add(pomo); } scene.add(R.codo);
+  R.mira = new THREE.Mesh(new THREE.OctahedronGeometry(0.014), new THREE.MeshBasicMaterial({ color: '#e6b422' })); R.mira.layers.set(1); scene.add(R.mira);
+  R.frus = new THREE.LineSegments(new THREE.BufferGeometry(), new THREE.LineBasicMaterial({ transparent: true, opacity: 0.85 })); R.frus.layers.set(1); scene.add(R.frus);
+  R.huella = new THREE.Mesh(new THREE.BufferGeometry(), new THREE.MeshBasicMaterial({ transparent: true, opacity: 0.12, depthWrite: false, side: THREE.DoubleSide })); R.huella.layers.set(1); scene.add(R.huella);
+  R.lbl = etiqueta('Cám. ' + c.nombre.toLowerCase()); R.cam.add(R.lbl); R.lbl.position.set(0, 0.05, 0);
+  R.optical = new THREE.Object3D(); R.optical.rotation.x = PI; R.cam.add(R.optical);
+  CAMS[k] = R;
+  pickables.push({ key: 'cam:' + k, obj: R.cam, nombre: 'Cámara ' + c.nombre.toLowerCase(), grupo: c.grupo, cam: k, parte: 'pos' });
+  pickables.push({ key: 'mira:' + k, obj: R.mira, oculto: true, nombre: 'Punto de mira ' + c.nombre.toLowerCase(), grupo: c.grupo, cam: k, parte: 'mira' });
+  pickables.push({ key: 'clamp:' + k, obj: R.clamp, oculto: true, nombre: 'Pinza de mesa ' + c.nombre.toLowerCase(), grupo: c.grupo, cam: k, parte: 'clamp' });
+}
+for (const k in L.cams) crearCam(k);
+// Orientación de una cámara en el marco de la mesa: giro en planta (0° = hacia el fondo, positivo hacia la derecha),
+// inclinación (positiva hacia abajo) y alabeo alrededor del eje óptico. El punto de mira se mueve conservando su distancia.
+function orientDe(c) { const dx = c.mira.x - c.pos.x, dy = c.mira.y - c.pos.y, dz = c.mira.z - c.pos.z; return { pan: Math.atan2(dx, dy), tilt: Math.atan2(-dz, Math.hypot(dx, dy)), roll: c.roll || 0 }; }
+function fijarOrient(c, pan, tilt, roll) {
+  tilt = clamp(tilt, -60 * D2R, 89 * D2R); pan = Math.atan2(Math.sin(pan), Math.cos(pan)); // mirando justo en vertical el giro queda indefinido
+  const d = Math.max(0.3, Math.hypot(c.mira.x - c.pos.x, c.mira.y - c.pos.y, c.mira.z - c.pos.z));
+  Object.assign(c.mira, { x: c.pos.x + d * Math.cos(tilt) * Math.sin(pan), y: c.pos.y + d * Math.cos(tilt) * Math.cos(pan), z: c.pos.z - d * Math.sin(tilt) });
+  if (roll !== undefined) c.roll = Math.atan2(Math.sin(roll), Math.cos(roll));
+}
+const _camTmp = new THREE.PerspectiveCamera(); _camTmp.up.set(0, 0, 1);
+function orientarDesdeQuat(c, q) { // la cámara girada con los anillos: de su orientación salen el nuevo punto de mira y el alabeo
+  const f = new THREE.Vector3(0, 0, -1).applyQuaternion(q); fijarOrient(c, Math.atan2(f.x, f.y), Math.atan2(-f.z, Math.hypot(f.x, f.y)));
+  _camTmp.position.set(c.pos.x, c.pos.y, c.pos.z); _camTmp.lookAt(c.mira.x, c.mira.y, c.mira.z);
+  const u0 = new THREE.Vector3(0, 1, 0).applyQuaternion(_camTmp.quaternion), u1 = new THREE.Vector3(0, 1, 0).applyQuaternion(q), fw = new THREE.Vector3(0, 0, -1).applyQuaternion(_camTmp.quaternion);
+  c.roll = Math.atan2(-fw.dot(u0.clone().cross(u1)), u0.dot(u1));
+}
+function puntoBorde(x, y) {
+  const hw = MESA.w / 2, hd = MESA.d / 2; x = clamp(x, -hw, hw); y = clamp(y, -hd, hd);
+  const d = [hw - x, x + hw, hd - y, y + hd]; const i = d.indexOf(Math.min(...d));
+  if (i === 0) x = hw; else if (i === 1) x = -hw; else if (i === 2) y = hd; else y = -hd; return { x, y };
+}
+function actualizarCam(k) {
+  const c = L.cams[k], R = CAMS[k]; const col = new THREE.Color(GRUPO_COL()[c.grupo]);
+  R.cam.fov = vfovDe(c) * R2D; R.cam.aspect = MODOS[c.modo].w / MODOS[c.modo].h; R.cam.updateProjectionMatrix();
+  R.cam.position.set(c.pos.x, c.pos.y, c.pos.z); R.cam.lookAt(c.mira.x, c.mira.y, c.mira.z); R.cam.rotateZ(c.roll || 0); R.cam.updateMatrixWorld(true); // apunta al punto de mira y gira la imagen alrededor del eje óptico
+  R.mira.position.set(c.mira.x, c.mira.y, c.mira.z);
+  const cp = puntoBorde(c.clamp.x, c.clamp.y); c.clamp.x = cp.x; c.clamp.y = cp.y;
+  R.clamp.position.set(cp.x, cp.y, MESA.h - 0.005);
+  const base = new THREE.Vector3(cp.x, cp.y, MESA.h + 0.04), punta = new THREE.Vector3(0, 0, 0.03).applyMatrix4(R.cam.matrixWorld);
+  const D_ = base.distanceTo(punta), seg = BRAZO_MANFROTTO / 2; R.brazoOK = D_ <= BRAZO_MANFROTTO; R.brazoD = D_;
+  const mid = base.clone().lerp(punta, 0.5); const h = R.brazoOK ? Math.sqrt(Math.max(0, seg * seg - D_ * D_ / 4)) : 0;
+  const dir = punta.clone().sub(base).normalize(); const perp = new THREE.Vector3(0, 0, 1).sub(dir.clone().multiplyScalar(dir.z)); if (perp.lengthSq() < 1e-6) perp.set(1, 0, 0); perp.normalize();
+  const codo = mid.addScaledVector(perp, h); R.codo.position.copy(codo); R.codo.lookAt(punta);
+  cilindroEntre(R.seg[0], base, codo); cilindroEntre(R.seg[1], codo, punta);
+  R.seg.forEach(s => { s.material = R.brazoOK ? MAT.negroBrillo : new THREE.MeshStandardMaterial({ color: css('--bad') }); });
+  const cor = [];
+  for (const [u, v] of [[-1, -1], [1, -1], [1, 1], [-1, 1]]) {
+    const d = new THREE.Vector3(u, v, 0.5).unproject(R.cam).sub(R.cam.position).normalize();
+    let t = 1.3; if (d.z < -1e-3) { const tt = (MESA.h + 0.002 - R.cam.position.z) / d.z; if (tt > 0) t = Math.min(tt, 2.2); }
+    cor.push(R.cam.position.clone().addScaledVector(d, t));
+  }
+  const pts = []; for (let i = 0; i < 4; i++) pts.push(R.cam.position, cor[i], cor[i], cor[(i + 1) % 4]);
+  R.frus.geometry.setFromPoints(pts); R.frus.material.color.copy(col);
+  R.huella.geometry.setFromPoints([cor[0], cor[1], cor[2], cor[0], cor[2], cor[3]]); R.huella.geometry.computeVertexNormals(); R.huella.material.color.copy(col);
+  R.lbl.element.style.borderColor = col.getStyle();
+}
+
+// ======================= Cinemática aplicada =======================
+let robot = null, otro = null; const pinza = new Pinza();
+let REF_MANIP = 1;
+function poseVertical(pb, yawb) { const c = Math.cos(yawb), s = Math.sin(yawb); return [c, s, 0, pb.x, s, -c, 0, pb.y, 0, 0, -1, pb.z, 0, 0, 0, 1]; }
+// Pinza horizontal: eje de la herramienta en el plano de la mesa (yaw) y dedos en vertical (flip = ±1)
+// Pinza «horizontal»: eje de la herramienta casi horizontal hacia yaw y bajando un ángulo pitch; dedos que se abren en el plano vertical (flip = ±1)
+function ejeHoriz(yaw, pitch = 0) { const cp = Math.cos(pitch); return new THREE.Vector3(Math.cos(yaw) * cp, Math.sin(yaw) * cp, -Math.sin(pitch)); }
+function poseHoriz(pb, yawb, flip, pitch = 0) {
+  const c = Math.cos(yawb), s = Math.sin(yawb), cp = Math.cos(pitch), sp = Math.sin(pitch);
+  const z = [c * cp, s * cp, -sp], x = [flip * c * sp, flip * s * sp, flip * cp], y = [z[1] * x[2] - z[2] * x[1], z[2] * x[0] - z[0] * x[2], z[0] * x[1] - z[1] * x[0]];
+  return [x[0], y[0], z[0], pb.x, x[1], y[1], z[1], pb.y, x[2], y[2], z[2], pb.z, 0, 0, 0, 1];
+}
+function qValida(q, minZ = 0.02) {
+  const Ls = KIN.fkLinks(q);
+  for (let i = 2; i < 7; i++) { const z = Ls[i][11]; if (z < minZ) return false; if (i >= 3 && z < 0.30 && Math.hypot(Ls[i][3], Ls[i][7]) < 0.085) return false; }
+  return true;
+}
+function mundoABase(p) { return p.clone().applyMatrix4(robot.root.matrixWorld.clone().invert()); }
+// IK del TCP en el mundo. opts: horiz (pinza horizontal), flip (fijo si se lleva el plato), sym, w (apertura), minZ
+function ikTCP(pw, yaw, qNear, opts = {}) {
+  const w = opts.w ?? pinza.w; const tz = pinza.tcpZ(w);
+  const tool = opts.horiz ? pw.clone().addScaledVector(ejeHoriz(yaw, opts.pitch || 0), -tz) : new THREE.Vector3(pw.x, pw.y, pw.z + tz);
+  const pb = mundoABase(tool); const yb = yaw - robot.root.rotation.z;
+  const cands = opts.horiz ? (opts.flip ? [[yb, opts.flip]] : [[yb, 1], [yb, -1]]) : (opts.sym === false ? [[yb]] : [[yb], [yb + PI]]);
+  let best = null, bestC = Infinity;
+  for (const cd of cands) for (const s of KIN.ik(opts.horiz ? poseHoriz(pb, cd[0], cd[1], opts.pitch || 0) : poseVertical(pb, cd[0]))) {
+    if (!qValida(s, opts.minZ ?? 0.02)) continue;
+    const q = enLimites(qNear ? s.map((v, i) => qNear[i] + angDiff(v, qNear[i])) : s.slice()); if (!q) continue; // límites del UR3e (codo ±180°)
+    if (!opts.sinColision && choqueEn(q, ctxDe(opts))) continue; // ni autocolisión ni choque con el entorno
+    let c = 0; if (qNear) for (let i = 0; i < 6; i++) c += (i < 3 ? 3 : 1) * (q[i] - qNear[i]) ** 2; else c = Math.abs(s[1] + 1.6) + Math.abs(s[4] + PI / 2);
+    if (c < bestC) { bestC = c; best = q; }
+  }
+  return best;
+}
+function tcpMundo() { pinza.tcp.updateMatrixWorld(true); return pinza.tcp.getWorldPosition(new THREE.Vector3()); }
+function ejesHerramienta() { const m = new THREE.Matrix4().extractRotation(robot.tool0.matrixWorld); return { x: new THREE.Vector3(1, 0, 0).applyMatrix4(m), z: new THREE.Vector3(0, 0, 1).applyMatrix4(m) }; }
+function yawHerramienta() { const e = ejesHerramienta(); return Math.atan2(e.x.y, e.x.x); }
+
+// Alcance con la pinza vertical en un punto (mundo) a una altura h sobre la mesa
+function alcance(xw, yw, h) {
+  const b = BASES[L.robot]; const tz = pinza.tcpZ(0.02);
+  const pb = { x: xw - b.x, y: yw - b.y, z: h + tz };
+  let feas = 0, m = 0;
+  for (let k = 0; k < 6; k++) {
+    let ok = false; for (const q of KIN.ik(poseVertical(pb, k * PI / 6))) { if (qValida(q)) { ok = true; m = Math.max(m, KIN.manip(q) / REF_MANIP); if (m > 0.6) break; } }
+    if (ok) feas++;
+  }
+  return { feas, m, cls: feas === 0 ? 0 : (feas >= 4 && m >= 0.35 ? 2 : 1) };
+}
+let perfilAlc = null;
+function calcularPerfil() {
+  const out = [];
+  for (let h = 0; h <= 0.40001; h += 0.01) {
+    let rmin = null, rmax = null;
+    for (let r = 0; r <= 0.62; r += 0.005) { const tz = pinza.tcpZ(0.02); let ok = false; for (let k = 0; k < 3 && !ok; k++) for (const q of KIN.ik(poseVertical({ x: r, y: 0, z: h + tz }, k * PI / 3))) if (qValida(q)) { ok = true; break; } if (ok) { if (rmin === null) rmin = r; rmax = r; } }
+    out.push({ h, rmin, rmax });
+  }
+  perfilAlc = out;
+}
+function radioA(h) { if (!perfilAlc) return null; const i = clamp(Math.round(h / 0.01), 0, perfilAlc.length - 1); return perfilAlc[i]; }
+
+// ======================= Holguras: pinza y muñeca frente a mesa y cajas =======================
+const _bx = new THREE.Box3(), _v = new THREE.Vector3(), _inv = new THREE.Matrix4();
+function holguraActual() {
+  // menor distancia vertical de la muñeca y la pinza a la mesa, y penetración en las cajas
+  let mesa = Infinity, caja = Infinity;
+  const ml = [...(robot.porLink.wrist1 || []), ...(robot.porLink.wrist2 || []), ...(robot.porLink.wrist3 || []), ...(robot.porLink.forearm || [])];
+  for (const m of ml) { _bx.setFromObject(m, true); mesa = Math.min(mesa, _bx.min.z - MESA.h); }
+  const cajas = L.caja.on ? [OBJ.caja1, OBJ.caja2].filter(c => c.visible) : [];
+  for (const m of pinza.mallas()) {
+    m.updateMatrixWorld(true); _bx.setFromObject(m, true); mesa = Math.min(mesa, _bx.min.z - MESA.h);
+    for (const cj of cajas) {
+      _inv.copy(cj.matrixWorld).invert(); const pos = m.geometry.attributes.position; const hl = CAJA_LADO / 2;
+      for (let i = 0; i < pos.count; i += 2) { _v.fromBufferAttribute(pos, i).applyMatrix4(m.matrixWorld).applyMatrix4(_inv); if (Math.abs(_v.x) < hl && Math.abs(_v.y) < hl && _v.z < L.caja.h) caja = Math.min(caja, _v.z - L.caja.h); }
+    }
+  }
+  return { mesa, caja, min: Math.min(mesa, caja), contra: caja < mesa ? 'caja' : 'mesa' };
+}
+function holguraEn(q, w) { const q0 = robot.q.slice(), w0 = pinza.w; robot.setQ(q); pinza.setApertura(w); const h = holguraActual(); robot.setQ(q0); pinza.setApertura(w0); return h; }
+
+// @@COLISION@@
+// @@FALLOS@@
+
+// Puntos donde se suelta la fruta en un plato: piezas una junto a otra en la dirección tangente (no se alejan de la base)
+function puntosSoltar(pc, F, n) {
+  const b = BASES[L.robot]; const phi = Math.atan2(pc.y - b.y, pc.x - b.x); const t = new THREE.Vector3(-Math.sin(phi), Math.cos(phi), 0); const out = [];
+  for (let k = 0; k < n; k++) { const p = pc.clone().addScaledVector(t, (k - (n - 1) / 2) * Math.max(0.035, F.w * 1.02)); out.push({ arr: new THREE.Vector3(p.x, p.y, Math.max(MESA.h + H_TR, pc.z + 0.025 + F.h + 0.05)), sol: new THREE.Vector3(p.x, p.y, pc.z + 0.055 + F.h) }); }
+  return out;
+}
+const llegaVertical = (p, q) => [0, PI / 4, PI / 2, -PI / 4].some(y => ikTCP(p, y, q));
+// Agarre de una pieza de fruta: dirección de apertura con más hueco respecto a las vecinas
+function planAgarreFruta(pz, w, qRef) {
+  const c = pz.obj.getWorldPosition(new THREE.Vector3()); const zG = MESA.h + alturaAgarre(pz.F); let mejor = null;
+  const vec = piezas.filter(o => o !== pz && !o.usada && !o.enPinza).map(o => ({ p: o.obj.getWorldPosition(new THREE.Vector3()), r: o.F.r }));
+  for (let i = 0; i < 12; i++) {
+    const th = L.zona.yaw + i * PI / 12; const u = new THREE.Vector3(Math.cos(th), Math.sin(th), 0); const a = w / 2 + 0.009;
+    let hol = Infinity; for (const s of [-1, 1]) { const f = c.clone().addScaledVector(u, s * a); for (const v of vec) hol = Math.min(hol, Math.hypot(f.x - v.p.x, f.y - v.p.y) - v.r); }
+    if (mejor && hol <= mejor.hol) continue;
+    if (!ikTCP(new THREE.Vector3(c.x, c.y, zG), th, qRef) || !ikTCP(new THREE.Vector3(c.x, c.y, MESA.h + H_TR), th, qRef)) continue;
+    mejor = { yaw: th, hol, c, zG };
+  }
+  return mejor;
+}
+// Planificador del agarre horizontal del plato (dirección de aproximación)
+const PITCHES = [0, 15, 30, 45].map(v => v * D2R); // inclinación de la muñeca permitida al coger el plato (los dedos siguen abrazando el ala)
+function planAgarrePlato(pc, qRef, o = {}) { // o.pk: plato; o.forzar: ignora el entorno (para enseñar una postura imposible)
+  const b = BASES[L.robot]; const phi0 = Math.atan2(pc.y - b.y, pc.x - b.x); const z = pc.z + H_BORDE;
+  const caja = L.caja.on ? [OBJ.caja1, OBJ.caja2].filter(c => c.visible).find(c => Math.hypot(c.position.x - pc.x, c.position.y - pc.y) < 0.01) : null;
+  let mejor = null; const lista = [];
+  fuera: for (const pitch of PITCHES) for (const k of [0, 1, -1, 2, -2, 3, -3, 4, -4, 5, -5, 6, -6]) {
+    const yaw = phi0 + k * PI / 12; const d = new THREE.Vector3(Math.cos(yaw), Math.sin(yaw), 0); const eje = ejeHoriz(yaw, pitch);
+    const tcp = new THREE.Vector3(pc.x - d.x * R_AGARRE, pc.y - d.y * R_AGARRE, z);
+    const pre = tcp.clone().addScaledVector(eje, -0.07); // se acerca a lo largo de los dedos
+    if (caja) { caja.rotation.z = yaw; caja.updateMatrixWorld(true); VERSION_ESCENA++; } // la caja se orienta con una cara hacia la pinza
+    const base = { horiz: true, pitch, w: 0.03, minZ: -0.3, carga: null, sinEntorno: !!o.forzar };
+    const qPre = ikTCP(pre, yaw, qRef, base); if (!qPre) continue;
+    const flip = Math.sign(KIN.fk(qPre)[8]) || 1;
+    const q = ikTCP(tcp, yaw, qPre, { ...base, flip, permitir: ['plato:' + o.pk] }); if (!q) continue;
+    const arriba = tcp.clone(); arriba.z += 0.08; if (!o.forzar && !ikTCP(arriba, yaw, q, { ...base, w: 0.006, flip, permitir: ['caja:' + o.pk] })) continue; // tiene que poder levantarlo
+    const hol = holguraEn(q, 0.03); const hp = holguraEn(qPre, 0.03); const hmin = Math.min(hol.min, hp.min);
+    const cand = { yaw, pitch, d, eje, tcp, pre, qPre, q, flip, hol: hmin < hol.min ? hp : hol, k };
+    if (o.todos) { if (hmin >= 0.005) lista.push(cand); continue; }
+    if (!mejor || (hmin > -0.002 && mejor.hol.min < -0.002) || (hmin > mejor.hol.min + 0.01 && mejor.hol.min < 0.01)) mejor = cand;
+    if (mejor.hol.min >= 0.01) break fuera; // la primera válida con la muñeca menos inclinada y la entrada más directa
+  }
+  if (o.todos) { if (caja) { caja.rotation.z = lista[0] ? lista[0].yaw : phi0; caja.updateMatrixWorld(true); VERSION_ESCENA++; } return lista; }
+  if (caja) { caja.rotation.z = mejor ? mejor.yaw : phi0; caja.updateMatrixWorld(true); VERSION_ESCENA++; }
+  return mejor;
+}
+// Planificador de la colocación del plato en una zona de la bandeja (misma inclinación que al cogerlo: el plato llega nivelado)
+function planColocar(zw, qRef, flip, carga = null, pitch = 0, todos = false) {
+  const lista = [];
+  const b = BASES[L.robot]; const phi0 = Math.atan2(zw.y - b.y, zw.x - b.x); const z = zw.z + H_BORDE + 0.004;
+  for (const k of [0, 1, -1, 2, -2, 3, -3, 4, -4]) {
+    const yaw = phi0 + k * PI / 12; const d = new THREE.Vector3(Math.cos(yaw), Math.sin(yaw), 0); const eje = ejeHoriz(yaw, pitch);
+    const tcp = new THREE.Vector3(zw.x - d.x * R_AGARRE, zw.y - d.y * R_AGARRE, z);
+    const pre = tcp.clone().add(new THREE.Vector3(0, 0, H_AP)); const o = { horiz: true, pitch, w: 0.006, flip, minZ: -0.3, carga };
+    const qPre = ikTCP(pre, yaw, qRef, o); if (!qPre) continue;
+    const q = ikTCP(tcp, yaw, qPre, { ...o, permitir: ['bandeja'] }); if (!q) continue;
+    const salida = tcp.clone().addScaledVector(eje, -0.08); const qS = ikTCP(salida, yaw, q, { ...o, w: 0.03, carga: null, permitir: ['bandeja'] }); if (!qS) continue;
+    const c = { yaw, pitch, d, eje, tcp, pre, salida, q, qPre, k, flip: Math.sign(KIN.fk(q)[8]) || flip || 1 }; if (!todos) return c; lista.push(c);
+  }
+  return todos ? lista : null;
+}
+// Elige la colocación cuyo transporte nivelado es posible (prueba las entradas en orden)
+function colocacionConTransporte(zw, q0, pl, carga) {
+  const o = { horiz: true, pitch: pl.pitch, flip: pl.flip, minZ: -0.3, w: 0.006, carga }; let ult = { fallo: 'no hay ninguna entrada válida a la zona', pct: 0 };
+  const cands = planColocar(zw, q0, pl.flip, carga, pl.pitch, true); // primero las de más margen: la bandeja se mueve y conviene no colocar al límite
+  for (const c of cands) { // robustez: ¿sigue habiendo postura cercana y libre si la bandeja se desplaza 3 cm o sube y baja 2 cm?
+    let ok = 0, tot = 0; for (const dx of [-0.03, 0, 0.03]) for (const dy of [-0.03, 0, 0.03]) for (const dz of [-0.02, 0.02]) { tot++; const qq = ikTCP(c.tcp.clone().add(new THREE.Vector3(dx, dy, dz)), c.yaw, c.q, { ...o, permitir: ['bandeja', 'manos'] }); if (qq && Math.max(...qq.map((v, i) => Math.abs(v - c.q[i]))) < 0.35) ok++; }
+    c.rob = ok / tot; c.hol = Math.min(holguraTotal(c.q, { ...o, permitir: ['bandeja'] }), holguraTotal(c.qPre, o));
+  }
+  cands.sort((a, b) => (b.rob - a.rob) || (b.hol - a.hol));
+  for (const c of cands) { const r = rutaNivelada(q0, c.pre, c.yaw, o); if (r.ruta) return { pc2: c, r }; ult = r; }
+  return { fallo: ult };
+}
+function alturaAgarre(F) { return Math.max(F.h, 0.032); } // la punta del dedo de la RG2 sobresale unos 2 cm de la yema: con piezas bajas hay que coger por encima del centro
+
+// ======================= Mapa de alcance =======================
+const ALC = { h: 0.035, res: 0.015, job: 0 };
+const COLS_ALC = ['rgba(200,85,61,0.42)', 'rgba(217,165,33,0.55)', 'rgba(63,154,99,0.5)'];
+function calcularMapa() {
+  const job = ++ALC.job; const nx = Math.round(MESA.w / ALC.res), ny = Math.round(MESA.d / ALC.res);
+  alcCanvas.width = nx * 4; alcCanvas.height = ny * 4; const ctx = alcCanvas.getContext('2d'); ctx.clearRect(0, 0, alcCanvas.width, alcCanvas.height);
+  let j = 0; const b = BASES[L.robot];
+  const paso = () => {
+    if (job !== ALC.job) return;
+    const t0 = performance.now();
+    while (j < ny && performance.now() - t0 < 14) {
+      const yw = MESA.d / 2 - (j + 0.5) * ALC.res;
+      for (let i = 0; i < nx; i++) {
+        const xw = -MESA.w / 2 + (i + 0.5) * ALC.res; const r = Math.hypot(xw - b.x, yw - b.y);
+        if (r < 0.66) { ctx.fillStyle = COLS_ALC[alcance(xw, yw, ALC.h).cls]; ctx.fillRect(i * 4, j * 4, 4, 4); }
+      }
+      j++;
+    }
+    alcTex.needsUpdate = true;
+    if (j < ny) requestAnimationFrame(paso); else actualizarTablaAlcance();
+  };
+  paso();
+}
+
+// ======================= Selección y edición =======================
+const tctl = new TransformControls(cam, renderer.domElement); tctl.setSize(0.75); scene.add(tctl);
+tctl.addEventListener('dragging-changed', e => { orbit.enabled = !e.value; EDITANDO = e.value; if (e.value) prepararEdicion(); else { guardarLocal(); recalcular(); } });
+function recalcular() { actualizarPlatos(); evaluar(); pintarCalc(); vigilarEscena(); } // soltar un objeto solo refresca lo ligero; los planes se calculan con el botón
+// Mover algo con la demo a medias la deja incoherente: se reinicia antes del primer movimiento
+function prepararEdicion() { if (D.activo && !D.playing) { D.activo = false; reiniciarDemo(); toast('Demo reiniciada para mover objetos'); } }
+const CALC = { activo: false };
+function pintarCalc(txt) {
+  const el = $('#calcBar'); const ver = !!robot && !D.activo && (CALC.activo || !planesAlDia()); el.hidden = !ver; if (!ver) return;
+  $('#calcTxt').textContent = CALC.activo ? (txt || 'Calculando…') : 'Hay cambios sin calcular'; $('#calcSpin').hidden = !CALC.activo; $('#btnCalc').disabled = CALC.activo;
+}
+async function calcularPlanes() {
+  if (CALC.activo || !robot) return; CALC.activo = true; pintarCalc('Calculando…'); await new Promise(r => setTimeout(r, 30));
+  try { for (const [pk] of platosActivos()) { const n = pk === 'plato1' ? '1º' : '2º'; await planPlatoAsync(pk, p => pintarCalc(`Calculando el plato ${n}: agarre ${p.i + 1} de ${p.n}`)); } }
+  finally { CALC.activo = false; }
+  actualizarPlatos(); evaluar(); pintarCalc(); if (planesAlDia()) toast('Trayectorias calculadas');
+}
+$('#btnCalc').addEventListener('click', calcularPlanes);
+let sel = null;
+const objetivo = new THREE.Group(); scene.add(objetivo); objetivo.visible = false;
+{ const r = new THREE.Mesh(new THREE.TorusGeometry(0.03, 0.004, 8, 32), new THREE.MeshBasicMaterial({ color: '#e6b422' })); objetivo.add(r); objetivo.add(new THREE.AxesHelper(0.06)); objetivo.userData.anillo = r; }
+pickables.push({ key: 'objetivo', obj: objetivo, oculto: true, nombre: 'Objetivo de la pinza', grupo: 'ROB' });
+function seleccionar(key) {
+  if (D.playing) { toast('Pausa la demo para mover objetos'); return; }
+  if (CALC.activo) { toast('Espera a que termine el cálculo'); return; }
+  const p = pickables.find(x => x.key === key); sel = p || null;
+  if (!p) { tctl.detach(); objetivo.visible = false; pintarSel(); return; }
+  const modo = $('#segModo [aria-pressed="true"]').dataset.v;
+  const esCam = !!p.cam && p.parte === 'pos';
+  const permiteGiro = ['zona', 'persona', 'objetivo'].includes(p.key) || esCam;
+  const girar = permiteGiro && modo === 'rotate';
+  tctl.setMode(girar ? 'rotate' : 'translate'); tctl.setSpace(girar && esCam ? 'local' : 'world'); // la cámara gira sobre sus propios ejes: inclinar, girar y alabear
+  const plano = !(p.cam && p.parte !== 'clamp') && p.key !== 'objetivo';
+  if (girar) { tctl.showX = esCam; tctl.showY = esCam; tctl.showZ = true; } else { tctl.showX = true; tctl.showY = true; tctl.showZ = !plano; }
+  if (p.key !== 'objetivo') objetivo.visible = false;
+  tctl.attach(p.obj); pintarSel(); pintarLista();
+}
+function alMover() {
+  if (!sel) return; const o = sel.obj, k = sel.key;
+  if (k === 'zona') { L.zona.x = o.position.x; L.zona.y = o.position.y; L.zona.yaw = o.rotation.z; o.position.z = MESA.h; }
+  else if (k === 'plato1' || k === 'plato2') { L[k].x = o.position.x; L[k].y = o.position.y; o.position.z = zPlato(); }
+  else if (k === 'persona') { L.persona.x = o.position.x; L.persona.y = o.position.y; L.persona.yaw = o.rotation.z; o.position.z = 0; o.rotation.x = o.rotation.y = 0; aplicarBandeja(simT); }
+  else if (k.startsWith('arucoE')) { L.arucoE[sel.idx].x = o.position.x; L.arucoE[sel.idx].y = o.position.y; o.position.z = MESA.h + 0.0013; }
+  else if (sel.cam) { const c = L.cams[sel.cam]; if (sel.parte === 'pos' && tctl.getMode() === 'rotate') orientarDesdeQuat(c, o.quaternion); else if (sel.parte === 'pos') Object.assign(c.pos, { x: o.position.x, y: o.position.y, z: Math.max(MESA.h + 0.05, o.position.z) }); else if (sel.parte === 'mira') Object.assign(c.mira, { x: o.position.x, y: o.position.y, z: o.position.z }); else Object.assign(c.clamp, puntoBorde(o.position.x, o.position.y)); actualizarCam(sel.cam); }
+  else if (k === 'objetivo') moverAObjetivo();
+  VERSION_ESCENA++; actualizarZona(); actualizarPlatos(); pintarSel(); actualizarHUD();
+}
+tctl.addEventListener('objectChange', alMover);
+function moverAObjetivo() {
+  const p = objetivo.position; const q = ikTCP(p, objetivo.rotation.z, robot.q);
+  objetivo.userData.anillo.material.color.set(q ? '#e6b422' : css('--bad'));
+  if (q) { robot.setQ(q); sincronizarSliders(); }
+  const n = KIN.ik(poseVertical(mundoABase(new THREE.Vector3(p.x, p.y, p.z + pinza.tcpZ())), objetivo.rotation.z - robot.root.rotation.z)).filter(s => qValida(s)).length;
+  $('#ikInfo').textContent = q ? `Posturas válidas para este punto: ${n} de 8. Se elige la más cercana a la actual.` : 'Ese punto queda fuera del alcance con la pinza vertical.';
+}
+// Selección y arrastre directo: pulsar un objeto lo selecciona y arrastrarlo lo mueve sobre el plano horizontal
+const ray = new THREE.Raycaster(); ray.params.Line.threshold = 0.004; ray.params.Points.threshold = 0.004;
+let downXY = null, downGizmo = false, arr = null, hoverT = 0; const _ip = new THREE.Vector3(); const lienzo3d = renderer.domElement;
+const ALIAS = new Map([[OBJ.caja1, 'plato1'], [OBJ.caja2, 'plato2'], [bandeja, 'persona'], ...brazos.map(b => [b, 'persona'])]); // partes que mueven a otro objeto
+for (const k in CAMS) for (const o of [...CAMS[k].seg, CAMS[k].codo]) ALIAS.set(o, 'cam:' + k);
+function ndcDe(e) { const r = lienzo3d.getBoundingClientRect(); return new THREE.Vector2(((e.clientX - r.left) / r.width) * 2 - 1, -((e.clientY - r.top) / r.height) * 2 + 1); }
+function visibleCadena(o) { while (o) { if (!o.visible) return false; o = o.parent; } return true; }
+function objetoBajo(e) {
+  ray.setFromCamera(ndcDe(e), cam); ray.layers.enableAll();
+  const objs = pickables.filter(p => !p.oculto || p.obj.visible).map(p => p.obj).concat([...ALIAS.keys()]);
+  for (const h of ray.intersectObjects(objs, true)) { // solo mallas visibles: las líneas y los marcos ocultos no cuentan
+    if (!h.object.isMesh || !visibleCadena(h.object) || isGizmo(h.object)) continue;
+    let o = h.object, p = null;
+    while (o && !p) { p = pickables.find(x => x.obj === o) || (ALIAS.has(o) ? pickables.find(x => x.key === ALIAS.get(o)) : null); o = o.parent; }
+    if (p) return { p, punto: h.point };
+  }
+  return null;
+}
+function limitar(p, o) { const enMesa = ['zona', 'plato1', 'plato2'].includes(p.key) || p.key.startsWith('arucoE'); const hx = enMesa ? MESA.w / 2 - 0.02 : 1.6, hy = enMesa ? MESA.d / 2 - 0.02 : 1.6; o.position.x = clamp(o.position.x, -hx, hx); o.position.y = clamp(o.position.y, -hy, hy); }
+lienzo3d.addEventListener('pointerdown', e => {
+  downXY = [e.clientX, e.clientY]; downGizmo = tctl.dragging || tctl.axis !== null; arr = null;
+  if (e.button !== 0 || medir.activo || downGizmo || D.playing || CALC.activo) return;
+  const h = objetoBajo(e); if (!h) return;
+  seleccionar(h.p.key); if (sel !== h.p) return;
+  if (h.p.cam && h.p.parte === 'pos' && $('#segModo [aria-pressed="true"]').dataset.v === 'rotate') { arr = { p: h.p, girar: orientDe(L.cams[h.p.cam]), movido: false, x0: e.clientX, y0: e.clientY }; orbit.enabled = false; return; } // arrastrar apunta la cámara
+  arr = { p: h.p, plano: new THREE.Plane(new THREE.Vector3(0, 0, 1), -h.punto.z), punto: h.punto.clone(), off: null, movido: false, x0: e.clientX, y0: e.clientY };
+  orbit.enabled = false; // la cámara de la escena no gira mientras se arrastra un objeto
+});
+lienzo3d.addEventListener('pointermove', e => {
+  if (arr) {
+    if (!arr.movido && Math.hypot(e.clientX - arr.x0, e.clientY - arr.y0) < 4) return;
+    if (!arr.movido) { arr.movido = true; EDITANDO = true; prepararEdicion(); if (!arr.girar) arr.off = arr.p.obj.position.clone().sub(arr.punto); lienzo3d.style.cursor = 'grabbing'; } // el desfase se toma tras reiniciar la demo (los platos vuelven a la escena)
+    if (arr.girar) { const c = L.cams[arr.p.cam], g0 = arr.girar; fijarOrient(c, g0.pan + (e.clientX - arr.x0) * 0.004, g0.tilt + (e.clientY - arr.y0) * 0.004, c.roll); actualizarCam(arr.p.cam); VERSION_ESCENA++; pintarSel(); return; } // derecha/izquierda gira, arriba/abajo inclina
+    ray.setFromCamera(ndcDe(e), cam); if (!ray.ray.intersectPlane(arr.plano, _ip)) return;
+    const o = arr.p.obj; o.position.x = _ip.x + arr.off.x; o.position.y = _ip.y + arr.off.y; limitar(arr.p, o); alMover(); return;
+  }
+  if (e.buttons || e.pointerType !== 'mouse' || performance.now() - hoverT < 60) return; hoverT = performance.now();
+  lienzo3d.style.cursor = !medir.activo && !D.playing && objetoBajo(e) ? 'grab' : '';
+});
+function finArrastre() { const a = arr; arr = null; orbit.enabled = !tctl.dragging; lienzo3d.style.cursor = ''; if (a && a.movido) { EDITANDO = false; guardarLocal(); recalcular(); } return a; }
+lienzo3d.addEventListener('pointercancel', finArrastre);
+lienzo3d.addEventListener('pointerup', e => {
+  if (arr) { finArrastre(); return; }
+  if (!downXY || Math.hypot(e.clientX - downXY[0], e.clientY - downXY[1]) > 5 || downGizmo || tctl.dragging) return;
+  if (medir.activo) { ray.setFromCamera(ndcDe(e), cam); ray.layers.enableAll(); const hits = ray.intersectObjects(scene.children, true).filter(h => h.object.isMesh && visibleCadena(h.object) && h.object !== alcPlane && !isGizmo(h.object)); if (hits[0]) medirPunto(hits[0].point); return; }
+  const h = objetoBajo(e);
+  if (h) seleccionar(h.p.key); else if (sel && !D.playing) { sel = null; tctl.detach(); objetivo.visible = false; pintarSel(); pintarLista(); } // clic en vacío: deselecciona
+});
+function isGizmo(o) { while (o) { if (o === tctl) return true; o = o.parent; } return false; }
+const medir = { activo: false, pts: [], linea: null, lbl: null };
+function medirPunto(p) {
+  medir.pts.push(p.clone()); if (medir.pts.length > 2) medir.pts = [p.clone()];
+  if (medir.linea) { scene.remove(medir.linea); medir.linea.geometry.dispose(); }
+  if (medir.lbl) { medir.lbl.parent && medir.lbl.parent.remove(medir.lbl); medir.lbl = null; }
+  const pts = medir.pts.length === 1 ? [p, p.clone().add(new THREE.Vector3(0, 0, 0.0005))] : medir.pts;
+  medir.linea = new THREE.Line(new THREE.BufferGeometry().setFromPoints(pts), new THREE.LineBasicMaterial({ color: '#e6b422', depthTest: false })); medir.linea.renderOrder = 9; scene.add(medir.linea);
+  if (medir.pts.length === 2) { const d = medir.pts[0].distanceTo(medir.pts[1]); medir.lbl = etiqueta(`${mm(d)} mm`); medir.lbl.position.copy(medir.pts[0].clone().lerp(medir.pts[1], 0.5)); scene.add(medir.lbl); }
+}
+$('#btnMedir').addEventListener('click', e => { medir.activo = !medir.activo; e.currentTarget.setAttribute('aria-pressed', medir.activo); toast(medir.activo ? 'Haz clic en dos puntos para medir' : 'Medición desactivada'); if (!medir.activo) { medir.pts = []; if (medir.linea) scene.remove(medir.linea); if (medir.lbl) scene.remove(medir.lbl); } });
+
+// ======================= Marcos TF =======================
+const TF = [];
+function marcoTF(nombre, padre) {
+  const g = new THREE.Group(); const L_ = 0.06;
+  const geo = new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(), new THREE.Vector3(L_, 0, 0), new THREE.Vector3(), new THREE.Vector3(0, L_, 0), new THREE.Vector3(), new THREE.Vector3(0, 0, L_)]);
+  geo.setAttribute('color', new THREE.Float32BufferAttribute([1, .2, .2, 1, .2, .2, .2, .8, .3, .2, .8, .3, .25, .45, 1, .25, .45, 1], 3));
+  const ls = new THREE.LineSegments(geo, new THREE.LineBasicMaterial({ vertexColors: true, depthTest: false, toneMapped: false })); ls.renderOrder = 8; ls.layers.set(1); g.add(ls);
+  const l = etiqueta(nombre, 'tf'); l.position.set(0, 0, 0.02); l.visible = false; g.add(l); g.userData.lbl = l; padre.add(g); TF.push(g); g.visible = false; return g;
+}
+
+// ======================= Demo: motor de tiempo =======================
+const D = { carga: null, planes: 0, sustituidos: 0, autocol: 0, run: 0, playing: false, rate: 1, vel: 0.25, modo: 'M0', amp: 0.02, motion: 0, estado: 'REPOSO', personaOff: 0, errores: [], minCam: {}, activo: false, fase: 0, fin: null, choques: 0, roces: 0, pausas: 0, rozando: new Map(), platoEnPinza: null, piezaObjetivo: null };
+let simT = 0; const ANIMS = [], LOOPS = [];
+function anim(T, fn) { const run = D.run; return new Promise((res, rej) => ANIMS.push({ t0: simT, T: Math.max(T, 1e-3), fn, res, rej, run })); }
+function until(fn) { const run = D.run; return new Promise((res, rej) => LOOPS.push({ fn, res, rej, run })); }
+const esperar = s => anim(s, () => { });
+function tickDemo(dt) {
+  for (const a of ANIMS.slice()) { if (a.run !== D.run) { ANIMS.splice(ANIMS.indexOf(a), 1); a.rej(STOP); continue; } const s = Math.min(1, (simT - a.t0) / a.T); try { a.fn(s); } catch (e) { ANIMS.splice(ANIMS.indexOf(a), 1); a.rej(e); continue; } if (s >= 1) { ANIMS.splice(ANIMS.indexOf(a), 1); a.res(); } }
+  for (const l of LOOPS.slice()) { if (l.run !== D.run) { LOOPS.splice(LOOPS.indexOf(l), 1); l.rej(STOP); continue; } let r; try { r = l.fn(dt); } catch (e) { LOOPS.splice(LOOPS.indexOf(l), 1); l.rej(e); continue; } if (r) { LOOPS.splice(LOOPS.indexOf(l), 1); l.res(); } }
+  if (D.activo && robot) { vigilarRoces(); if ((D.tick = (D.tick || 0) + 1) % 2 === 0) { vigilarChoques(); vigilarAuto(); } }
+}
+function factorPersona(p) { const pc = persona.position; return Math.hypot(p.x - pc.x, p.y - pc.y) < 0.75 ? 0.5 : 1; }
+function donde(p) { const b = enBase(p); return `punto (${mm(b.x)}, ${mm(b.y)}, ${mm(b.z)}) mm en base_link, a ${mm(Math.hypot(b.x, b.y))} mm del eje de la base y ${mm(b.z)} mm sobre la mesa.`; }
+async function irA(p, yaw, opts = {}, desc = 'un punto') {
+  let q = ikTCP(p, yaw, robot.q, opts);
+  if (!q && !opts.horiz && opts.sym !== false) for (const dy of [PI / 4, -PI / 4, PI / 2]) { q = ikTCP(p, yaw + dy, robot.q, opts); if (q) break; }
+  if (!q) { const dg = diagnosticarPunto(p, yaw, opts); throw new FalloDemo(`No llego a ${desc} sin chocar: ${donde(p)}`, 'fallo', dg); }
+  await moveJ(q, factorPersona(p), opts, desc);
+}
+async function pinzaA(w) { const w0 = pinza.w; const T = Math.abs(w - w0) / 0.11 * 0.9 + 0.15; D.motion += T; await anim(T, s => pinza.setApertura(w0 + (w - w0) * smooth(s))); }
+function adjuntar(obj, padre) {
+  obj.updateMatrixWorld(true); padre.updateMatrixWorld(true); padre.attach(obj); VERSION_ESCENA++;
+  const lleva = pinza.tcp.children.find(c => c === OBJ.plato1 || c === OBJ.plato2 || piezas.some(p => p.obj === c)); // lo que lleva la pinza entra en el modelo de colisión
+  D.carga = lleva && robot ? cargaDe(lleva) : null;
+}
+function posReposo() { const b = BASES[L.robot]; return new THREE.Vector3(b.x + (L.robot === 'B' ? -0.22 : 0.22), b.y - 0.12, MESA.h + 0.25); }
+function qReposo() { return ikTCP(posReposo(), PI / 2, null) || [0, -PI / 2, PI / 2, -PI / 2, -PI / 2, 0]; }
+
+// Roces: puntos de la pinza (y del plato en la pinza) frente a las piezas que no se están cogiendo
+const _p = new THREE.Vector3();
+function vigilarRoces() {
+  const pts = [tcpMundo()]; for (const d of pinza.dedos) pts.push(d.yema.getWorldPosition(new THREE.Vector3()));
+  pts.push(new THREE.Vector3(0, 0, 0.07).applyMatrix4(pinza.g.matrixWorld));
+  for (const pz of piezas) {
+    if (pz.enPinza || pz.usada || pz === D.piezaObjetivo) continue;
+    pz.obj.getWorldPosition(_p); let roza = pts.some(q => q.distanceTo(_p) < pz.F.r + 0.012);
+    if (!roza && D.platoEnPinza) { const pc = D.platoEnPinza.getWorldPosition(new THREE.Vector3()); if (pz.obj.parent !== D.platoEnPinza && Math.hypot(pc.x - _p.x, pc.y - _p.y) < PLATO_R + pz.F.r * 0.6 && Math.abs(pc.z - _p.z) < 0.04) roza = true; }
+    if (roza && !D.rozando.get(pz.id)) { D.roces++; $('#dRoces').textContent = D.roces; publicar('/seguridad/roce [PROPUESTA]', ['segur'], { fase: D.estado, pieza: `${pz.id}: ${pz.tipo}`, aviso: D.platoEnPinza && !pts.some(q => q.distanceTo(_p) < pz.F.r + 0.012) ? 'el plato que lleva la pinza pasa sobre una pieza' : 'la pinza toca una pieza que no está cogiendo' }); }
+    D.rozando.set(pz.id, roza);
+  }
+}
+
+// Choques en todo el recorrido: esquinas de las piezas de la pinza y muñeca (cápsulas) frente a la mesa y las cajas
+let PUNTOS_PINZA = null; const marcaChoque = new THREE.Mesh(new THREE.SphereGeometry(0.012, 16, 12), new THREE.MeshBasicMaterial({ color: '#d0402b', transparent: true, opacity: 0.85, depthTest: false, toneMapped: false })); marcaChoque.renderOrder = 10; marcaChoque.visible = false; scene.add(marcaChoque);
+function puntosPinza() {
+  if (PUNTOS_PINZA) return PUNTOS_PINZA; PUNTOS_PINZA = [];
+  for (const m of pinza.mallas()) { m.geometry.computeBoundingBox(); const b = m.geometry.boundingBox; for (const x of [b.min.x, b.max.x]) for (const y of [b.min.y, b.max.y]) for (const z of [b.min.z, b.max.z]) PUNTOS_PINZA.push({ m, v: new THREE.Vector3(x, y, z) }); }
+  return PUNTOS_PINZA;
+}
+const _w = new THREE.Vector3(), _l = new THREE.Vector3();
+function choqueAhora() {
+  let peor = null; const cajas = L.caja.on ? [OBJ.caja1, OBJ.caja2].filter(c => c.visible) : []; const hw = MESA.w / 2, hd = MESA.d / 2; const hl = CAJA_LADO / 2;
+  const mira = (p, prof, contra, que) => { if (prof > 0.002 && (!peor || prof > peor.prof)) peor = { prof, contra, que, p: p.clone() }; };
+  pinza.g.updateMatrixWorld(true);
+  for (const { m, v } of puntosPinza()) {
+    _w.copy(v).applyMatrix4(m.matrixWorld);
+    if (Math.abs(_w.x) < hw && Math.abs(_w.y) < hd) mira(_w, MESA.h - _w.z, 'mesa', 'pinza');
+    for (const cj of cajas) { _l.copy(_w).applyMatrix4(_inv.copy(cj.matrixWorld).invert()); if (Math.abs(_l.x) < hl && Math.abs(_l.y) < hl && _l.z < L.caja.h && _l.z > 0) mira(_w, Math.min(L.caja.h - _l.z, hl - Math.abs(_l.x), hl - Math.abs(_l.y)), 'caja', 'pinza'); }
+  }
+  const P = robot.puntos(); for (let i = 3; i < 7; i++) mira(P[i], MESA.h - (P[i].z - 0.042), 'mesa', 'muñeca');
+  return peor;
+}
+function vigilarChoques() {
+  const c = choqueAhora(); const antes = D.chocando;
+  if (c) { marcaChoque.position.copy(c.p); marcaChoque.visible = true; D.marcaHasta = simT + 1.5; MAT.alu.emissive.set('#a3241a'); }
+  else { MAT.alu.emissive.set('#000000'); if (simT > (D.marcaHasta || 0)) marcaChoque.visible = false; }
+  if (c && !antes) { D.choques++; $('#dChoques').textContent = D.choques; D.ep = { fase: D.estado, contra: c.contra, que: c.que, prof: c.prof }; }
+  if (c && D.ep && c.prof > D.ep.prof) Object.assign(D.ep, { prof: c.prof, contra: c.contra, que: c.que });
+  if (!c && antes && D.ep) cerrarChoque();
+  D.chocando = !!c;
+}
+function cerrarChoque() {
+  const e = D.ep; D.ep = null; if (!e) return; (D.eventos = D.eventos || []).push({ ...e, t: +(simT - D.t0).toFixed(1), q: robot.q.map(v => +(v * R2D).toFixed(0)) });
+  publicar('/seguridad/colision [PROPUESTA]', ['segur'], { fase: e.fase, contra: e.contra, pieza_robot: e.que, penetracion_max_mm: mm(e.prof) });
+  toast(`Choque: ${e.que} contra la ${e.contra}, hasta ${mm(e.prof)} mm (${e.fase})`);
+}
+
+// ======================= Grafo ROS =======================
+const NODOS = {
+  v1_face_id: [8, 14, 'V1'], v1_gestures: [8, 50, 'V1'], v1_dialog: [8, 100, 'V1'], v1_tray: [8, 190, 'V1'],
+  pedidos: [130, 14, 'ROB'], coordinador: [130, 82, 'ROB'], seguridad: [130, 132, 'ROB'], movimiento: [130, 180, 'ROB'], pinza: [130, 222, 'ROB'],
+  v2_camera_cenital: [252, 14, 'V2'], 'v2_fruit_*': [252, 64, 'V2'], v2_calibration: [252, 132, 'V2'], v2_grasp: [252, 100, 'V2'],
+};
+const ARISTAS = {
+  face: ['v1_face_id', 'v1_dialog'], gest: ['v1_gestures', 'v1_dialog'], ident: ['v1_dialog', 'coordinador'], order: ['v1_dialog', 'pedidos'], menu: ['pedidos', 'v1_dialog'],
+  svc: ['coordinador', 'v1_dialog'], tstat: ['v1_tray', 'coordinador'], tpose: ['v1_tray', 'movimiento'], img: ['v2_camera_cenital', 'v2_fruit_*'], det: ['v2_fruit_*', 'v2_grasp'],
+  fruits: ['v2_grasp', 'coordinador'], tfcal: ['v2_calibration', 'movimiento'], accion: ['coordinador', 'movimiento'], gripper: ['movimiento', 'pinza'], segur: ['seguridad', 'coordinador'],
+  pedido: ['pedidos', 'coordinador'], menu2: ['pedidos', 'v2_grasp'],
+};
+const W_N = 100, H_N = 22; const aristasOn = new Map();
+function dibujarGrafo() {
+  const svg = $('#graph'); if (!svg) return; const col = GRUPO_COL(); let s = '';
+  const c = n => { const [x, y] = NODOS[n]; return [x + W_N / 2, y + H_N / 2]; };
+  for (const [id, [a, b]] of Object.entries(ARISTAS)) {
+    const [x1, y1] = c(a), [x2, y2] = c(b); const sx = x1 < x2 ? x1 + W_N / 2 : x1 > x2 ? x1 - W_N / 2 : x1; const ex = x1 < x2 ? x2 - W_N / 2 : x1 > x2 ? x2 + W_N / 2 : x2;
+    const off = (id === 'menu' || id === 'svc') ? 5 : 0; const sy = y1 + (x1 === x2 ? (y1 < y2 ? H_N / 2 : -H_N / 2) : off), ey = y2 + (x1 === x2 ? (y1 < y2 ? -H_N / 2 : H_N / 2) : off);
+    const mx = (sx + ex) / 2; s += `<path class="ed${aristasOn.has(id) ? ' on' : ''}" d="M${sx},${sy} C${mx},${sy} ${mx},${ey} ${ex},${ey}"/>`;
+  }
+  for (const [n, [x, y, g]] of Object.entries(NODOS)) s += `<g class="nd"><rect x="${x}" y="${y}" width="${W_N}" height="${H_N}" rx="5" fill="${col[g]}22" stroke="${col[g]}"/><text x="${x + 6}" y="${y + 14.5}" fill="${css('--ink')}">${n}</text></g>`;
+  svg.innerHTML = s;
+}
+function publicar(topic, aristas, payload) {
+  for (const a of aristas) aristasOn.set(a, simT + 1.6 * D.rate);
+  dibujarGrafo(); $('#dMsg').textContent = `${topic}\n` + yamlish(payload, 1);
+  const li = document.createElement('li'); li.innerHTML = `<span>${fmt(simT - D.t0, 1)} s</span><span><b>${topic}</b> ${resumen(payload)}</span>`; $('#dLog').prepend(li); while ($('#dLog').children.length > 40) $('#dLog').lastChild.remove();
+}
+function yamlish(o, ind = 0) { const pad = '  '.repeat(ind); if (Array.isArray(o)) return o.map(v => typeof v === 'object' ? `${pad}- ${yamlish(v, ind + 1).trimStart()}` : `${pad}- ${v}`).join('\n'); return Object.entries(o).map(([k, v]) => v && typeof v === 'object' ? `${pad}${k}:\n${yamlish(v, ind + 1)}` : `${pad}${k}: ${v}`).join('\n'); }
+function resumen(p) { const s = JSON.stringify(p).replace(/[{}"\[\]]/g, '').replace(/,/g, ', ').replace(/:/g, ': ').replace(/\s+/g, ' '); return s.length > 160 ? s.slice(0, 158) + '…' : s; }
+function estado(e) { D.estado = e; $('#dEstado').textContent = e; }
+const PASOS2 = [
+  ['Reposo', 'Pantalla en espera; gesto global de inicio'], ['Identificación', 'Cara o gesto personal; desconocido = invitado'], ['Primer plato', 'Platos con alérgeno en gris'],
+  ['Segundo plato', 'Se publica el pedido completo'], ['Recepción', 'La bandeja se mantiene en el recuadro: lista'], ['Servicio 1', 'Fruta al plato 1º y plato a zona_primero'],
+  ['Servicio 2', 'Igual con el 2º, con la pose actual'], ['Fin', 'Retira la bandeja; vuelta a reposo'],
+];
+const PASOS1 = [
+  ['Reposo', 'Pantalla en espera; gesto global de inicio'], ['Identificación', 'Cara o gesto personal; desconocido = invitado'], ['Plato', 'Platos con alérgeno en gris'],
+  ['Sin segundo', 'Gesto «nada más»: se publica un pedido de un plato'], ['Recepción', 'La bandeja se mantiene en el recuadro: lista'], ['Servicio', 'Fruta al plato y plato al centro de la bandeja'],
+  ['Fin', 'Retira la bandeja; vuelta a reposo'],
+];
+let PASOS = PASOS2;
+function pintarPasos(i, fallo = false) { $('#dSteps').innerHTML = PASOS.map(([t, s], k) => `<li class="${k === i ? (fallo ? 'fail' : 'on') : k < i ? 'done' : ''}"><span class="n">${k + 1}</span><div>${t}<small>${s}</small></div></li>`).join(''); }
+function paso(i) { D.paso = i; pintarPasos(i); }
+
+// ======================= Comprobación previa del plan =======================
+// opts.parar: para en el primer fallo grave (lo usa la búsqueda de disposiciones, que solo necesita saber si pasa)
+const PARAR_CHK = { out: null };
+function comprobarPlan(opts = {}) {
+  const q0 = robot ? robot.q.slice() : null;
+  try { return comprobarPlan0(opts); } catch (e) { if (e !== PARAR_CHK) throw e; robot.setQ(q0); return PARAR_CHK.out; }
+}
+function comprobarPlan0(opts) {
+  const out = []; if (!robot) return out;
+  const q0 = robot.q.slice(); let ctxI = {}; const add = (cls, txt, grave = false) => { out.push({ cls, txt, grave, info: { ...ctxI } }); if (grave && opts.parar) { PARAR_CHK.out = out; throw PARAR_CHK; } };
+  const zTr = MESA.h + H_TR;
+  // la disposición tiene que poder existir en la celda real
+  for (const pr of problemasFisicos(L)) { ctxI = { fase: 'disposicion', objs: pr.objs }; add('bad', pr.txt, true); }
+  // fruta del pedido
+  for (const tipo of L.pedido === 1 ? ['manzana'] : ['manzana', 'uvas']) {
+    ctxI = { fase: 'fruta' }; const pz = piezas.find(p => p.tipo === tipo); const c = pz.obj.getWorldPosition(new THREE.Vector3());
+    const okA = ikTCP(new THREE.Vector3(c.x, c.y, zTr), 0, q0) || ikTCP(new THREE.Vector3(c.x, c.y, zTr), PI / 2, q0);
+    const okG = llegaVertical(new THREE.Vector3(c.x, c.y, MESA.h + alturaAgarre(pz.F)), q0);
+    if (okA && okG) add('ok', `Coger ${pz.F.nombre.toLowerCase()} en la zona de fruta`); else add('bad', `${pz.F.nombre}: fuera de alcance para cogerla en vertical`, true);
+  }
+  // platos: soltar la fruta y coger en horizontal
+  for (const [pk] of platosActivos()) {
+    ctxI = { fase: 'soltar', pk }; const n = pk === 'plato1' ? '1º' : '2º'; const pc = new THREE.Vector3(L[pk].x, L[pk].y, zPlato());
+    const F = pk === 'plato1' ? FRUTAS.manzana : FRUTAS.uvas, nP = pk === 'plato1' ? 2 : 1; const pts = puntosSoltar(pc, F, nP); const zMax = pts[0].arr.z; ctxI.h = zMax - MESA.h;
+    const ok = pts.every(p => llegaVertical(p.arr, q0) && llegaVertical(p.sol, q0));
+    if (ok) add('ok', `Soltar ${nP} ${nP > 1 ? 'piezas' : 'pieza'} en el plato ${n} (pasando a ${fmt((zMax - MESA.h) * 100, 0)} cm)`); else add('bad', `Plato ${n}: no llego a soltar la fruta encima (hay que pasar a ${fmt((zMax - MESA.h) * 100, 0)} cm sobre la mesa). Acércalo a la base o baja la caja.`, true);
+    ctxI = { fase: 'plato', pk }; const pl = planPlatoCache(pk);
+    if (!pl) { const f = planForzado(pk); if (f) D.posturaImposible = { q: f.q, w: 0.03, c: f.choque, pk };
+      add('bad', f && f.choque ? `Plato ${n}: el robot real no puede cogerlo en horizontal por el borde: chocaría ${textoChoque(f.choque)}${f.hol.min < 0 ? ` (${mm(-f.hol.min)} mm)` : ''}. ${L.caja.on ? 'Sube la caja o mueve el plato.' : 'Ponlo sobre la caja.'}` : `Plato ${n}: no hay ninguna dirección para cogerlo en horizontal por el borde`, true); }
+    else if (pl.hol.min < -0.002) add('warn', `Plato ${n}: al cogerlo en horizontal, ${pl.hol.contra === 'caja' ? 'la pinza entra en la caja' : 'la muñeca o la pinza bajan por debajo de la mesa'} (${mm(pl.hol.min)} mm). ${L.caja.on ? 'Sube la caja.' : 'Ponlo sobre la caja.'}`);
+    else add('ok', `Coger el plato ${n} en horizontal (holgura ${mm(pl.hol.min)} mm, entrada ${pl.k ? (pl.k > 0 ? '+' : '') + pl.k * 15 + '°' : 'radial'}${pl.pitch ? `, muñeca inclinada ${Math.round(pl.pitch * R2D)}°` : ''})`);
+  }
+  // bandeja
+  const bp = poseBandeja(simT); bandeja.updateMatrixWorld(true);
+  for (const [pk, zk] of platosActivos()) { // ensayo en seco: levantar, llevar nivelado y dejar
+    ctxI = { fase: 'transporte', pk, zona: zk }; const pl = planPlatoCache(pk); const n = pk === 'plato1' ? '1º' : '2º'; const hB = fmt((bp.z - MESA.h) * 100, 0);
+    if (!pl) { add('bad', `Plato ${n} → ${zk}: sin agarre no se puede comprobar el transporte`); continue; }
+    if (pl.cadena && pl.cadena.pc2) add('ok', `Llevar el plato ${n} nivelado hasta ${zk} y dejarlo (bandeja a ${hB} cm)`);
+    else if (pl.cadena.fallo.fase === 'plato') { ctxI = { fase: 'plato', pk }; add('bad', `Plato ${n}: no puedo cogerlo y levantarlo en línea recta: ${pl.cadena.fallo.fallo} (llega al ${pl.cadena.fallo.pct} %).`, true); }
+    else add('bad', `Plato ${n} → ${zk}: no puedo llevarlo nivelado y dejarlo sin chocar: ${pl.cadena.fallo.fallo} (llega al ${pl.cadena.fallo.pct} %). Bandeja a ${hB} cm sobre la mesa.`, true);
+  }
+  robot.setQ(q0);
+  return out;
+}
+function pintarCheck(lista) { $('#dCheck').innerHTML = lista.map(c => `<li class="${c.cls}">${c.txt}</li>`).join(''); }
+function verPosturaImposible() {
+  const P = D.posturaImposible; if (!P) return; D.activo = false; robot.setQ(P.q); pinza.setApertura(P.w); sincronizarSliders(); actualizarHUD(); // modo manual: el HUD dice con qué choca
+  if (P.c) { const b = BASES[L.robot]; marcaChoque.position.set(P.c.p[0] + b.x, P.c.p[1] + b.y, P.c.p[2] + MESA.h); marcaChoque.visible = true; D.marcaHasta = simT + 1e9; }
+  const pc = OBJ[P.pk].getWorldPosition(new THREE.Vector3()); animarCam(new THREE.Vector3(pc.x - 0.45, pc.y - 0.55, pc.z + 0.35), pc);
+}
+function mostrarFallo(titulo, txt, tipo = 'fallo') { if (D.buscando) return; const f = $('#dFallo'); f.hidden = false; f.className = 'card fallo' + (tipo === 'abort' ? ' abort' : ''); f.innerHTML = `<div><b>${titulo}</b>${txt}</div>`; }
+
+// ======================= Guion de la demo =======================
+const MENU = { primeros: [{ plato: 'Manzanas', piezas: 2, alergenos: [] }, { plato: 'Frambuesas', piezas: 1, alergenos: ['frambuesa'] }], segundos: [{ plato: 'Uvas', piezas: 1, alergenos: [] }, { plato: 'Limón', piezas: 1, alergenos: [] }] };
+async function demo() {
+  const run = D.run; D.t0 = simT; D.fin = null; D.ctx = {};
+  try {
+    const chk = comprobarPlan(); pintarCheck(chk);
+    const graves = chk.filter(c => c.grave); if (graves.length) throw new FalloDemo(graves.map(g => g.txt).join(' '), 'previo', { causa: 'previo', items: graves });
+    paso(0); estado('REPOSO'); publicar('/v1/dialog_state', ['ident'], { paso: 'reposo', mensaje: 'Haz el gesto de inicio' }); await esperar(1.2);
+    paso(1); estado('IDENTIFICANDO');
+    await anim(2.2, s => { D.personaOff = 0.7 * (1 - smooth(s)); });
+    publicar('/v1/face_identity', ['face'], { candidato: 'persona_03', confianza: 0.91 }); await esperar(0.8);
+    publicar('/v1/identity', ['ident'], { person_id: 'persona_03', metodo: 'cara', is_guest: false, alergias_ficticias: ['frambuesa'] }); await esperar(1.2);
+    paso(2); estado('PEDIDO');
+    publicar('/menu', ['menu', 'menu2'], { primeros: MENU.primeros.map(m => `${m.plato} x${m.piezas}${m.alergenos.length ? ' (gris: alérgeno)' : ''}`), segundos: MENU.segundos.map(m => `${m.plato} x${m.piezas}`) }); await esperar(1.0);
+    const uno = L.pedido === 1;
+    publicar('/v1/gesture_event', ['gest'], { gesto: 'dos_dedos', opcion: 1 }); await esperar(1.0);
+    paso(3); if (uno) { publicar('/v1/gesture_event', ['gest'], { gesto: 'nada_mas', opcion: 0 }); await esperar(0.8); }
+    publicar('/v1/order', ['order', 'ident'], { person_id: 'persona_03', primero: 'Manzanas x2', segundo: uno ? 'ninguno' : 'Uvas x1' }); await esperar(0.6);
+    publicar('pedido validado [PROPUESTA]', ['pedido'], uno ? { platos: 1, primero: { fruta: 'manzana', piezas: 2 } } : { platos: 2, primero: { fruta: 'manzana', piezas: 2 }, segundo: { fruta: 'uvas', piezas: 1 } }); await esperar(0.8);
+    paso(4); estado('ESPERANDO_BANDEJA');
+    await anim(1.6, s => { trayState.subida = smooth(s); }); trayState.balanceo = true; if (!uno) ladoZonas(); await esperar(0.8);
+    publicar('/v1/tray_status', ['tstat'], { estado: 'lista', desviacion_mm: 0 });
+    const bp = poseBandeja(simT); publicar('/v1/tray_pose', ['tpose'], { marco: 'base_link', x: +(bp.x - BASES[L.robot].x).toFixed(3), y: +(bp.y - BASES[L.robot].y).toFixed(3), z: +(bp.z - MESA.h).toFixed(3), yaw_deg: +(bp.yaw * R2D).toFixed(1), marcadores_vistos: 3 }); await esperar(0.6);
+    paso(5); publicar('/v2/fruits', ['img', 'det', 'fruits'], { marco: 'base_link', piezas: piezas.filter(p => !p.usada).map(p => `${p.id}: ${p.tipo}`) }); await esperar(0.5);
+    await servirPlato('plato1', 'manzana', 2, zonaDe('plato1'), 1);
+    if (!uno) { paso(6); await servirPlato('plato2', 'uvas', 1, 'zona_segundo', 2); }
+    paso(uno ? 6 : 7); D.ctx = { fase: 'reposo', accion: 'volver a la postura de reposo' }; estado('HECHO'); publicar('/service_state', ['svc'], { estado: 'hecho' });
+    await irA(posReposo(), PI / 2, {}, 'la postura de reposo'); trayState.balanceo = false;
+    if (D.ep) cerrarChoque(); D.fin = 'ok'; D.playing = false; $('#dPlay').textContent = 'Reproducir demo';
+    if (!D.buscando) toast(`Servicio completo: ${fmt(D.motion, 1)} s de movimiento al ${Math.round(D.vel * 100)} %`);
+  } catch (e) {
+    if (run !== D.run) return; // reinicio pedido por el usuario
+    if (D.ep) cerrarChoque();
+    if (e instanceof FalloDemo && e.tipo === 'abort') { // el coordinador publica el aborto y retira el brazo antes de terminar
+      estado('ABORTADO'); pintarPasos(D.paso, true); mostrarFalloInfo(e, `Servicio abortado en el paso ${D.paso + 1} (${PASOS[D.paso][0]}).`, 'abort');
+      publicar('/service_state', ['svc'], { estado: 'abortado', paso: PASOS[D.paso][0] }); D.platoEnPinza = null;
+      try { await retirarSeguro(); } catch (e2) { }
+      if (run !== D.run) return;
+      if (D.ep) cerrarChoque(); D.fin = 'abort'; D.playing = false; $('#dPlay').textContent = 'Reproducir demo'; actualizarHUD(); return;
+    }
+    D.playing = false; $('#dPlay').textContent = 'Reproducir demo';
+    if (e instanceof FalloDemo) {
+      D.fin = e.tipo; if (e.tipo !== 'previo') pintarPasos(D.paso, true);
+      if (e.tipo === 'previo') { estado('NO INICIADO'); mostrarFalloInfo(e, 'La demo no puede empezar con esta disposición.', 'previo'); }
+      else { estado('PARADO'); mostrarFalloInfo(e, `Parada en el paso ${D.paso + 1} (${PASOS[D.paso][0]}).`, 'fallo'); }
+    } else { D.fin = 'error'; estado('ERROR'); pintarPasos(D.paso, true); mostrarFallo(`Error interno en el paso ${D.paso + 1}.`, ` ${e && e.message ? e.message : e}`); console.error(e); }
+  }
+}
+// Retirada tras un aborto (DEC-04): sube y se aparta hacia la base sin cambiar la orientación (si lleva el plato, no lo vuelca)
+async function retirarSeguro() {
+  const ax = ejesHerramienta(); const p = tcpMundo(); const arriba = p.clone().add(new THREE.Vector3(0, 0, 0.06));
+  if (Math.abs(ax.z.z) < 0.7) {
+    const yaw = Math.atan2(ax.z.y, ax.z.x); const flip = Math.sign(KIN.fk(robot.q)[8]) || 1; const o = { horiz: true, flip, pitch: Math.asin(clamp(-ax.z.z, -1, 1)), minZ: -0.3, permitir: ['bandeja', 'plato:*'] };
+    const b = BASES[L.robot]; const hacia = new THREE.Vector3(b.x - p.x, b.y - p.y, 0).normalize();
+    await moveL(arriba, yaw, o, 'la retirada'); await moveL(arriba.clone().addScaledVector(hacia, 0.1), yaw, o, 'la retirada');
+  } else { await moveL(arriba, yawHerramienta(), {}, 'la retirada'); await irA(posReposo(), PI / 2, {}, 'la postura de reposo'); }
+}
+async function servirPlato(pk, tipo, n, zona, num) {
+  const plato = OBJ[pk]; const pc = plato.getWorldPosition(new THREE.Vector3());
+  const pts = puntosSoltar(pc, FRUTAS[tipo], n); const zTr = MESA.h + H_TR;
+  if (Math.abs(ejesHerramienta().z.z) < 0.7) { estado(`TRANSITO_${num}`); await irA(posReposo(), PI / 2, {}, 'la postura de tránsito'); } // de horizontal a vertical, lejos de la fruta
+  for (let k = 0; k < n; k++) {
+    const pz = piezas.find(p => !p.usada && p.tipo === tipo); if (!pz) throw new FalloDemo(`No queda ${FRUTAS[tipo].nombre.toLowerCase()} en la zona de fruta`); pz.usada = true;
+    estado(`SIRVIENDO_${num} · ${k + 1}/${n}`); D.piezaObjetivo = pz; D.ctx = { fase: 'fruta', pk, accion: `coger ${pz.F.nombre.toLowerCase()} (pieza ${pz.id}) en la zona de fruta` };
+    const wAb = Math.min(0.11, pz.F.w + 0.024); const ag = planAgarreFruta(pz, wAb, robot.q);
+    if (!ag) throw new FalloDemo(`No hay ninguna orientación de la pinza para coger ${pz.F.nombre.toLowerCase()} (pieza ${pz.id})`, 'fallo', { causa: 'fruta', detalle: 'Ninguna orientación de la pinza vertical llega a la pieza sin chocar.' });
+    const c = ag.c, yaw = ag.yaw;
+    publicar('servir_pieza [PROPUESTA]', ['accion'], { pieza: pz.id, tipo, plato: pk, agarre_z_m: +pz.F.h.toFixed(3), giro_pinza_deg: Math.round(angDiff(yaw, 0) * R2D), hueco_con_vecinas_mm: ag.hol === Infinity ? '—' : mm(ag.hol) });
+    await pinzaA(wAb);
+    await irA(new THREE.Vector3(c.x, c.y, zTr), yaw, {}, `la vertical de ${pz.F.nombre.toLowerCase()}`);
+    const dz = alturaAgarre(pz.F) - pz.F.h, cierre = Math.max(0.01, Math.min(pz.F.w, 2 * Math.sqrt(Math.max(0, pz.F.r ** 2 - dz ** 2))) - 0.004); // ancho de la pieza a la altura de la yema
+    const baja = pinza.tcpZ(cierre) - pinza.tcpZ(wAb); // al cerrar, las yemas de la RG2 avanzan: se baja menos para que acaben a la altura de agarre
+    await moveL(new THREE.Vector3(c.x, c.y, MESA.h + alturaAgarre(pz.F) + baja), yaw, { estricto: true }, `${pz.F.nombre.toLowerCase()}`);
+    publicar('/pinza/cerrar [PROPUESTA]', ['gripper'], { ancho_mm: mm(cierre), altura_agarre_mm: mm(alturaAgarre(pz.F)) }); await pinzaA(cierre); adjuntar(pz.obj, pinza.tcp); pz.enPinza = true; D.piezaObjetivo = null;
+    const dest = pts[k].arr; D.ctx = { fase: 'soltar', pk, accion: `soltar ${pz.F.nombre.toLowerCase()} en el plato ${num}` };
+    await moveL(new THREE.Vector3(c.x, c.y, dest.z), yawHerramienta(), { permitir: ['mesa'] }, 'la altura de traslado'); // la pieza sale apoyada en la mesa
+    await irA(dest, yawHerramienta(), {}, `la vertical del plato ${num}`);
+    await moveL(pts[k].sol, yawHerramienta(), { permitir: ['plato:' + pk] }, `la altura de soltar en el plato ${num}`);
+    await pinzaA(wAb); adjuntar(pz.obj, scene); pz.enPinza = false;
+    const z0 = pz.obj.position.z, zt = pc.z + 0.006 + pz.F.h; await anim(0.35, s => { pz.obj.position.z = z0 + (zt - z0) * s * s; }); adjuntar(pz.obj, plato);
+    publicar('/v2/serve_check', ['fruits'], { plato: pk, cayo_en_plato: true, piezas: k + 1 });
+    await moveL(dest, yawHerramienta(), { permitir: ['plato:' + pk] }, 'la altura de traslado');
+  }
+  // coger el plato en horizontal por el borde
+  estado(`LLEVANDO_${num}`); D.ctx = { fase: 'plato', pk, accion: `coger el plato ${num} por el borde` };
+  const pl = planPlatoCache(pk) || planAgarrePlato(pc, robot.q, { pk }); if (!pl) throw new FalloDemo(`No hay ninguna dirección para coger el plato ${num} en horizontal sin chocar.`, 'fallo', { causa: 'sin_trayectoria' });
+  const oh = { horiz: true, flip: pl.flip, pitch: pl.pitch, minZ: -0.3 };
+  publicar('coger_plato [PROPUESTA]', ['accion'], { plato: pk, agarre: 'horizontal por el borde', aproximacion_deg: pl.k * 15, inclinacion_deg: Math.round(pl.pitch * R2D), holgura_mm: mm(pl.hol.min) });
+  await pinzaA(0.03);
+  // postura de aproximación: la más cercana a la actual o la planificada en seco; se queda la primera con la que toda la cadena (acercarse, levantar, llevar y dejar) sale bien con la bandeja donde está ahora
+  const qCerca = ikTCP(pl.pre, pl.yaw, robot.q, { ...oh, w: 0.03 }); const zAhora = zonasB[zona].getWorldPosition(new THREE.Vector3());
+  const opciones = [qCerca, pl.qPre].filter((q, i, a) => q && (i === 0 || !a[0] || Math.max(...q.map((v, j) => Math.abs(v - a[0][j]))) > 0.05));
+  let qAprox = null; for (const qp of opciones) { const ch = cadenaPlato(pk, { ...pl, qPre: qp }, zAhora); if (ch.pc2) { qAprox = qp; break; } }
+  if (!qAprox) qAprox = qCerca || pl.qPre; // si ninguna pasa, se intenta igual: el paso que falle explicará por qué
+  await moveJ(qAprox, factorPersona(pl.pre), { ...oh, w: 0.03 }, `la aproximación al plato ${num}`); // movimiento articular planificado hasta 7 cm del borde
+  await moveL(pl.tcp, pl.yaw, { ...oh, permitir: ['plato:' + pk], estricto: true }, `el borde del plato ${num}`);
+  publicar('/pinza/cerrar [PROPUESTA]', ['gripper'], { ancho_mm: 6, objeto: 'borde del plato' }); await pinzaA(0.006);
+  adjuntar(plato, pinza.tcp); D.platoEnPinza = plato;
+  const sube = pl.tcp.clone(); sube.z += 0.08; await moveL(sube, pl.yaw, { ...oh, permitir: ['caja:' + pk], estricto: true }, 'la elevación del plato');
+  // colocar en la bandeja
+  estado(`COLOCANDO_${num}`); D.ctx = { fase: 'transporte', pk, zona, accion: `llevar el plato ${num} nivelado hasta ${zona}` }; publicar('/service_state', ['svc'], { estado: `colocando ${num}` });
+  const zonaObj = zonasB[zona]; let zr = zonaObj.getWorldPosition(new THREE.Vector3()); // pose de recepción
+  let tr = colocacionConTransporte(zr, robot.q, pl, D.carga);
+  for (let it = 1; !tr.pc2 && it < 4; it++) { // la bandeja se balancea: como MoveIt con replanificación, se espera un momento y se vuelve a planificar con su nueva pose
+    publicar('/movimiento/aviso [PROPUESTA]', ['accion'], { tramo: `llevar el plato ${num}`, intento: it, motivo: tr.fallo.fallo, se_hace: 'esperar 0,6 s y replanificar con la bandeja en su pose nueva' });
+    await esperar(0.6); zr = zonaObj.getWorldPosition(new THREE.Vector3()); tr = colocacionConTransporte(zr, robot.q, pl, D.carga);
+  }
+  if (!tr.pc2) throw new FalloDemo(`No puedo llevar el plato ${num} nivelado hasta ${zona} y dejarlo sin chocar: ${tr.fallo.fallo} (llega al ${tr.fallo.pct} %). Bandeja a ${mm(zr.z - MESA.h)} mm sobre la mesa.`, 'fallo', { causa: tr.fallo.causa || 'choque', choque: tr.fallo.choque, q: tr.fallo.q, punto: tr.fallo.p, pct: tr.fallo.pct, horiz: true });
+  const pc2 = tr.pc2; D.ctx = { fase: 'bandeja', pk, zona, accion: `dejar el plato ${num} en ${zona}` };
+  const ohP = { horiz: true, flip: pl.flip, pitch: pl.pitch, minZ: -0.3, w: 0.006, permitir: ['bandeja'] }; const ctxP = ctxDe(ohP);
+  const objetivoDe = z => new THREE.Vector3(z.x - pc2.d.x * R_AGARRE, z.y - pc2.d.y * R_AGARRE, z.z + H_BORDE + 0.004);
+  publicar('/movimiento/transporte [PROPUESTA]', ['accion'], { destino: `encima de ${zona}`, restriccion: 'plato nivelado', largo_mm: mm(tr.r.largo) });
+  await ejecutar(tr.r.ruta, factorPersona(pc2.pre), 1.5 * tr.r.largo / (0.5 * D.vel * factorPersona(pc2.pre)));
+  const THR = 0.025, LAT = 0.12, T_ABORTO = 10;
+  let z = pc2.pre.z, quieto = 0, pausado = false, tPausa = 0, tLoop = 0, sinIK = 0;
+  if (D.modo === 'M0') {
+    await until(dt => {
+      tLoop += dt; const zl = zonaObj.getWorldPosition(new THREE.Vector3()); const dev = zl.distanceTo(zr);
+      if (dev > THR) { quieto = 0; tPausa += dt; if (!pausado) { pausado = true; D.pausas++; $('#dPausas').textContent = D.pausas; estado('PAUSADO'); publicar('/v1/tray_status', ['tstat'], { estado: 'movimiento_excesivo', desviacion_mm: mm(dev) }); } if (tPausa > T_ABORTO) throw new FalloDemo(`La bandeja ha estado más de ${T_ABORTO} s fuera del volumen de movimiento natural (desviación de ${mm(dev)} mm). Según DEC-04, Robótica aborta y retira el brazo.`, 'abort', { causa: 'bandeja_movida', dev }); return false; }
+      quieto += dt; if (pausado && quieto < 0.5) return false;
+      if (pausado) { pausado = false; tPausa = 0; estado(`COLOCANDO_${num}`); publicar('/v1/tray_status', ['tstat'], { estado: 'lista', desviacion_mm: mm(dev) }); }
+      const t = objetivoDe(zr); z = Math.max(t.z, z - 0.05 * D.vel / 0.25 * dt); D.motion += dt;
+      const q = ikCercana(new THREE.Vector3(t.x, t.y, z), pc2.yaw, ohP); if (q) { servo(q, dt, ctxP, `al bajar hacia ${zona}`); sinIK = 0; } else if ((sinIK += dt) > 1) throw new FalloDemo(`Al bajar hacia ${zona}, la pose queda fuera de alcance o en choque`, 'fallo', { causa: 'alcance_bandeja' });
+      if (tLoop > 60) throw new FalloDemo(`No se ha podido completar la colocación en ${zona} en 60 s`, 'abort', { causa: 'tiempo' });
+      return z <= t.z + 1e-4 && tcpMundo().distanceTo(t) < 0.002;
+    });
+  } else {
+    let prevT = null;
+    await until(dt => {
+      tLoop += dt; const zl = zonaPasada(zonaObj, LAT); const t = objetivoDe(zl); const p = tcpMundo();
+      const ff = new THREE.Vector3(); if (prevT && dt > 0) ff.set((t.x - prevT.x) / dt, (t.y - prevT.y) / dt, 0); prevT = t.clone();
+      const e = new THREE.Vector3(t.x - p.x, t.y - p.y, 0); const exy = e.length();
+      const paso_ = ff.multiplyScalar(dt).addScaledVector(e, Math.min(8 * dt, 0.8)); const lim = 0.35 * D.vel / 0.25 * dt; if (paso_.length() > lim) paso_.setLength(lim);
+      if (exy < 0.02) z -= 0.05 * D.vel / 0.25 * dt; else if (exy > 0.04) z = Math.min(t.z + H_AP, z + 0.03 * dt);
+      z = Math.max(z, t.z); D.motion += dt;
+      const q = ikCercana(new THREE.Vector3(p.x + paso_.x, p.y + paso_.y, z), pc2.yaw, ohP); if (q) { servo(q, dt, ctxP, `siguiendo la bandeja hacia ${zona}`); sinIK = 0; } else if ((sinIK += dt) > 1) throw new FalloDemo(`Siguiendo la bandeja, ${zona} sale del alcance del brazo. Baja la bandeja o acerca a la persona.`, 'abort', { causa: 'alcance_bandeja' });
+      if (tLoop > 30) throw new FalloDemo(`El seguimiento no converge en 30 s (la bandeja se mueve más de lo que el brazo puede seguir)`, 'abort', { causa: 'tiempo' });
+      return z <= t.z + 1e-4 && exy < 0.003 && Math.abs(p.z - t.z) < 0.002;
+    });
+  }
+  // al tocar la bandeja, el plato pasa a moverse con ella; después se abre la pinza y la pinza sale hacia atrás
+  adjuntar(plato, scene); bandeja.updateMatrixWorld(true); adjuntar(plato, bandeja); plato.position.z = 0.0005; plato.rotation.set(0, 0, plato.rotation.z); D.platoEnPinza = null;
+  const errV = plato.position.clone().sub(zonaObj.position); errV.z = 0; const err = errV.length(); D.errores.push(err);
+  $('#dError').textContent = D.errores.map(e => `${mm(e)}`).join(' · ') + ' mm';
+  await pinzaA(0.03);
+  publicar('/service_state', ['svc'], { estado: `colocado ${num}`, error_colocacion_mm: mm(err) });
+  const p = tcpMundo(); const atras = p.clone().addScaledVector(pc2.eje, -0.08);
+  await moveL(atras, pc2.yaw, { ...ohP, w: 0.03, carga: null, permitir: ['bandeja', 'plato:' + pk] }, 'la salida de la bandeja'); // después, movimiento articular planificado
+}
+// IK para el servo: solo vale una solución de la misma rama (cerca de la postura actual); si no, el robot no puede seguir sin cambiar de postura
+function ikCercana(p, yaw, opts) { const q = ikTCP(p, yaw, robot.q, opts); return q && Math.max(...q.map((v, i) => Math.abs(v - robot.q[i]))) < 0.35 ? q : null; }
+function zonaPasada(z, lat) { const p0 = poseBandeja(simT - lat); const p1 = poseBandeja(simT); const now = z.getWorldPosition(new THREE.Vector3()); return now.add(new THREE.Vector3(p0.x - p1.x, p0.y - p1.y, p0.z - p1.z)); }
+function reiniciarDemo() {
+  D.run++; D.playing = false; D.motion = 0; D.posturaImposible = null; D.errores = []; D.personaOff = 0; D.choques = 0; D.roces = 0; D.pausas = 0; D.rozando.clear(); D.chocando = false; D.ep = null; D.eventos = []; D.carga = null; D.planes = 0; D.sustituidos = 0; D.autocol = 0; D.autoAhora = false; VERSION_ESCENA++; marcaChoque.visible = false; MAT.alu.emissive.set('#000000'); D.platoEnPinza = null; D.piezaObjetivo = null; D.fin = null; D.paso = -1;
+  trayState.subida = 1; trayState.balanceo = false; aplicarBandeja(simT);
+  for (const k of ['plato1', 'plato2']) { if (OBJ[k].parent !== scene) adjuntar(OBJ[k], scene); OBJ[k].rotation.set(0, 0, 0); }
+  crearPiezas(); actualizarPlatos(); pinza.setApertura(0.06);
+  if (robot) robot.setQ(qReposo()); estado('REPOSO'); pintarPasos(-1); aristasOn.clear(); dibujarGrafo();
+  $('#dError').textContent = '—'; $('#dTiempo').textContent = '0,0 s'; $('#dChoques').textContent = '0'; $('#dRoces').textContent = '0'; $('#dPausas').textContent = '0';
+  D.carga = null; pintarCalidad(); $('#dLog').innerHTML = ''; $('#dMsg').textContent = 'Pulsa «Reproducir demo» para ver los mensajes del guion.'; if (!D.mantenerFallo) $('#dFallo').hidden = true;
+  $('#dPlay').textContent = 'Reproducir demo'; D.minCam = {}; sincronizarSliders();
+}
+$('#dPlay').addEventListener('click', async () => {
+  if (!robot || CALC.activo) return;
+  if ((!D.activo || D.fin) && !planesAlDia()) { await calcularPlanes(); if (!planesAlDia()) return; }
+  if (!D.activo || D.fin) { reiniciarDemo(); D.activo = true; tctl.detach(); sel = null; pintarLista(); pintarSel(); D.playing = true; $('#dPlay').textContent = 'Pausar'; demo(); return; }
+  D.playing = !D.playing; $('#dPlay').textContent = D.playing ? 'Pausar' : 'Continuar';
+});
+$('#dReset').addEventListener('click', () => { D.activo = false; reiniciarDemo(); actualizarCheck(); });
+
+// ======================= Evaluación, HUD y paneles =======================
+function enBase(p) { const b = BASES[L.robot]; return { x: p.x - b.x, y: p.y - b.y, z: p.z - MESA.h }; }
+const CACHE_PLAN = {};
+// todo lo que entra en la escena de colisión o en la cadena: plato, el otro plato, caja (y su altura), zona de fruta, persona, bandeja, cámaras (posición y hacia dónde miran) y pedido
+function clavePlan(pk) {
+  const P = L.persona, B = L.bandeja; const r3 = v => (+v).toFixed(3), ps = o => `${r3(o.x)},${r3(o.y)}`;
+  return [L.robot, r3(L[pk].x), r3(L[pk].y), r3(zPlato()), L.caja.on, r3(L.caja.h), ps(L.plato1), ps(L.plato2), ps(L.zona), r3(L.zona.yaw), ps(P), r3(P.yaw), B.alt, B.ade, L.pedido, Object.values(L.cams).map(c => ps(c.pos) + ',' + r3(c.pos.z) + ',' + ps(c.mira) + ',' + r3(c.roll || 0)).join(';')].join('|');
+}
+const planAlDia = pk => CACHE_PLAN[pk]?.key === clavePlan(pk);
+const planesAlDia = () => !robot || platosActivos().every(([pk]) => planAlDia(pk));
+const sinPlan = () => EDITANDO || !planesAlDia(); // hay cambios en la escena que aún no se han calculado
+// Planificar es lo caro: solo se hace al pulsar «Calcular trayectorias» o al reproducir la demo, nunca al mover un objeto
+function planPlatoCache(pk) { if (!planAlDia(pk)) { const it = pasosPlan(pk); while (!it.next().done); } return CACHE_PLAN[pk].pl; }
+async function planPlatoAsync(pk, prog) { // igual, pero cede el control entre candidatos para que la página no se congele
+  if (planAlDia(pk)) return; const it = pasosPlan(pk);
+  for (let r = it.next(); !r.done; r = it.next()) { if (prog) prog(r.value); await new Promise(res => setTimeout(res, 0)); }
+}
+function* pasosPlan(pk) {
+  const pc = new THREE.Vector3(L[pk].x, L[pk].y, zPlato()); const key = clavePlan(pk);
+  {
+    const bal = trayState.balanceo, sub = trayState.subida; trayState.balanceo = false; trayState.subida = 1; aplicarBandeja(simT); VERSION_ESCENA++; // el plan se hace con la bandeja en su pose de recepción
+    const conFruta = OBJ[pk].children.some(c => piezas.some(p => p.obj === c));
+    if (!conFruta) { const F = pk === 'plato1' ? FRUTAS.manzana : FRUTAS.uvas; const pw = OBJ[pk].getWorldPosition(new THREE.Vector3()); OBS_EXTRA = puntosSoltar(pw, F, pk === 'plato1' ? 2 : 1).map(p => [p.sol.x, p.sol.y, pw.z + 0.006 + F.h, F.r, 'plato:' + pk]); VERSION_ESCENA++; }
+    const cands = planAgarrePlato(pc, qReposo(), { pk, todos: true }); let elegido = null, cadena = null;
+    if (OBS_EXTRA.length) { OBS_EXTRA = []; VERSION_ESCENA++; } // la fruta prevista ya va en la carga del plato
+    const zw = zonasB[zonaDe(pk)].getWorldPosition(new THREE.Vector3());
+    let i = 0; for (const c of cands) { yield { i: i++, n: cands.length }; c.carga = cargaPlan(pk, c); const ch = cadenaPlato(pk, c, zw); if (ch.pc2) { elegido = c; cadena = ch; break; } const rango = f => f ? (f.etapa ?? 0) * 1000 + (f.pct ?? 0) : -1; if (!cadena || rango(ch.fallo) > rango(cadena.fallo)) cadena = ch; } // se explica el fallo de la opción que llegó más lejos
+    const pl = elegido || cands[0] || null; if (pl) { pl.cadena = elegido ? cadena : (cadena || { fallo: { fallo: 'sin datos', pct: 0 } }); const ca = [OBJ.caja1, OBJ.caja2][pk === 'plato1' ? 0 : 1]; if (L.caja.on) { ca.rotation.z = pl.yaw; ca.updateMatrixWorld(true); VERSION_ESCENA++; } }
+    CACHE_PLAN[pk] = { key, pl, forz: undefined };
+    trayState.balanceo = bal; trayState.subida = sub; aplicarBandeja(simT); VERSION_ESCENA++;
+  }
+  return CACHE_PLAN[pk].pl;
+}
+// Cadena completa en seco desde el agarre: levantar 8 cm, llevar nivelado y dejar en la zona
+function cadenaPlato(pk, pl, zw) {
+  const o = { horiz: true, pitch: pl.pitch, flip: pl.flip, minZ: -0.3, w: 0.006, carga: pl.carga };
+  // acercamiento recto de 7 cm a lo largo de los dedos, desde la misma postura que usará la demo (pl.qPre)
+  const ra = rutaCartesiana(pl.qPre, [{ p: pl.pre, yaw: pl.yaw }, { p: pl.tcp, yaw: pl.yaw }], { horiz: true, pitch: pl.pitch, flip: pl.flip, minZ: -0.3, w: 0.03, permitir: ['plato:' + pk] });
+  if (!ra.ruta) return { fallo: { ...ra, fallo: `al acercarse al borde del plato, ${ra.fallo}`, fase: 'plato', etapa: 0 } };
+  // elevación recta de 8 cm con el plato agarrado (el plato va en la carga)
+  const rl = rutaCartesiana(ra.ruta[ra.ruta.length - 1], [{ p: pl.tcp, yaw: pl.yaw }, { p: pl.tcp.clone().add(new THREE.Vector3(0, 0, 0.08)), yaw: pl.yaw }], { ...o, permitir: ['caja:' + pk, 'plato:' + pk] });
+  if (!rl.ruta) return { fallo: { ...rl, fallo: `al levantarlo de la caja, ${rl.fallo}`, fase: 'plato', etapa: 1 } };
+  const qL = rl.ruta[rl.ruta.length - 1];
+  const t = colocacionConTransporte(zw, qL, pl, pl.carga); return t.pc2 ? { ...t, qL } : { fallo: { ...t.fallo, etapa: 2 } };
+}
+function cargaPlan(pk, pl) { // el plato y la fruta que llevará, en el marco de tool0 tal como quedará agarrado
+  const q0 = robot.q.slice(), w0 = pinza.w; robot.setQ(pl.q); pinza.setApertura(0.006); const base = Array.from(cargaDe(OBJ[pk]));
+  const pc = OBJ[pk].getWorldPosition(new THREE.Vector3()); const F = pk === 'plato1' ? FRUTAS.manzana : FRUTAS.uvas; const inv = robot.tool0.matrixWorld.clone().invert();
+  if (!OBJ[pk].children.some(c => piezas.some(p => p.obj === c))) for (const p of puntosSoltar(pc, F, pk === 'plato1' ? 2 : 1)) { const v = new THREE.Vector3(p.sol.x, p.sol.y, pc.z + 0.006 + F.h).applyMatrix4(inv); base.push(v.x, v.y, v.z, F.r); }
+  robot.setQ(q0); pinza.setApertura(w0); return new Float64Array(base);
+}
+function planForzado(pk) { // la mejor postura de agarre ignorando el entorno, para enseñar por qué no se puede
+  planPlatoCache(pk); const C = CACHE_PLAN[pk]; if (C.forz === undefined) { const pc = new THREE.Vector3(L[pk].x, L[pk].y, zPlato()); const f = planAgarrePlato(pc, qReposo(), { pk, forzar: true }); if (f) f.choque = choqueEn(f.q, { w: 0.03, carga: null, permitir: ['plato:' + pk] }); C.forz = f; } return C.forz;
+}
+function estadoObjeto(k) {
+  if (!robot) return null;
+  if (k === 'zona') { const z = L.zona; const pts = []; for (const u of [-1, 0, 1]) for (const v of [-1, 0, 1]) { const lx = u * (z.w / 2 - 0.03), ly = v * (z.d / 2 - 0.03); pts.push([z.x + Math.cos(z.yaw) * lx - Math.sin(z.yaw) * ly, z.y + Math.sin(z.yaw) * lx + Math.cos(z.yaw) * ly]); } const r = pts.map(([x, y]) => alcance(x, y, 0.035).cls); const ok = r.filter(c => c > 0).length; return { cls: ok === pts.length ? Math.min(...r) : (ok ? 1 : 0), txt: `${ok}/${pts.length} puntos alcanzables` }; }
+  if (['plato1', 'plato2', 'persona'].includes(k) && sinPlan()) return { cls: 1, pend: true, txt: 'sin calcular: pulsa «Calcular trayectorias»' };
+  if (k === 'plato1' || k === 'plato2') {
+    const p = L[k]; const hS = zPlato() - MESA.h + 0.09; const a = alcance(p.x, p.y, hS).cls; const pl = planPlatoCache(k);
+    const g = !pl ? 0 : (pl.hol.min < -0.002 ? 0 : (pl.hol.min < 0.01 ? 1 : 2)); const f = !pl ? planForzado(k) : null;
+    const gtxt = !pl ? (f && f.choque ? `imposible, chocaría ${textoChoque(f.choque)}` : 'no hay dirección') : (pl.hol.min < -0.002 ? `choca con la ${pl.hol.contra} (${mm(pl.hol.min)} mm)` : `holgura ${mm(pl.hol.min)} mm`);
+    return { cls: Math.min(a, g), txt: `soltar fruta: ${['no', 'justo', 'sí'][a]} · coger en horizontal: ${gtxt}` };
+  }
+  if (k === 'persona') { const pb = poseBandeja(simT); const r = platosActivos().map(([pk]) => planPlatoCache(pk)?.cadena?.pc2 ? 2 : 0); return { cls: Math.min(...r), txt: `llevar y dejar ${r.length > 1 ? 'los platos' : 'el plato'} en la bandeja (a ${fmt((pb.z - MESA.h) * 100, 0)} cm sobre la mesa): ${r.map(c => c ? 'sí' : 'no').join(' / ')}` }; }
+  return null;
+}
+function pintarLista() {
+  $('#objList').innerHTML = pickables.filter(p => !p.oculto).map(p => { const e = estadoObjeto(p.key); const cls = e ? ['bad', 'warn', 'ok'][e.cls] : (p.cam ? (CAMS[p.cam].brazoOK ? 'ok' : 'bad') : ''); return `<button data-k="${p.key}" aria-pressed="${!!(sel && (sel.key === p.key || (sel.cam && sel.cam === p.cam)))}"><span>${p.nombre}</span><span class="dot ${cls}"></span></button>`; }).join('');
+}
+$('#objList').addEventListener('click', e => { const b = e.target.closest('button'); if (b) seleccionar(b.dataset.k); });
+function slidersOrient(k, pre) { // giro, inclinación y alabeo en grados; ids <pre>pan_<k>…
+  const o = orientDe(L.cams[k]); const f = (id, lab, v, mn, mx) => `<div class="field"><label for="${pre}${id}_${k}">${lab}</label><output id="${pre}${id}_${k}_o">${Math.round(v * R2D)}°</output><input type="range" id="${pre}${id}_${k}" min="${mn}" max="${mx}" step="1" value="${Math.round(v * R2D)}"></div>`;
+  return f('pan', 'Giro (− izquierda · + derecha · 0° hacia el fondo)', o.pan, -180, 180) + f('tilt', 'Inclinación (+ hacia abajo)', o.tilt, -60, 89) + f('roll', 'Alabeo (gira la imagen)', o.roll, -180, 180);
+}
+function entradaOrient(e) { // deslizadores de orientación de la tarjeta de selección y de la pestaña Cámaras
+  const m = /^(so|co)(pan|tilt|roll)_(\w+)$/.exec(e.target.id || ''); if (!m || !L.cams[m[3]]) return false;
+  const k = m[3], c = L.cams[k], o = orientDe(c); o[m[2]] = +e.target.value * D2R; prepararEdicion(); fijarOrient(c, o.pan, o.tilt, o.roll); actualizarCam(k); VERSION_ESCENA++;
+  const out = document.getElementById(e.target.id + '_o'); if (out) out.textContent = `${e.target.value}°`;
+  if (e.type === 'change') { guardarLocal(); evaluar(); } return true;
+}
+for (const id of ['#selCard', '#camCards']) for (const t of ['input', 'change']) $(id).addEventListener(t, entradaOrient);
+function pintarSel() {
+  const c = $('#selCard'); if (!sel) { c.hidden = true; return; } c.hidden = false;
+  const gp = { V1: 'v1', V2: 'v2', ROB: 'rob' }[sel.grupo]; const gt = { V1: 'Visión 1', V2: 'Visión 2', ROB: 'Robótica' }[sel.grupo];
+  const p = sel.obj.getWorldPosition(new THREE.Vector3()); const b = enBase(p); const e = estadoObjeto(sel.key);
+  const extra = sel.cam ? `<div class="seg" id="segParte">${['pos', 'mira', 'clamp'].map(pt => `<button data-v="${pt}" aria-pressed="${sel.parte === pt}">${{ pos: 'Cámara', mira: 'Punto de mira', clamp: 'Pinza de mesa' }[pt]}</button>`).join('')}</div>${slidersOrient(sel.cam, 'so')}
+    <p class="hint">Con <b>Girar</b> activado, arrastra la cámara en la escena para apuntarla (derecha e izquierda giran, arriba y abajo inclinan) o usa sus anillos: rojo inclina, verde gira y azul gira la imagen.</p>` : '';
+  c.innerHTML = `<header><h3>${sel.nombre}</h3><span class="pill ${gp}">${gt}</span></header>${extra}
+   <dl class="kv"><dt>Posición en base_link</dt><dd>${mm(b.x)}, ${mm(b.y)}, ${mm(b.z)} mm</dd>${['zona', 'persona', 'objetivo'].includes(sel.key) ? `<dt>Giro</dt><dd>${fmt(sel.obj.rotation.z * R2D, 0)}°</dd>` : ''}
+   ${e ? `<dt>Alcance</dt><dd><span class="pill ${['bad', 'warn', 'ok'][e.cls]}">${e.pend ? 'sin calcular' : ['no llega', 'justo', 'holgado'][e.cls]}</span></dd><dt></dt><dd>${e.txt}</dd>` : ''}</dl>`;
+  const sp = $('#segParte'); if (sp) sp.addEventListener('click', ev => { const bt = ev.target.closest('button'); if (!bt) return; const map = { pos: 'cam:', mira: 'mira:', clamp: 'clamp:' }; seleccionar(map[bt.dataset.v] + sel.cam); });
+}
+$('#segModo').addEventListener('click', e => { const b = e.target.closest('button'); if (!b) return; $$('#segModo button').forEach(x => x.setAttribute('aria-pressed', x === b)); if (sel) seleccionar(sel.key); });
+const HUDC = { k: '', c: null };
+function actualizarHUD() {
+  if (!robot) return; const t = tcpMundo(); const b = enBase(t); const r = Math.hypot(b.x, b.y);
+  let s = `<div class="hudline">TCP en base_link <b>${mm(b.x)}, ${mm(b.y)}, ${mm(b.z)} mm</b> · r ${mm(r)} mm</div>`;
+  if (D.activo) s += `<div class="hudline">Coordinador <b>${D.estado}</b>${factorPersona(t) < 1 ? ' · <span class="pill warn">zona de la persona: velocidad ×0,5</span>' : ''}</div>`;
+  else if (COL.listo) { // a mano (deslizadores u objetivo): avisa si la postura choca, contra sí mismo o contra algo
+    const k = robot.q.map(v => v.toFixed(3)).join() + '|' + pinza.w.toFixed(3) + '|' + VERSION_ESCENA; if (k !== HUDC.k) { HUDC.k = k; HUDC.c = choqueEn(robot.q, { carga: null }); }
+    if (HUDC.c) s += `<div class="hudline"><span class="pill bad">${HUDC.c.tipo === 'auto' ? 'Autocolisión' : 'Choque'}: ${textoChoque(HUDC.c)}</span></div>`;
+  }
+  $('#hud').innerHTML = s; $('#dTiempo').textContent = `${fmt(D.motion, 1)} s`;
+  $('#tcpOut').textContent = `${mm(pinza.tcpZ())} mm (cerrada ${mm(pinza.tcpZ(0))} · abierta ${mm(pinza.tcpZ(0.11))})`;
+}
+function pintarCaja() {
+  $$('#segCaja button').forEach(x => x.setAttribute('aria-pressed', (x.dataset.v === '1') === L.caja.on));
+  $('#cajaH').value = Math.round(L.caja.h * 100); $('#cajaHOut').textContent = `${Math.round(L.caja.h * 100)} cm`; $('#cajaH').disabled = !L.caja.on;
+  if (!robot) return; if (sinPlan()) { $('#cajaInfo').innerHTML = '<dt>Agarre de los platos</dt><dd><span class="pill warn">sin calcular</span> pulsa «Calcular trayectorias»</dd>'; return; }
+  $('#cajaInfo').innerHTML = platosActivos().map(([k]) => { const pl = planPlatoCache(k); const n = k === 'plato1' ? '1º' : '2º'; if (!pl) { const f = planForzado(k); return `<dt>Coger el plato ${n}</dt><dd><span class="pill bad">${f && f.choque ? `imposible: ${textoChoque(f.choque)}${f.hol.min < 0 ? `, ${mm(-f.hol.min)} mm` : ''}` : 'sin dirección posible'}</span></dd>`; } const h = pl.hol.min; return `<dt>Holgura al coger el plato ${n}</dt><dd><span class="pill ${h < -0.002 ? 'bad' : h < 0.01 ? 'warn' : 'ok'}">${h < -0.002 ? `choca con la ${pl.hol.contra}: ${mm(h)} mm` : `${mm(h)} mm`}</span></dd>`; }).join('');
+}
+function actualizarCheck() { if ($('[data-panel="demo"]').hidden || D.activo || !robot) return; if (sinPlan()) { pintarCheck([{ cls: 'warn', txt: 'Hay cambios sin calcular. Pulsa «Calcular trayectorias» o reproduce la demo, que calcula antes de mover el brazo.' }]); return; } pintarCheck(comprobarPlan()); }
+function toast(t) { const el = $('#toast'); el.textContent = t; el.classList.add('on'); clearTimeout(el._t); el._t = setTimeout(() => el.classList.remove('on'), 2800); }
+
+// Pestañas
+$$('.tabs button').forEach(b => b.addEventListener('click', () => {
+  $$('.tabs button').forEach(x => x.setAttribute('aria-selected', x === b)); $$('.tab').forEach(p => p.hidden = p.dataset.panel !== b.dataset.tab);
+  alcPlane.visible = b.dataset.tab === 'alcance'; solape.visible = alcPlane.visible && $('#lySolape').checked;
+  if (b.dataset.tab === 'camaras') pintarCamaras(); if (b.dataset.tab === 'datos') pintarDatos(); if (b.dataset.tab === 'alcance') actualizarTablaAlcance(); if (b.dataset.tab === 'demo') actualizarCheck();
+  try { localStorage.setItem('gemelo-tab', b.dataset.tab); } catch (e) { }
+}));
+$('#segRobot').addEventListener('click', e => {
+  const b = e.target.closest('button'); if (!b || b.dataset.v === L.robot || !robot) return;
+  L = espejo(L); L.robot = b.dataset.v; $$('#segRobot button').forEach(x => x.setAttribute('aria-pressed', x === b));
+  colocarRobots(); aplicarLayout(); toast(`Robot del grupo: ${b.dataset.v}. Distribución reflejada al otro lado.`);
+});
+$('#segCaja').addEventListener('click', e => { const b = e.target.closest('button'); if (!b || D.playing) return; L.caja.on = b.dataset.v === '1'; if (!D.activo) reiniciarDemo(); actualizarPlatos(); pintarCaja(); evaluar(); guardarLocal(); toast(L.caja.on ? 'Platos sobre la caja' : 'Platos sobre la mesa: mira la holgura al cogerlos'); });
+$('#cajaH').addEventListener('input', e => { if (D.playing) return; L.caja.h = e.target.value / 100; $('#cajaHOut').textContent = `${e.target.value} cm`; EDITANDO = true; actualizarPlatos(); clearTimeout(pintarCaja._t); pintarCaja._t = setTimeout(() => { EDITANDO = false; actualizarPlatos(); pintarCaja(); evaluar(); }, 300); guardarLocal(); });
+$('#apertura').addEventListener('input', e => { pinza.setApertura(e.target.value / 1000); $('#aperturaOut').textContent = `${e.target.value} mm`; actualizarHUD(); });
+$('#btnReset').addEventListener('click', () => { const r = L.robot; L = layoutDefecto(); if (r === 'A') { L = espejo(L); L.robot = 'A'; } aplicarLayout(); toast('Distribución de partida restaurada'); });
+$('#btnHome').addEventListener('click', () => { if (robot) { robot.setQ(qReposo()); sincronizarSliders(); actualizarHUD(); } });
+$('#btnObjetivo').addEventListener('click', () => { if (!robot) return; objetivo.visible = true; objetivo.position.copy(tcpMundo()); objetivo.rotation.set(0, 0, yawHerramienta()); seleccionar('objetivo'); toast('Arrastra el objetivo: el brazo lo sigue con cinemática inversa'); });
+const JN = ['Base', 'Hombro', 'Codo', 'Muñeca 1', 'Muñeca 2', 'Muñeca 3'];
+$('#jointSliders').innerHTML = JN.map((n, i) => `<div class="field"><label for="j${i}">${n}</label><output id="j${i}o">0°</output><input type="range" id="j${i}" min="-360" max="360" step="1" value="0"></div>`).join('');
+JN.forEach((n, i) => $('#j' + i).addEventListener('input', e => { if (!robot || D.playing) return; const q = robot.q.slice(); q[i] = e.target.value * D2R; robot.setQ(q); $('#j' + i + 'o').textContent = `${e.target.value}°`; actualizarHUD(); }));
+function sincronizarSliders() { if (!robot) return; robot.q.forEach((v, i) => { const d = Math.round(v * R2D); $('#j' + i).value = d; $('#j' + i + 'o').textContent = `${d}°`; }); }
+const capas = { lyCol: v => volCol.forEach(m => m.visible = v), lyFoto: v => foto.visible = v, lyOtro: v => { if (otro) otro.root.visible = v; }, lyTF: v => TF.forEach(t => { t.visible = v; t.userData.lbl.visible = v; }), lyEtq: v => labels.domElement.style.display = v ? '' : 'none', lyCirc: v => circ.visible = v, lyFrus: v => Object.values(CAMS).forEach(R => { R.frus.visible = R.huella.visible = v; }) };
+for (const id in capas) $('#' + id).addEventListener('change', e => capas[id](e.target.checked));
+const circ = new THREE.Mesh(new THREE.RingGeometry(0.497, 0.503, 128), new THREE.MeshBasicMaterial({ color: '#e6b422', side: THREE.DoubleSide, toneMapped: false })); circ.layers.set(1); scene.add(circ); circ.visible = false;
+const solape = new THREE.Mesh(new THREE.BufferGeometry(), new THREE.MeshBasicMaterial({ color: '#e6b422', transparent: true, opacity: 0.35, depthWrite: false, side: THREE.DoubleSide })); scene.add(solape); solape.visible = false; solape.renderOrder = 3;
+$('#lySolape').addEventListener('change', e => solape.visible = e.target.checked && alcPlane.visible);
+function dibujarSolape() {
+  const a = BASES.A, b = BASES.B, R = 0.5; const pts = [];
+  for (let i = 0; i <= 64; i++) { const t = i / 64 * 2 * PI; const x = a.x + R * Math.cos(t), y = a.y + R * Math.sin(t); if (Math.hypot(x - b.x, y - b.y) <= R) pts.push(new THREE.Vector2(x, y)); }
+  for (let i = 0; i <= 64; i++) { const t = i / 64 * 2 * PI; const x = b.x + R * Math.cos(t), y = b.y + R * Math.sin(t); if (Math.hypot(x - a.x, y - a.y) <= R) pts.push(new THREE.Vector2(x, y)); }
+  const c = new THREE.Vector2(); pts.forEach(p => c.add(p)); c.multiplyScalar(1 / pts.length); pts.sort((p, q) => Math.atan2(p.y - c.y, p.x - c.x) - Math.atan2(q.y - c.y, q.x - c.x));
+  solape.geometry.dispose(); solape.geometry = new THREE.ShapeGeometry(new THREE.Shape(pts)); solape.position.z = MESA.h + 0.002;
+  const dist = Math.hypot(a.x - b.x, a.y - b.y);
+  $('#solapeTxt').textContent = `Las bases están a ${mm(dist)} mm. Los círculos de 500 mm se solapan en una franja de unos ${mm(2 * R - dist)} mm en el centro de la mesa. Si el otro puesto trabaja a la vez, esa franja y el aire que hay encima no deben usarse sin coordinarse.`;
+}
+$$('.vbar.l button').forEach(b => b.addEventListener('click', () => { $$('.vbar.l button').forEach(x => x.setAttribute('aria-pressed', x === b)); vista(b.dataset.vista); }));
+function vista(v) {
+  const sx = L.robot === 'B' ? 1 : -1; let p, t;
+  if (v === 'iso') { p = [-sx * 1.15, -1.45, 1.8]; t = [sx * 0.42, 0.1, 0.9]; }
+  if (v === 'planta') { p = [0.0, -0.001, 2.75]; t = [0, 0, MESA.h]; }
+  if (v === 'lateral') { p = [0.05, -2.2, 1.05]; t = [0.05, 0, 0.9]; }
+  if (v === 'ojos') { const P = L.persona; p = [P.x + 0.08 * Math.cos(P.yaw), P.y + 0.08 * Math.sin(P.yaw), 1.64]; t = [P.x + 0.7 * Math.cos(P.yaw), P.y + 0.7 * Math.sin(P.yaw), 0.95]; }
+  animarCam(new THREE.Vector3(...p), new THREE.Vector3(...t));
+}
+let camAnim = null; function animarCam(p, t) { camAnim = { p0: cam.position.clone(), t0: orbit.target.clone(), p, t, s: 0 }; }
+let pipOn = true, verCam = null;
+$('#btnPip').addEventListener('click', e => { pipOn = !pipOn; e.currentTarget.setAttribute('aria-pressed', pipOn); pintarPip(); });
+$('#camModeExit').addEventListener('click', () => { verCam = null; $('#camMode').hidden = true; pintarPip(); });
+function pintarPip() {
+  const el = $('#pip'); if (!pipOn || verCam) { el.innerHTML = ''; return; }
+  const r = view.getBoundingClientRect(); const tw = Math.min(200, (r.width - 40) / 3); const th = tw * 9 / 16;
+  el.innerHTML = Object.keys(CAMS).map(k => `<div class="tile" style="width:${tw}px;height:${th}px"><span>${L.cams[k].nombre}</span></div>`).join('');
+}
+
+// ======================= Métricas de cámaras =======================
+function puntosObjetivo(k) {
+  const pts = [];
+  if (k === 'cenital') { const z = L.zona; for (const u of [-0.5, 0, 0.5]) for (const v of [-0.5, 0.5]) pts.push(['zona', new THREE.Vector3(z.x + u * z.w, z.y + v * z.d, MESA.h + 0.03)]); for (const pk of ['plato1', 'plato2']) pts.push([pk === 'plato1' ? 'plato 1º' : 'plato 2º', OBJ[pk].getWorldPosition(new THREE.Vector3()).add(new THREE.Vector3(0, 0, 0.02))]); }
+  if (k === 'entrega') { bandeja.updateMatrixWorld(true); for (const [u, v] of [[0.12, 0.17], [0.12, -0.17], [-0.12, 0.17], [-0.12, -0.17], [0, 0]]) pts.push(['bandeja', new THREE.Vector3(u, v, 0.01).applyMatrix4(bandeja.matrixWorld)]); OBJ.arucoE.forEach((a, i) => pts.push(['marcador ' + (i + 1), a.getWorldPosition(new THREE.Vector3())])); }
+  if (k === 'persona') { pts.push(['cara', persona.userData.cara.getWorldPosition(new THREE.Vector3())]); for (const s of [-1, 1]) pts.push([s < 0 ? 'mano dcha.' : 'mano izda.', new THREE.Vector3(-0.02, s * (BAND.w / 2 + 0.01), 0).applyMatrix4(bandeja.matrixWorld)]); }
+  return pts;
+}
+const rayO = new THREE.Raycaster();
+function metricasCam(k, soloLibre = false) {
+  const c = L.cams[k], R = CAMS[k]; R.cam.updateMatrixWorld(true);
+  const M = MODOS[c.modo]; const hf = hfovDe(c), vf = vfovDe(c);
+  const cp = R.cam.position.clone(); const aim = new THREE.Vector3(c.mira.x, c.mira.y, c.mira.z); const dist = cp.distanceTo(aim);
+  const dir = aim.clone().sub(cp).normalize(); const inc = aim.z <= MESA.h + 0.01 ? Math.abs(dir.z) : 1;
+  const pix = (SENSOR.w / c.f) / M.w; const mmpx = dist * pix / Math.max(0.2, inc) * 1000;
+  let libre = Infinity; if (robot) { const P = robot.puntos(); P.push(tcpMundo()); for (let i = 1; i < P.length; i++) { if (P[i - 1].distanceTo(P[i]) < 1e-6) continue; const l = new THREE.Line3(P[i - 1], P[i]); const q = l.closestPointToPoint(cp, true, new THREE.Vector3()); libre = Math.min(libre, q.distanceTo(cp) - 0.05); } }
+  if (soloLibre) return { libre };
+  const pts = puntosObjetivo(k); let dentro = 0; const tapados = [], fuera = [];
+  const robs = robot ? [...robot.meshes, ...pinza.mallas()] : [];
+  for (const [n, p] of pts) {
+    const ndc = p.clone().project(R.cam); const ok = Math.abs(ndc.x) <= 1 && Math.abs(ndc.y) <= 1 && ndc.z < 1 && ndc.z > -1;
+    if (!ok) { fuera.push(n); continue; } dentro++;
+    rayO.set(cp, p.clone().sub(cp).normalize()); rayO.far = cp.distanceTo(p) - 0.02; if (robs.length && rayO.intersectObjects(robs, false).length) tapados.push(n);
+  }
+  return { hf, vf, mmpx, dist, alt: cp.z - MESA.h, aruco: 50 / mmpx, dentro, total: pts.length, fuera, tapados, libre, brazoOK: R.brazoOK, brazoD: R.brazoD };
+}
+function pintarCamaras() {
+  $('#camCards').innerHTML = Object.keys(L.cams).map(k => {
+    const c = L.cams[k], m = metricasCam(k); const gp = c.grupo === 'V1' ? 'v1' : 'v2';
+    const visCls = m.dentro === m.total && !m.tapados.length ? 'ok' : (m.dentro >= m.total * 0.6 ? 'warn' : 'bad');
+    const minC = D.minCam[k]; const libre = Math.min(m.libre, minC ?? Infinity);
+    return `<div class="card ${sel && sel.cam === k ? 'sel' : ''}" data-cam="${k}"><header><h3>Cámara ${c.nombre.toLowerCase()}</h3><span class="pill ${gp}">${c.grupo === 'V1' ? 'Visión 1' : 'Visión 2'}</span></header>
+    <div class="field"><label for="f_${k}">Focal (zoom de la lente)</label><output>${fmt(c.f, 1)} mm</output><input type="range" id="f_${k}" min="3.6" max="10" step="0.1" value="${c.f}"></div>
+    ${slidersOrient(k, 'co')}
+    <div class="row"><label class="hint" for="m_${k}" style="flex:none">Modo</label><select id="m_${k}" style="flex:1;width:auto">${Object.keys(MODOS).map(x => `<option ${x === c.modo ? 'selected' : ''} value="${x}">${x.replace('x', '×')} · ${MODOS[x].fps} fps${MODOS[x].w / MODOS[x].h < 1.5 ? ' · 4:3' : ''}</option>`).join('')}</select></div>
+    <dl class="kv"><dt>Campo de visión</dt><dd>${fmt(m.hf * R2D, 0)}° × ${fmt(m.vf * R2D, 0)}°</dd><dt>Altura sobre la mesa</dt><dd>${mm(m.alt)} mm</dd><dt>Resolución en el punto de mira</dt><dd>${fmt(m.mmpx, 2)} mm/px</dd>
+    <dt>ArUco de 50 mm</dt><dd><span class="pill ${m.aruco >= 30 ? 'ok' : m.aruco >= 18 ? 'warn' : 'bad'}">${Math.round(m.aruco)} px de lado</span></dd>
+    <dt>Ve sus objetivos</dt><dd><span class="pill ${visCls}">${m.dentro}/${m.total}</span>${m.fuera.length ? ' fuera: ' + [...new Set(m.fuera)].join(', ') : ''}${m.tapados.length ? ' · tapados por el brazo: ' + [...new Set(m.tapados)].join(', ') : ''}</dd>
+    <dt>Brazo Manfrotto 244</dt><dd><span class="pill ${m.brazoOK ? 'ok' : 'bad'}">${mm(m.brazoD)} de 530 mm</span></dd>
+    <dt>Holgura con el UR3e</dt><dd><span class="pill ${libre > 0.08 ? 'ok' : libre > 0.02 ? 'warn' : 'bad'}">${libre === Infinity ? '—' : mm(Math.max(0, libre)) + ' mm'}</span>${minC !== undefined ? ' mínima en la demo' : ' ahora'}</dd></dl>
+    <div class="btns"><button class="btn" data-act="sel">Mover</button><button class="btn" data-act="ver">Ver por esta cámara</button></div></div>`;
+  }).join('') + `<p class="hint">Orientativo: el lado del marcador en píxeles sale de la resolución en el punto de mira; por debajo de unos 20 px la detección y la pose de ArUco se degradan. El campo de visión es de lente ideal: el real se mide en la calibración intrínseca.</p>`;
+}
+$('#camCards').addEventListener('input', e => {
+  const id = e.target.id; if (!id || /^(so|co)(pan|tilt|roll)_/.test(id)) return; const [t, k] = id.split('_'); if (!L.cams[k]) return;
+  if (t === 'f') L.cams[k].f = +e.target.value; if (t === 'm') L.cams[k].modo = e.target.value;
+  actualizarCam(k); guardarLocal(); clearTimeout(pintarCamaras._t); pintarCamaras._t = setTimeout(pintarCamaras, 120);
+});
+$('#camCards').addEventListener('click', e => { const b = e.target.closest('button[data-act]'); if (!b) return; const k = b.closest('[data-cam]').dataset.cam; if (b.dataset.act === 'sel') { $$('.tabs button')[0].click(); seleccionar('cam:' + k); } else { verCam = k; $('#camMode').hidden = false; $('#camModeTxt').textContent = `Viendo por la cámara ${L.cams[k].nombre.toLowerCase()}`; pintarPip(); } });
+
+// ======================= Alcance: tabla y gráfica =======================
+function actualizarTablaAlcance() {
+  if (!robot) return; const r = radioA(ALC.h);
+  $('#alcTxt').textContent = r && r.rmax !== null ? `A ${fmt(ALC.h * 100, 1)} cm sobre la mesa, la punta de la pinza vertical llega entre ${mm(r.rmin)} y ${mm(r.rmax)} mm del eje de la base.` : `A ${fmt(ALC.h * 100, 1)} cm sobre la mesa no hay ningún punto alcanzable con la pinza vertical.`;
+  const hS = Math.round((zPlato() - MESA.h + 0.09) * 100);
+  const filas = [['Zona de fruta', '3,5 cm', estadoObjeto('zona')], ['Plato 1º', `${hS} cm y borde`, estadoObjeto('plato1')], ['Plato 2º', `${hS} cm y borde`, estadoObjeto('plato2')], ['Zonas de la bandeja', `${fmt((poseBandeja(simT).z - MESA.h + 0.022) * 100, 0)} cm`, estadoObjeto('persona')]];
+  $('#alcTbl tbody').innerHTML = filas.map(([n, h, e]) => `<tr><td>${n}<br><span class="hint">${e.txt}</span></td><td>${h}</td><td><span class="pill ${['bad', 'warn', 'ok'][e.cls]}">${e.pend ? 'sin calcular' : ['no llega', 'justo', 'holgado'][e.cls]}</span></td></tr>`).join('');
+  dibujarGrafica();
+}
+function dibujarGrafica() {
+  const svg = $('#chartAlc'); if (!perfilAlc) return; const W = 340, H = 190, l = 40, r = 12, t = 12, b = 30;
+  const X = v => l + v / 0.6 * (W - l - r), Y = h => H - b - h / 0.4 * (H - t - b);
+  const ok = perfilAlc.filter(p => p.rmax !== null);
+  const area = ok.map(p => `${X(p.rmax)},${Y(p.h)}`).join(' ') + ' ' + ok.slice().reverse().map(p => `${X(p.rmin)},${Y(p.h)}`).join(' ');
+  const ink = css('--muted'), acc = css('--accent'), tape = css('--tape'), line = css('--line');
+  let s = '';
+  for (const v of [0, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6]) s += `<line x1="${X(v)}" y1="${t}" x2="${X(v)}" y2="${H - b}" stroke="${line}" stroke-width="1"/><text x="${X(v)}" y="${H - b + 14}" text-anchor="middle">${v * 100}</text>`;
+  for (const h of [0, 0.1, 0.2, 0.3, 0.4]) s += `<line x1="${l}" y1="${Y(h)}" x2="${W - r}" y2="${Y(h)}" stroke="${line}" stroke-width="1"/><text x="${l - 6}" y="${Y(h) + 3}" text-anchor="end">${h * 100}</text>`;
+  s += `<polygon points="${area}" fill="${acc}" fill-opacity="0.22" stroke="${acc}" stroke-width="1.6"/>`;
+  s += `<line x1="${X(0.5)}" y1="${t}" x2="${X(0.5)}" y2="${H - b}" stroke="${ink}" stroke-dasharray="4 3"/><text x="${X(0.5) - 3}" y="${t + 9}" text-anchor="end">500 mm fabricante</text>`;
+  s += `<line x1="${l}" y1="${Y(ALC.h)}" x2="${W - r}" y2="${Y(ALC.h)}" stroke="${tape}" stroke-width="2"/>`;
+  s += `<text x="${(l + W - r) / 2}" y="${H - 2}" text-anchor="middle">distancia al eje de la base (cm)</text><text transform="translate(10,${(t + H - b) / 2}) rotate(-90)" text-anchor="middle">altura (cm)</text>`;
+  svg.innerHTML = s;
+}
+$('#hAlc').addEventListener('input', e => { ALC.h = e.target.value / 100; $('#hAlcOut').textContent = `${fmt(+e.target.value, 1)} cm`; clearTimeout(ALC.t); ALC.t = setTimeout(calcularMapa, 120); actualizarTablaAlcance(); });
+$$('[data-h]').forEach(b => b.addEventListener('click', () => { let h = b.dataset.h === 'tray' ? Math.round((poseBandeja(simT).z - MESA.h + 0.022) * 200) / 2 : b.dataset.h === 'plato' ? Math.round((zPlato() - MESA.h + 0.09) * 200) / 2 : +b.dataset.h; h = clamp(h, 0, 40); $('#hAlc').value = h; $('#hAlc').dispatchEvent(new Event('input')); }));
+
+// ======================= Datos: YAML, importar, propuestas =======================
+function r3(v) { return (Math.round(v * 1000) / 1000).toFixed(3); }
+function generarYaml() {
+  const b = BASES[L.robot]; const P = o => `{x: ${r3(o.x - b.x)}, y: ${r3(o.y - b.y)}, z: ${r3((o.z ?? MESA.h) - MESA.h)}}`;
+  const tp = poseBandeja(0); bandeja.updateMatrixWorld(true); const zw = k => zonasB[k].getWorldPosition(new THREE.Vector3());
+  let y = `# posiciones.yaml · gemelo de la celda UR3e · BORRADOR\n# Marco: base_link del robot ${L.robot} (${L.robot === 'B' ? 'derecha' : 'izquierda'} en la foto cenital). Metros y grados.\n# Distribución de partida [PROPUESTA]; ninguna posición está medida todavía salvo mesa y base.\n`;
+  y += `fecha: ${new Date().toISOString().slice(0, 10)}\nrobot: ${L.robot}\npinza: {modelo: OnRobot RG2, tcp_z_m: ${r3(pinza.tcpZ(0))}, carrera_m: 0.110}\n`;
+  y += `mesa: {ancho_m: 1.180, fondo_m: 0.830, alto_m: 0.760, centro_en_base_link: {x: ${r3(-b.x)}, y: ${r3(-b.y)}}}\n`;
+  y += `pedido: ${L.pedido === 1 ? 'un_plato  # al centro de la bandeja' : 'dos_platos  # primero y segundo'}\n`;
+  y += `platos: {sobre_caja: ${L.caja.on}, caja_alto_m: ${r3(L.caja.h)}, caja_lado_m: ${r3(CAJA_LADO)}, agarre: horizontal_por_el_borde, radio_agarre_m: ${r3(R_AGARRE)}}\n`;
+  y += `objetos:\n  zona_fruta: {x: ${r3(L.zona.x - b.x)}, y: ${r3(L.zona.y - b.y)}, z: 0.000, yaw_deg: ${(L.zona.yaw * R2D).toFixed(1)}, ancho_m: ${r3(L.zona.w)}, fondo_m: ${r3(L.zona.d)}}\n`;
+  for (const pk of ['plato1', 'plato2']) y += `  ${pk.replace('plato', 'plato_')}: {x: ${r3(L[pk].x - b.x)}, y: ${r3(L[pk].y - b.y)}, z: ${r3(zPlato() - MESA.h)}}\n`;
+  L.arucoE.forEach((a, i) => y += `  marcador_entrega_${i + 1}: {id: ${4 + i}, diccionario: DICT_4X4_50, x: ${r3(a.x - b.x)}, y: ${r3(a.y - b.y)}, z: 0.000}\n`);
+  y += `  bandeja_recepcion: {x: ${r3(tp.x - b.x)}, y: ${r3(tp.y - b.y)}, z: ${r3(tp.z - MESA.h)}, yaw_deg: ${(tp.yaw * R2D).toFixed(1)}}\n`;
+  y += `  zona_primero: ${P(zw('zona_primero'))}\n  zona_segundo: ${P(zw('zona_segundo'))}\n`;
+  y += `  persona: {x: ${r3(L.persona.x - b.x)}, y: ${r3(L.persona.y - b.y)}, yaw_deg: ${(L.persona.yaw * R2D).toFixed(1)}}\ncamaras:\n`;
+  for (const k in L.cams) { const c = L.cams[k]; y += `  camara_${k}: {grupo: ${c.grupo}, modelo: ELP-USB12MP01-UFV, focal_mm: ${c.f.toFixed(1)}, modo: ${c.modo}, hfov_deg: ${(hfovDe(c) * R2D).toFixed(1)}, posicion: ${P(c.pos)}, mira: ${P(c.mira)}, orientacion_deg: {giro: ${(orientDe(c).pan * R2D).toFixed(1)}, inclinacion: ${(orientDe(c).tilt * R2D).toFixed(1)}, alabeo: ${(orientDe(c).roll * R2D).toFixed(1)}}, pinza_mesa: ${P(c.clamp)}}\n`; }
+  y += `# layout-json: ${JSON.stringify(L)}\n`;
+  return y;
+}
+function pintarDatos() { $('#yaml').value = generarYaml(); pintarFuentes(); }
+$('#btnCopy').addEventListener('click', async () => { const t = $('#yaml'); try { await navigator.clipboard.writeText(t.value); toast('Copiado'); } catch (e) { t.focus(); t.select(); toast('Selecciona y copia con Ctrl+C'); } });
+// @@ESCENAS@@
+let DL = null, DB = null, USER = null;
+const C = window.claude;
+if (C && C.use) {
+  C.use('downloads').then(d => { DL = d; }).catch(() => { });
+  Promise.all([C.use('user').catch(() => null), C.use('db').catch(() => null)]).then(([u, db]) => { USER = u; DB = db; iniciarEscenas(); });
+} else iniciarEscenas();
+async function descargar(nombre, data) {
+  if (!DL) { // fuera de claude.ai (página propia): descarga normal del navegador
+    try { const b = data instanceof Blob ? data : new Blob([data], { type: 'text/plain;charset=utf-8' }); const u = URL.createObjectURL(b); const a = document.createElement('a'); a.href = u; a.download = nombre; document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(u), 2000); } catch (e) { toast('La descarga no está disponible aquí; usa Copiar'); } return;
+  } try { await DL.save({ filename: nombre, data }); } catch (e) { if (e && e.code !== 'declined') toast('No se ha podido descargar'); } }
+$('#btnDlYaml').addEventListener('click', () => descargar('posiciones.yaml', generarYaml()));
+$('#btnPng').addEventListener('click', () => { renderer.domElement.toBlob(b => b && descargar('gemelo-celda-ur3e.png', b), 'image/png'); });
+$('#btnImport').addEventListener('click', () => {
+  const t = $('#yamlIn').value; const m = t.match(/#\s*layout-json:\s*(\{.*\})\s*$/m);
+  if (!m) { toast('No encuentro la línea «# layout-json» del fichero exportado'); return; }
+  try { const n = JSON.parse(m[1]); if (!n.zona || !n.cams) throw 0; L = normalizar(n); aplicarLayout(); toast('Distribución aplicada'); } catch (e) { toast('El contenido no es una distribución válida'); }
+});
+function aplicarLayout() {
+  aplicarPedido(); $$('#segRobot button').forEach(x => x.setAttribute('aria-pressed', x.dataset.v === L.robot));
+  colocarRobots(); actualizarZona(); actualizarPlatos(); actualizarAruco(); for (const k in L.cams) actualizarCam(k); aplicarBandeja(simT);
+  reiniciarDemo(); pintarCaja(); evaluar(); calcularMapa(); guardarLocal(); if (!$('[data-panel="datos"]').hidden) pintarDatos();
+}
+const FUENTES = [
+  ['Mesa', '1180 × 830 mm, superficie a 760 mm', 'm', 'Cinta + foto (regla y A4, error < 2 %)'],
+  ['Base del robot B (grupo)', '9 y 8 cm del borde de la base a los bordes de la mesa', 'm', 'Cinta; centro con radio de base de 66 mm (supuesto)'],
+  ['Base del robot A', 'centro a 151 y 115 mm de los bordes', 'm', 'Foto ±10 mm'],
+  ['UR3e', 'alcance 500 mm, carga 3 kg, 11,2 kg, 2020', 'f', 'Placa del robot'],
+  ['Cinemática del UR3e', 'DH oficiales, IK analítica de 8 soluciones', 'f', 'ur_description; verificada con 2000 posturas'],
+  ['Pinza', 'OnRobot RG2, 0–110 mm, 0,78 kg, 3–40 N', 'm', 'Apertura medida 110 mm + ficha'],
+  ['TCP de la pinza', `${mm(pinza.tcpZ(0))} mm cerrada`, 's', 'Modelo simplificado; medir en PolyScope'],
+  ['Agarre del plato', 'horizontal por el borde, un dedo encima y otro debajo del ala', 'm', 'Decisión del grupo (12-11)'],
+  ['Caja bajo el plato', '10 × 10 cm, altura regulable', 's', 'Propuesta del grupo; tamaño sin medir'],
+  ['Orientación de base_link', 'eje x paralelo al lado largo de la mesa', 's', 'Comprobar en PolyScope'],
+  ['Cámaras', 'ELP-USB12MP01-UFV, IMX577, 3,6–10 mm, USB 2.0', 'm', 'Caja de la cámara + web del fabricante'],
+  ['Campo de visión', 'lente ideal sobre el ancho del sensor', 's', 'Medir en la calibración intrínseca'],
+  ['Marcadores', 'ArUco DICT_4X4_50: zona 0–3, entrega 4–5, bandeja 6–9 (dibujados con su patrón real)', 's', 'Ids propuestos'],
+  ['Soportes de cámara', 'Manfrotto 035 + brazo 244 de 53 cm', 'm', 'Foto + ficha'],
+  ['Fruta', 'piezas de plástico de 4,5–7 cm', 's', 'Foto de referencia del grupo'],
+  ['Plato, bandeja y persona', 'plato Ø160 mm · bandeja 450 × 330 mm a 1,00 m del suelo · persona en el lateral derecho, de frente, con la bandeja a la derecha del robot y fuera de la mesa', 's', 'Sin medir; posición elegida porque es donde el robot puede dejar los platos nivelados'],
+  ['Modelo de colisión', '162 esferas ajustadas a las mallas de colisión oficiales del UR3e y a la RG2; límites articulares de joint_limits.yaml (codo ±180°)', 'f', 'ur_description (Universal Robots)'],
+  ['Planificación', 'RRT-Connect con atajos para movimientos libres; rectas cada 4 mm sin saltos; plato siempre nivelado', 'm', 'Equivalente a lo que hará MoveIt 2; sin validar en el robot'],
+  ['Aceleración articular', '3 rad/s² al 100 %', 's', 'El yaml del UR3e no fija aceleraciones'],
+  ['Agarre del plato', 'muñeca inclinada hasta 45° respecto a la horizontal', 's', 'Probar con el plato real que no gira ni resbala'],
+  ['Bandeja en M0 / M1', 'pausa a 25 mm, aborto a 10 s; latencia 120 ms', 's', 'DEC-04 sin cifras'],
+  ['Velocidades', '180°/s (base, hombro, codo), 360°/s (muñecas)', 'f', 'Ficha del UR3e'],
+  ['Nodos de Robótica', 'coordinador, pedidos, movimiento, pinza, seguridad', 's', 'Propuesta; D3 sin congelar'],
+  ['Topics de Visión', '/v1/*, /v2/*, /menu, /service_state', 'm', 'Contexto de Visión del 7-11'],
+];
+function pintarFuentes() { $('#srcTbl tbody').innerHTML = FUENTES.map(([a, b, t, c]) => `<tr><td>${a}<br><span class="hint">${c}</span></td><td>${b}</td><td><span class="tag ${t}">${{ m: 'MEDIDO', f: 'FABRICANTE', s: 'SUPUESTO' }[t]}</span></td></tr>`).join(''); }
+
+// ======================= Colocación y evaluación =======================
+function colocarRobots() {
+  const o = L.robot === 'B' ? 'A' : 'B';
+  robot.place(BASES[L.robot].x, BASES[L.robot].y, 0); otro.place(BASES[o].x, BASES[o].y, 0);
+  circ.position.set(BASES[L.robot].x, BASES[L.robot].y, MESA.h + 0.003);
+  $('#chipConf').textContent = `UR3e ${L.robot} · RG2 · ELP IMX577`;
+  otro.setQ([L.robot === 'B' ? 0 : PI, -1.9, 1.75, -1.45, -1.57, 0]);
+}
+function evaluar() { pintarLista(); pintarSel(); pintarCaja(); actualizarHUD(); if (!$('[data-panel="alcance"]').hidden) actualizarTablaAlcance(); if (!$('[data-panel="camaras"]').hidden) pintarCamaras(); if (!$('[data-panel="datos"]').hidden) pintarDatos(); actualizarCheck(); }
+
+// ======================= Bucle =======================
+let last = performance.now(), frame = 0, camT = 0;
+function tamano() { const r = view.getBoundingClientRect(); renderer.setSize(r.width, r.height, false); labels.setSize(r.width, r.height); cam.aspect = r.width / Math.max(1, r.height); cam.updateProjectionMatrix(); pintarPip(); }
+new ResizeObserver(tamano).observe(view);
+const CAL = { ema: 16, lento: 0, bajado: false };
+function bucle(now) {
+  requestAnimationFrame(bucle); const dtr = (now - last) / 1000; const dt = Math.min(0.1, dtr); last = now; frame++;
+  // calidad adaptativa: si el equipo va lento, menos píxeles y sombras más simples
+  CAL.ema = CAL.ema * 0.95 + Math.min(dtr * 1000, 500) * 0.05; if (!CAL.bajado && frame > 120) { CAL.lento = CAL.ema > 45 ? CAL.lento + 1 : 0; if (CAL.lento > 90) { CAL.bajado = true; renderer.setPixelRatio(1); renderer.shadowMap.type = THREE.PCFShadowMap; tamano(); } }
+  if (D.playing && !D.banco) { let tot = dt * D.rate; while (tot > 1e-9) { const h = Math.min(tot, 1 / 60); simT += h; aplicarBandeja(simT); tickDemo(h); tot -= h; } }
+  else if (!D.activo) simT += dt;
+  aplicarBandeja(simT);
+  for (const [a, t] of aristasOn) if (simT > t) { aristasOn.delete(a); dibujarGrafo(); }
+  if (camAnim) { camAnim.s = Math.min(1, camAnim.s + dt * 1.6); const k = smooth(camAnim.s); cam.position.lerpVectors(camAnim.p0, camAnim.p, k); orbit.target.lerpVectors(camAnim.t0, camAnim.t, k); if (camAnim.s >= 1) camAnim = null; }
+  orbit.update();
+  if (robot && frame % 6 === 0) { actualizarHUD(); if (frame % 18 === 0) { pintarCalc(); vigilarEscena(); } if (D.playing) for (const k in CAMS) { const m = metricasCam(k, true); D.minCam[k] = Math.min(D.minCam[k] ?? Infinity, m.libre); } }
+  camT += dt; if (camT > 0.8 && !$('[data-panel="camaras"]').hidden && D.playing) { camT = 0; pintarCamaras(); }
+  if (!D.sinRender) render();
+}
+function render() {
+  const W = renderer.domElement.width / renderer.getPixelRatio(), H = renderer.domElement.height / renderer.getPixelRatio();
+  renderer.setScissorTest(false); renderer.setViewport(0, 0, W, H); renderer.clear();
+  if (verCam) {
+    const c = CAMS[verCam].cam; const ar = c.aspect; let w = W, h = W / ar; if (h > H) { h = H; w = H * ar; }
+    renderer.setScissorTest(true); renderer.setViewport((W - w) / 2, (H - h) / 2, w, h); renderer.setScissor((W - w) / 2, (H - h) / 2, w, h); renderer.clear(); const tv = tctl.visible; tctl.visible = false; renderer.render(scene, c); tctl.visible = tv; renderer.setScissorTest(false);
+    labels.domElement.style.visibility = 'hidden'; return;
+  }
+  labels.domElement.style.visibility = ''; renderer.render(scene, cam); labels.render(scene, cam);
+  if (pipOn) {
+    const tw = Math.min(200, (W - 40) / 3), th = tw * 9 / 16; let x = W - 10 - tw;
+    renderer.shadowMap.autoUpdate = false; renderer.setScissorTest(true); const tv = tctl.visible; tctl.visible = false; // las miniaturas enseñan lo que ve cada cámara, sin el gizmo de edición
+    for (const k of Object.keys(CAMS).reverse()) { renderer.setViewport(x, 10, tw, th); renderer.setScissor(x, 10, tw, th); renderer.clear(); renderer.render(scene, CAMS[k].cam); x -= tw + 6; }
+    renderer.setScissorTest(false); renderer.shadowMap.autoUpdate = true; tctl.visible = tv;
+  }
+}
+
+// ======================= Banco de pruebas (solo con ?prueba) =======================
+async function ensayo(cfg = {}) {
+  D.sinRender = !!cfg.sinRender;
+  if (cfg.pedido) { L.pedido = cfg.pedido; aplicarPedido(); }
+  reiniciarDemo(); if (cfg.caja !== undefined) L.caja.on = cfg.caja; if (cfg.cajaH) L.caja.h = cfg.cajaH; actualizarPlatos(); pintarCaja();
+  D.modo = cfg.modo || 'M0'; D.amp = cfg.amp ?? 0.02; D.vel = cfg.vel ?? 0.25;
+  reiniciarDemo(); D.activo = true; D.playing = false; D.banco = true; D.fase = cfg.fase ?? Math.random() * 100;
+  const h = 1 / 60; const t0 = simT; const run = D.run; const pr = demo();
+  let n = 0;
+  while (!D.fin && simT - t0 < (cfg.limite || 600)) {
+    if (cfg.hasta && cfg.hasta(D)) { D.banco = false; D.sinRender = false; actualizarHUD(); return { parado: D.estado }; }
+    simT += h; aplicarBandeja(simT); tickDemo(h);
+    for (let k = 0; k < 4; k++) await Promise.resolve();
+    if (++n % 240 === 0) await new Promise(r => setTimeout(r, 0));
+  }
+  if (!D.fin) { D.run++; }
+  await new Promise(r => setTimeout(r, 0)); actualizarHUD();
+  D.banco = false; D.sinRender = false;
+  return { cfg, fin: D.fin || 'atascado', estado: D.estado, paso: D.paso + 1, t_sim: +(simT - t0).toFixed(1), t_mov: +D.motion.toFixed(1), errores_mm: D.errores.map(mm), choques: D.choques, roces: D.roces, pausas: D.pausas, autocol: D.autocol, planes: D.planes, sust: D.sustituidos, fallo: $('#dFallo').hidden ? '' : $('#dFallo').textContent.trim() };
+}
+
+// ======================= Arranque =======================
+let D_ready = false;
+aplicarPedido(); dibujarGrafo(); pintarPasos(-1);
+actualizarZona(); actualizarPlatos(); actualizarAruco(); for (const k in L.cams) actualizarCam(k); aplicarTema(); pintarCaja();
+$$('#segRobot button').forEach(x => x.setAttribute('aria-pressed', x.dataset.v === L.robot));
+$('#segPedido').addEventListener('click', e => { const b = e.target.closest('button'); if (!b || D.playing) return; L.pedido = +b.dataset.v; D.activo = false; aplicarPedido(); reiniciarDemo(); actualizarPlatos(); evaluar(); guardarLocal(); toast(L.pedido === 1 ? 'Pide un solo plato: va al centro de la bandeja' : 'Pide primero y segundo'); });
+$('#segRate').addEventListener('click', e => { const b = e.target.closest('button'); if (!b) return; D.rate = +b.dataset.v; $$('#segRate button').forEach(x => x.setAttribute('aria-pressed', x === b)); });
+$('#segModoB').addEventListener('click', e => { const b = e.target.closest('button'); if (!b) return; D.modo = b.dataset.v; $$('#segModoB button').forEach(x => x.setAttribute('aria-pressed', x === b)); });
+$('#dVel').addEventListener('input', e => { D.vel = e.target.value / 100; $('#dVelOut').textContent = `${e.target.value} %`; });
+$('#dAmp').addEventListener('input', e => { D.amp = e.target.value / 100; $('#dAmpOut').textContent = `${fmt(+e.target.value, 1)} cm`; actualizarCheck(); });
+requestAnimationFrame(bucle);
+if (location.search.includes('prueba')) window.__g = { aplicarPedido, actualizarZona, esferasObjeto, cargaDe, BAND, bandeja, aplicarBandeja: t => aplicarBandeja(t), ladoZonas: () => ladoZonas(), comprobarPlan, llegaVertical, puntosSoltar, FRUTAS, CACHE_PLAN, poseHoriz, ejeHoriz, mundoABase, enLimites, qValida, rutaNivelada: (...a) => rutaNivelada(...a), colocacionConTransporte: (...a) => colocacionConTransporte(...a), planColocar: (...a) => planColocar(...a), zonasB, ikTCP, planAgarrePlato, planColocar, planPlatoCache, KIN_: KIN, BASES, consts: { R_AGARRE, H_BORDE }, COL: () => COL, choqueEn: (q, c) => choqueEn(q, c), obstaculos: () => obstaculos(), textoChoque: c => textoChoque(c), D, L: () => L, cam, orbit, scene, renderer, OBJ, piezas: () => piezas, simT: () => simT, CAMS, actualizarCam, actualizarAruco, actualizarPlatos, metricasCam, estadoObjeto, alcance, comprobarPlan, ensayo, planAgarrePlato, holguraActual, get robot() { return robot; }, KIN, pinza, tcpMundo, zPlato, setL: l => { L = l; }, ESC, ALM, abrirEscena, codigoEscena, abrirCodigo, guardarEscena, escCam: cam, orbit, vista, CALC, calcularPlanes, planesAlDia, recalcular, orientDe, fijarOrient, orientarDesdeQuat, CAMS, seleccionar, tctl, generarYaml, cadenaPlato, cargaPlan, rutaCartesiana: (...a) => rutaCartesiana(...a), zonasB_: () => zonasB, zonaDe, qReposo, aplicarLayout, buscarAlternativa, candidatos, explicar, mostrarFalloInfo, diagnosticarPunto };
+fetch('ur3e-malla.json').then(r => { if (!r.ok) throw new Error(r.status); return r.json(); }).then(j => { const bin = atob(j.glb); const u8 = new Uint8Array(bin.length); for (let i = 0; i < bin.length; i++) u8[i] = bin.charCodeAt(i); new GLTFLoader().parse(u8.buffer, '', cargado, fallo); }).catch(fallo);
+function fallo(err) { $('#loading').textContent = 'No se ha podido cargar el modelo del UR3e.'; console.error(err); }
+function cargado(g) {
+  robot = new Robot(g, 'robot'); otro = new Robot(g, 'otro', true); scene.add(robot.root, otro.root);
+  robot.tool0.add(pinza.g);
+  REF_MANIP = KIN.manip([0, -1.9, 1.9, -1.57, -1.57, 0]);
+  colocarRobots(); aplicarBandeja(simT); iniciarColision(); crearVolumenes(); pintarCalidad(); robot.setQ(qReposo()); sincronizarSliders();
+  marcoTF('mesa', scene).position.set(0, 0, MESA.h + 0.002); marcoTF('base_link', robot.root); marcoTF('tool0', robot.tool0); marcoTF('tcp', pinza.tcp);
+  for (const k in CAMS) marcoTF('camara_' + k, CAMS[k].optical);
+  marcoTF('bandeja', bandeja); for (const k in zonasB) marcoTF(k, zonasB[k]).userData.lbl.element.textContent = '';
+  ladoZonas(); calcularPerfil(); calcularMapa(); dibujarSolape(); vista('iso'); camAnim.s = 0.999;
+  $('#loading').remove(); evaluar(); pintarPip(); D_ready = true; calcularPlanes(); // primer cálculo sin bloquear la página
+  let tab = null; try { tab = localStorage.getItem('gemelo-tab'); } catch (e) { }
+  if (tab && tab !== 'escena') { const b = $(`.tabs [data-tab="${tab}"]`); if (b) b.click(); }
+}

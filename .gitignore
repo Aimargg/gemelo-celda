@@ -1,0 +1,5 @@
+dist/
+node_modules/
+clave_grupo.txt
+test-results/
+*.local
