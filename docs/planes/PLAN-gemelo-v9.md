@@ -68,7 +68,7 @@ Todo con pruebas automáticas y sin perder las escenas guardadas.
 | D3 | Arnés de pruebas: Node (`node:test`) para el código puro y Playwright + Chromium con SwiftShader para la página. three@0.160.0 (y roslib en F3) se sirven desde `node_modules`. Firestore y claude.ai, siempre simulados. Cualquier petición externa no interceptada hace fallar el test | Vitest con jsdom | jsdom no tiene WebGL; el patrón ya está probado en `tests/legacy/shot2.js` | sí |
 | D4 | Refactor mínimo: se extrae a ficheros nuevos de `src/` solo lo que hace falta probar o aislar (RNG, cinemática por robot, exportadores, cliente ROS, métricas de cámara). Se concatenan con el mismo mecanismo de marcadores `@@…@@` del build. Sin módulos ES ni bundler | Migrar a ESM con bundler | El artefacto tiene que ser un único HTML; reescribir 156 KB generados es el mayor riesgo de regresión | sí (deuda DT1) |
 | D5 | Semilla por petición: se deriva de un hash de la entrada del plan (q inicial, objetivo, obstáculos, perfil). Se elimina `SEMILLA` global | Reiniciar `SEMILLA` en cada caso | El veredicto de una escena no debe depender de qué se calculó antes | sí |
-| D6 | Dos perfiles de movimiento: «gemelo» (el actual) y «curso». El perfil «curso» usa aceleración 5 rad/s², escala 0,1, cartesiano con `max_step` 0,01 m, y un arranque en contacto cuenta como fallo. El perfil por defecto sigue siendo «gemelo» hasta P5 | Cambiar ya al de «curso» | Cambiar el perfil por defecto cambia los veredictos de las escenas guardadas | sí (P5) |
+| D6 | Dos perfiles de movimiento: «gemelo» (el actual) y «curso». El perfil «curso» usa aceleración 5 rad/s², escala 0,1, cartesiano con `max_step` 0,01 m, y un arranque en contacto cuenta como fallo. Las escenas nuevas usan «curso»; las escenas v8 migran con «gemelo» y conservan su veredicto (decidido 2026-11-15) | Un único perfil por defecto para todas | Más fiel a la simulación del curso sin romper las escenas guardadas | sí |
 | D7 | Selector de robot (nominal, 203, 204, 205, 206). FK calibrada con los `calibration_<id>.yaml` del curso, guardados como datos con su atribución. IK: la analítica nominal más un refinamiento numérico sobre la FK calibrada (→ moveit «replicar MoveIt», INFERIDO). Con el 204, aviso visible de calibración sospechosa | Solo nominal; IK numérica pura | Así se replica de forma determinista lo que hace MoveIt (→ moveit) y se conservan las 8 ramas de la IK | sí |
 | D8 | Exportar solo **datos**: `ros__parameters`, `CollisionObject` en YAML, `.scene`, TF estáticas por YAML y comandos, `camera_info` nominal y parámetros de `usb_cam`. Cada valor lleva comentado su origen: MEDIDO, FABRICANTE o SUPUESTO. Formato determinista | Generar launch y nodos | Regla de código explicable (→ generacion-config) | sí |
 | D9 | Conexión con ROS por rosbridge con roslib 2.1.0, a través de un **adaptador único de solo lectura** (`rosEspejo`) que solo puede suscribirse. Import map a mano (roslib y eventemitter3 desde `dist/`, versión exacta) | foxglove_bridge (acciones solo como topics ocultos, cliente JS deprecado) | Es la vía en producción y la superficie de riesgo se reduce a leer (→ puente-ros) | sí |
@@ -133,7 +133,7 @@ Estados: pendiente · en curso · entregada · aceptada · correcciones · bloqu
 | T0.2 | 0 | Arnés de pruebas (`npm test`) y pruebas de caracterización | Claude Code | U1 | medio | pendiente | |
 | T0.3 | 0 | Línea base medida (informe, sin cambiar código) | Claude Code | T0.2 | bajo | pendiente | |
 | T0.4 | 0 | `CLAUDE.md`, `tools/check.sh` y plantilla de pull request | Claude Code | T0.2 | bajo | pendiente | |
-| U3 | 0 | Responder Q1–Q5 (se aplican los valores por defecto mientras tanto) | Usuario | — | — | en curso | — |
+| U3 | 0 | Responder Q1–Q5 | Usuario | — | — | aceptada | — |
 | T1.1 | 1 | Versionar el layout y migrarlo al cargar | Claude Code | T0.3 | medio | pendiente | |
 | T1.2 | 1 | Semilla por petición en el RRT | Claude Code | T1.1 | medio | pendiente | |
 | T1.3 | 1 | Ficheros de referencia de cinemática generados con el xacro del curso | Claude Code | T0.2, Q4 | bajo | pendiente | |
@@ -278,7 +278,7 @@ Estados: pendiente · en curso · entregada · aceptada · correcciones · bloqu
   - No toca las reglas de Firestore: los campos nuevos van dentro del string `layout`.
 - **Reutiliza:** el patrón de `aplicarLayout` y los fixtures `escenas-v8/`.
 - **Criterios de aceptación:**
-  1. El layout guardado lleva `version: 9` y los campos `robot` (`nominal` por defecto), `perfil` (`gemelo`) y `sensor` (`gemelo-v8`).
+  1. El layout guardado lleva `version: 9` y los campos `robot` (`nominal` por defecto), `perfil` y `sensor`. Una escena nueva usa `curso` y `ELP ficha`; una escena v8 migrada usa `gemelo` y `gemelo-v8`.
   2. `migrarLayout` convierte cualquier layout sin `version` a v9 con esos valores por defecto. Las tres escenas v8 se abren con posiciones idénticas y el mismo veredicto (I1).
   3. Un layout con `version` mayor que la conocida se abre en solo lectura, con un aviso.
   4. Un layout corrupto (JSON inválido, sin `mesa`) muestra un error y no deja la mesa a medias.
@@ -361,7 +361,7 @@ Estados: pendiente · en curso · entregada · aceptada · correcciones · bloqu
      - arranque en contacto = fallo, con el texto «MoveIt rechazaría el arranque en contacto».
   2. En una ruta de prueba, la duración en «curso» frente a «gemelo» sigue la relación que predicen los parámetros (test con la ruta y la tolerancia escritas).
   3. Con el perfil «gemelo», la matriz queda idéntica (I8).
-  4. El perfil por defecto no cambia sin P5.
+  4. Las escenas nuevas usan «curso»; las v8 migradas, «gemelo» (D6).
   5. El panel deja claro que la temporización es una aproximación y no TOTG (deuda DT4).
 - **Verificación:** tests y captura del selector.
 - **Invariantes afectadas:** I1, I6 e I8.
@@ -446,18 +446,18 @@ Estas fichas se revisan y se detallan al cerrar la fase anterior, con lo aprendi
 | P2 | Publicar la versión de artefacto en claude.ai | arquitecto, al cerrar F4 (aprobado 2026-11-15) | El enlace es público («cualquiera con el enlace») | delegada |
 | P3 | Cualquier cambio en las reglas o en los campos de escena de Firestore | decisión del usuario | Puede dejar fuera escenas o abrir permisos | no prevista |
 | P4 | Conectar el espejo a un ROS de la red del laboratorio o con el UR3e real | decisión del usuario tras la respuesta del profesorado | rosbridge no autentica; puertos junto al robot real | cerrada hasta PROF |
-| P5 | Cambiar el perfil por defecto a «curso» | decisión del usuario | Cambia los veredictos de las escenas guardadas | pendiente (Q2 = A mientras tanto) |
+| P5 | Cambiar el perfil por defecto a «curso» | resuelta (2026-11-15): «curso» para escenas nuevas, «gemelo» para las v8 | Cambia los veredictos de las escenas guardadas | cerrada |
 | P6 | Añadir una dependencia no prevista en D3 o D9, o cambiar three, Firebase o roslib de versión | delegada al coordinador (2026-11-15) si es imprescindible, comprobada en npm y registrada aquí | Riesgo de rotura y de paquetes inventados | delegada |
 
 ## 10. Preguntas abiertas
 
 | Id | Pregunta | Opciones y consecuencia de cada una | Bloquea a | Decide |
 |---|---|---|---|---|
-| Q1 | ¿Qué id es el robot B? | A) Se sabe: el selector lo trae por defecto. B) No se sabe aún (**por defecto**): el selector arranca en `nominal` con un aviso | valor por defecto de T1.4 | grupo |
-| Q2 | ¿Qué perfil por defecto? | A) «gemelo» (**por defecto**): las escenas guardadas no cambian. B) «curso» desde la v9: más fiel, pero cambia veredictos (pasa por P5) | T1.6 | usuario |
-| Q3 | ¿Se mantiene la versión de artefacto de claude.ai? | A) Sí (**por defecto**): dos destinos. B) No: se retira el almacén de claude y se simplifica | D2, T0.2 | usuario |
-| Q4 | ¿Se copian los `calibration_<id>.yaml` del curso al repo público? | A) Sí, con atribución (**por defecto**; el repo del curso es público). B) No: el usuario carga el fichero desde la página y solo se incluye el nominal | T1.3 | usuario |
-| Q5 | ¿Dónde trabajan los agentes? | A) Sesiones de Claude Code en la nube con acceso al repo (**por defecto**: tienen Playwright y Chromium). B) Claude Code en tu PC con Windows (hace falta instalar Node y Playwright) | ejecución autónoma | usuario |
+| Q1 | ¿Qué id es el robot B? | A) Se sabe: el selector lo trae por defecto. B) No se sabe aún (**respuesta 2026-11-15**): el selector arranca en `nominal` con un aviso | valor por defecto de T1.4 | grupo (pendiente) |
+| Q2 | ¿Qué perfil por defecto? | Resuelta 2026-11-15: «curso» para escenas nuevas y «gemelo» para las v8 (D6) | T1.6 | cerrada |
+| Q3 | ¿Se mantiene la versión de artefacto de claude.ai? | Resuelta 2026-11-15: la web de GitHub Pages es la herramienta principal; el artefacto se sigue construyendo (es el destino de las pruebas) y se publica una vez al cerrar F4, sin trabajo propio de claude.ai | D2, T0.2 | cerrada |
+| Q4 | ¿Se copian los `calibration_<id>.yaml` del curso al repo público? | Resuelta 2026-11-15: sí, con atribución; el repo del curso es la referencia de prácticas. Lo que no cuadre (p. ej. el 204) se avisa al usuario | T1.3 | cerrada |
+| Q5 | ¿Dónde trabajan los agentes? | Resuelta 2026-11-15: en la sesión en la nube del coordinador (ya en marcha). Alternativa disponible: plan-autonomo-cc en el PC del usuario | ejecución autónoma | cerrada |
 
 ## 11. Registro de deuda
 
@@ -475,4 +475,5 @@ Estas fichas se revisan y se detallan al cerrar la fase anterior, con lo aprendi
 | Fecha | Cambio | Motivo |
 |---|---|---|
 | 2026-11-15 | Creación del plan | Estudio gemelo-ros y petición del usuario de un plan para agentes autónomos |
+| 2026-11-15 | Q1–Q5 respondidas: robot B desconocido (nominal), perfil «curso» para escenas nuevas y «gemelo» para las v8, web como herramienta principal, calibraciones del curso con atribución, agentes en la nube | Mensaje del usuario, 16:13 |
 | 2026-11-15 | Ejecución autónoma aprobada: el coordinador fusiona fases en `main` (P1), publica el artefacto al cerrar F4 (P2) y puede aprobar dependencias imprescindibles (P6); Q1–Q5 con valores por defecto; prioridad del usuario: tener la herramienta lista cuanto antes | Mensaje del usuario, 16:09 |
