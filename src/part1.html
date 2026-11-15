@@ -282,6 +282,11 @@ textarea{width:100%;min-height:120px;border:1px solid var(--line);border-radius:
           <div class="seg" id="segRobotId" role="group" aria-label="Robot calibrado"><button data-v="nominal" aria-pressed="true">Nominal</button><button data-v="203" aria-pressed="false">203</button><button data-v="204" aria-pressed="false">204</button><button data-v="205" aria-pressed="false">205</button><button data-v="206" aria-pressed="false">206</button></div>
           <p class="hint" id="robotNota"></p>
           <div class="card fallo" id="robotAviso" role="alert" hidden></div>
+          <div class="card" id="robotPregunta" role="alertdialog" aria-labelledby="robotPregTit" hidden>
+            <b id="robotPregTit"></b>
+            <p class="hint" id="robotPregTxt"></p>
+            <div class="btns"><button class="btn" id="rpMesa">Mantener la mesa</button><button class="btn" id="rpRobot">Mantener la disposición respecto al robot</button><button class="btn" id="rpCancel">Cancelar</button></div>
+          </div>
         </div>
         <div class="sec">
           <h2>Pinza OnRobot RG2</h2>
@@ -392,7 +397,9 @@ textarea{width:100%;min-height:120px;border:1px solid var(--line);border-radius:
       <div class="tab" data-panel="datos" hidden>
         <div class="sec">
           <h2>posiciones.yaml</h2>
-          <p class="hint">Posiciones en el marco <code>base_link</code> del robot del grupo, en metros y grados. Es la tabla que alimenta la escena de colisión de MoveIt 2 y los fake_* mientras no haya calibración.</p>
+          <p class="hint">Posiciones en el marco <code>base_link</code> del robot elegido, en metros y radianes. Es la tabla que alimenta la escena de colisión de MoveIt 2 y los fake_* mientras no haya calibración.</p>
+          <div class="field2"><label for="prefijo">Prefijo de los frames</label><select id="prefijo"></select></div>
+          <p class="hint" id="prefijoTxt">Con <code>sim_&lt;id&gt;</code> (un robot) los frames van sin prefijo: <code>base_link</code>, <code>tool0</code>… Solo los URDF dobles del curso (<code>doble_ur3e_&lt;a&gt;_&lt;b&gt;</code>) añaden <code>&lt;id&gt;_</code> (<code>203_base_link</code>…), según la expansión de su xacro. SIN VALIDAR en ROS: se comprueba con <code>ros2 run tf2_tools view_frames</code> en <code>sim_&lt;id&gt;</code>. Más en <a id="prefijoDoc" href="https://github.com/Aimargg/gemelo-celda/blob/main/docs/estado/frames.md" target="_blank" rel="noopener">docs/estado/frames.md</a>.</p>
           <textarea id="yaml" readonly spellcheck="false"></textarea>
           <div class="btns"><button class="btn" id="btnCopy">Copiar</button><button class="btn" id="btnDlYaml">Descargar</button><button class="btn" id="btnPng">Captura PNG</button></div>
         </div>

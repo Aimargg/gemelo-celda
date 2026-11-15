@@ -12,9 +12,11 @@ let srv;
 before(async () => { srv = await arrancarServidor(); });
 after(async () => { await srv?.cerrar(); });
 
-// Pulsa el botón del robot en el selector y espera a que sea el robot activo
+// Pulsa el botón del robot en el selector y espera a que sea el robot activo. Si cambia el giro de base_link, el gemelo
+// pregunta qué se mantiene (T1.5-3): aquí, la mesa
 async function elegir(p, id) {
   await p.click(`#segRobotId [data-v="${id}"]`);
+  if (await p.evaluate(() => !document.getElementById('robotPregunta').hidden)) await p.click('#rpMesa');
   await p.waitForFunction(id => window.__g.ROB.id === id && window.__g.L().robotId === id, id, { timeout: 60000, polling: 50 });
 }
 const visible = (p, sel) => p.evaluate(s => { const e = document.querySelector(s); return !!e && !e.hidden && e.offsetParent !== null; }, sel);

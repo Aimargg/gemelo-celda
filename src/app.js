@@ -1008,7 +1008,7 @@ async function demo() {
     paso(4); estado('ESPERANDO_BANDEJA');
     await anim(1.6, s => { trayState.subida = smooth(s); }); trayState.balanceo = true; if (!uno) ladoZonas(); await esperar(0.8);
     publicar('/v1/tray_status', ['tstat'], { estado: 'lista', desviacion_mm: 0 });
-    const bp = poseBandeja(simT); publicar('/v1/tray_pose', ['tpose'], { marco: 'base_link', x: +(bp.x - BASES[L.robot].x).toFixed(3), y: +(bp.y - BASES[L.robot].y).toFixed(3), z: +(bp.z - MESA.h).toFixed(3), yaw_deg: +(bp.yaw * R2D).toFixed(1), marcadores_vistos: 3 }); await esperar(0.6);
+    const bp = poseBandeja(simT), tb = enBase(bp); publicar('/v1/tray_pose', ['tpose'], { marco: 'base_link', x: +tb.x.toFixed(3), y: +tb.y.toFixed(3), z: +tb.z.toFixed(3), yaw_deg: +(yawABase(bp.yaw) * R2D).toFixed(1), marcadores_vistos: 3 }); await esperar(0.6);
     paso(5); publicar('/v2/fruits', ['img', 'det', 'fruits'], { marco: 'base_link', piezas: piezas.filter(p => !p.usada).map(p => `${p.id}: ${p.tipo}`) }); await esperar(0.5);
     await servirPlato('plato1', 'manzana', 2, zonaDe('plato1'), 1);
     if (!uno) { paso(6); await servirPlato('plato2', 'uvas', 1, 'zona_segundo', 2); }
@@ -1157,7 +1157,7 @@ $('#dPlay').addEventListener('click', async () => {
 $('#dReset').addEventListener('click', () => { D.activo = false; reiniciarDemo(); actualizarCheck(); });
 
 // ======================= Evaluación, HUD y paneles =======================
-function enBase(p) { const b = BASES[L.robot]; return { x: p.x - b.x, y: p.y - b.y, z: p.z - MESA.h }; }
+function enBase(p) { return mundoABase(p); } // punto del mundo en base_link: la misma conversión que la planificación (marco(), T1.5)
 const CACHE_PLAN = {};
 // todo lo que entra en la escena de colisión o en la cadena: robot (posición A/B y cinemática, T1.4), plato, el otro plato, caja (y su altura), zona de fruta, persona, bandeja, cámaras (posición y hacia dónde miran) y pedido
 function clavePlan(pk) {
@@ -1245,7 +1245,7 @@ function pintarSel() {
   const extra = sel.cam ? `<div class="seg" id="segParte">${['pos', 'mira', 'clamp'].map(pt => `<button data-v="${pt}" aria-pressed="${sel.parte === pt}">${{ pos: 'Cámara', mira: 'Punto de mira', clamp: 'Pinza de mesa' }[pt]}</button>`).join('')}</div>${slidersOrient(sel.cam, 'so')}
     <p class="hint">Con <b>Girar</b> activado, arrastra la cámara en la escena para apuntarla (derecha e izquierda giran, arriba y abajo inclinan) o usa sus anillos: rojo inclina, verde gira y azul gira la imagen.</p>` : '';
   c.innerHTML = `<header><h3>${sel.nombre}</h3><span class="pill ${gp}">${gt}</span></header>${extra}
-   <dl class="kv"><dt>Posición en base_link</dt><dd>${mm(b.x)}, ${mm(b.y)}, ${mm(b.z)} mm</dd>${['zona', 'persona', 'objetivo'].includes(sel.key) ? `<dt>Giro</dt><dd>${fmt(sel.obj.rotation.z * R2D, 0)}°</dd>` : ''}
+   <dl class="kv"><dt>Posición en base_link</dt><dd>${mm(b.x)}, ${mm(b.y)}, ${mm(b.z)} mm</dd>${['zona', 'persona', 'objetivo'].includes(sel.key) ? `<dt>Giro en base_link</dt><dd>${fmt(angDiff(yawABase(sel.obj.rotation.z), 0) * R2D, 0)}°</dd>` : ''}
    ${e ? `<dt>Alcance</dt><dd><span class="pill ${['bad', 'warn', 'ok'][e.cls]}">${e.pend ? 'sin calcular' : ['no llega', 'justo', 'holgado'][e.cls]}</span></dd><dt></dt><dd>${e.txt}</dd>` : ''}</dl>`;
   const sp = $('#segParte'); if (sp) sp.addEventListener('click', ev => { const bt = ev.target.closest('button'); if (!bt) return; const map = { pos: 'cam:', mira: 'mira:', clamp: 'clamp:' }; seleccionar(map[bt.dataset.v] + sel.cam); });
 }
@@ -1308,8 +1308,15 @@ function aplicarCinematica() {
 // tests/fixtures/cinematica/<id>.json): es la del aviso de calibración sospechosa
 const Q_INICIAL_SIM = [0, -1.57, 0, -1.57, 0, 0];
 const gradosTxt = a => `${fmt(a * R2D, 1).replace('-', '−')}°`;
+// Campo del prefijo de frames (T1.5-4): '' siempre; '<id>_' solo si el robot tiene URDF doble en el curso
+function pintarPrefijo() {
+  const s = $('#prefijo'), d = ROB.datos.doble, id = ROB.id, pf = L.prefijoFrames ?? '';
+  const ops = [['', `Ninguno (sim_${id === 'nominal' ? '<id>' : id}, un robot)`]]; if (d) ops.push([`${id}_`, `${id}_ (URDF doble ${d.fichero.split('/').pop().replace('.urdf.xacro', '')})`]);
+  s.innerHTML = ops.map(([v, t]) => `<option value="${v}">${t}</option>`).join(''); s.value = ops.some(o => o[0] === pf) ? pf : ''; s.disabled = ops.length < 2 || soloLectura();
+}
+$('#prefijo').addEventListener('change', e => { if (soloLectura()) return; L.prefijoFrames = e.target.value; guardarLocal(); pintarDatos(); toast(L.prefijoFrames ? `Frames con el prefijo «${L.prefijoFrames}» (URDF doble)` : 'Frames sin prefijo (sim_<id>)'); });
 function pintarRobotId() {
-  const d = ROB.datos, id = ROB.id;
+  const d = ROB.datos, id = ROB.id; pintarPrefijo();
   $$('#segRobotId button').forEach(x => x.setAttribute('aria-pressed', x.dataset.v === id));
   $('#robotNota').textContent = id !== 'nominal' ? `Cinemática calibrada del robot ${id} (calibration_${id}.yaml del curso) con la IK analítica refinada. Su base_link está girado ${gradosTxt(ROB.yaw)} respecto a world (los ejes de la mesa).`
     : L.robotId === 'nominal' ? 'Robot sin identificar: cinemática nominal. Elige su id cuando lo sepáis.'
@@ -1325,20 +1332,53 @@ function pintarRobotId() {
     <li>Sin mover el robot: <code>ros2 run tf2_ros tf2_echo base_link tool0</code>. Este gemelo predice ${pos(T)}; el nominal, ${pos(N)}.</li>
     <li>Si tf2_echo da lo que predice el gemelo, ROS ve el mismo desplazamiento y la anomalía está en calibration_${id}.yaml: pregunta al profesor antes de usar el ${id}.</li></ol>`;
 }
-// Cambiar de robot (T1.4): cambia la cinemática activa y se recalcula lo que depende de ella; los objetos se quedan en la mesa
+// Cambiar de robot nunca mueve nada sin avisar (T1.5-3). Si cambia el giro de base_link, se pregunta qué se mantiene:
+// la mesa (los objetos se quedan donde están, el brazo gira y cambian sus coordenadas en base_link) o la disposición
+// respecto al robot (los objetos giran alrededor de la base y conservan sus coordenadas en base_link). Si no cambia el
+// giro (nominal, 205 y 206), se cambia sin preguntar y se avisa.
+let PREG_ROBOT = null;
 function pedirRobotId(id) {
-  if (!robot || !LAYOUT.ROBOT_IDS.includes(id) || id === ROB.id) return;
+  if (!robot || !LAYOUT.ROBOT_IDS.includes(id)) return;
   if (D.playing || CALC.activo) { toast(D.playing ? 'Pausa la demo para cambiar de robot' : 'Espera a que termine el cálculo'); return; }
   if (soloLectura()) { toast('Disposición de solo lectura (versión más nueva): no se cambia el robot'); return; }
-  L.robotId = id; D.activo = false; aplicarLayout();
-  toast(`Robot ${id}: cinemática ${id === 'nominal' ? 'nominal' : 'calibrada'}. Recalcula las trayectorias.`);
+  if (id === ROB.id && id === L.robotId) { cerrarPreguntaRobot(); return; }
+  const dy = angDiff(robotDe(id).yaw, ROB.yaw);
+  if (Math.abs(dy) < 1e-9) { cambiarRobotId(id, 'mesa'); return; }
+  PREG_ROBOT = id;
+  $('#robotPregTit').textContent = `Cambiar al robot ${id}: ¿qué se mantiene?`;
+  $('#robotPregTxt').innerHTML = `El base_link del ${id} está girado ${gradosTxt(robotDe(id).yaw)} respecto a world (los ejes de la mesa); el del ${ROB.id}, ${gradosTxt(ROB.yaw)}.<br>
+    <b>Mantener la mesa</b>: los objetos se quedan donde están; el brazo gira ${gradosTxt(dy)} y cambian sus coordenadas en base_link.<br>
+    <b>Mantener la disposición respecto al robot</b>: los objetos, la persona y las cámaras giran ${gradosTxt(dy)} alrededor de la base y conservan sus coordenadas en base_link (las pinzas de las cámaras se pegan al borde de la mesa más cercano). Pueden quedar fuera de la mesa.`;
+  $('#robotPregunta').hidden = false;
+}
+function cerrarPreguntaRobot() { PREG_ROBOT = null; $('#robotPregunta').hidden = true; }
+// Gira la disposición `d` rad alrededor de la base b: sus coordenadas en un base_link que gira lo mismo no cambian
+function girarDisposicion(l, b, d) {
+  const c = Math.cos(d), s = Math.sin(d); const g = o => { const x = o.x - b.x, y = o.y - b.y; o.x = b.x + c * x - s * y; o.y = b.y + s * x + c * y; };
+  [l.zona, l.plato1, l.plato2, l.persona, ...l.arucoE].forEach(g); l.zona.yaw = angDiff(l.zona.yaw + d, 0); l.persona.yaw = angDiff(l.persona.yaw + d, 0);
+  for (const k in l.cams) { g(l.cams[k].clamp); g(l.cams[k].pos); g(l.cams[k].mira); }
+}
+// modo: 'mesa' | 'robot' (ver pedirRobotId). El prefijo de frames, si lo había, pasa a ser el del robot nuevo (o '' si no
+// tiene URDF doble).
+function cambiarRobotId(id, modo) {
+  const de = ROB, a = robotDe(id), dy = angDiff(a.yaw, de.yaw), pre0 = L.prefijoFrames;
+  if (modo === 'robot' && dy) girarDisposicion(L, BASES[L.robot], dy);
+  L.robotId = id; L.prefijoFrames = pre0 && a.datos.doble ? `${id}_` : '';
+  cerrarPreguntaRobot(); D.activo = false; aplicarLayout();
+  const pre = pre0 !== L.prefijoFrames ? ` Prefijo de frames: ${L.prefijoFrames ? `«${L.prefijoFrames}»` : 'ninguno'}.` : '';
+  toast(!dy ? `Robot ${id}: base_link con el mismo giro que el ${de.id}; nada se mueve. Recalcula las trayectorias.${pre}`
+    : modo === 'mesa' ? `Robot ${id}: se mantiene la mesa. El brazo gira ${gradosTxt(dy)} y cambian las coordenadas en base_link.${pre}`
+      : `Robot ${id}: la disposición gira ${gradosTxt(dy)} alrededor de la base y conserva sus coordenadas en base_link.${pre}`);
 }
 $('#segRobotId').addEventListener('click', e => { const b = e.target.closest('button'); if (b) pedirRobotId(b.dataset.v); });
+$('#rpMesa').addEventListener('click', () => { if (PREG_ROBOT) cambiarRobotId(PREG_ROBOT, 'mesa'); });
+$('#rpRobot').addEventListener('click', () => { if (PREG_ROBOT) cambiarRobotId(PREG_ROBOT, 'robot'); });
+$('#rpCancel').addEventListener('click', () => { cerrarPreguntaRobot(); toast('El robot no cambia'); });
 $('#segCaja').addEventListener('click', e => { const b = e.target.closest('button'); if (!b || D.playing) return; L.caja.on = b.dataset.v === '1'; if (!D.activo) reiniciarDemo(); actualizarPlatos(); pintarCaja(); evaluar(); guardarLocal(); toast(L.caja.on ? 'Platos sobre la caja' : 'Platos sobre la mesa: mira la holgura al cogerlos'); });
 $('#cajaH').addEventListener('input', e => { if (D.playing) return; L.caja.h = e.target.value / 100; $('#cajaHOut').textContent = `${e.target.value} cm`; EDITANDO = true; actualizarPlatos(); clearTimeout(pintarCaja._t); pintarCaja._t = setTimeout(() => { EDITANDO = false; actualizarPlatos(); pintarCaja(); evaluar(); }, 300); guardarLocal(); });
 $('#apertura').addEventListener('input', e => { pinza.setApertura(e.target.value / 1000); $('#aperturaOut').textContent = `${e.target.value} mm`; actualizarHUD(); });
 // Restablecer devuelve los objetos a la disposición de partida; el robot (A/B y su id calibrado) no cambia (T1.4)
-$('#btnReset').addEventListener('click', () => { const r = L.robot; L = layoutDefecto(); if (r === 'A') { L = espejo(L); L.robot = 'A'; } L.robotId = ROB.id; aplicarLayout(); toast('Distribución de partida restaurada'); });
+$('#btnReset').addEventListener('click', () => { const r = L.robot, pf = L.prefijoFrames; L = layoutDefecto(); if (r === 'A') { L = espejo(L); L.robot = 'A'; } L.robotId = ROB.id; L.prefijoFrames = pf === `${ROB.id}_` ? pf : ''; aplicarLayout(); toast('Distribución de partida restaurada'); });
 $('#btnHome').addEventListener('click', () => { if (robot) { robot.setQ(qReposo()); sincronizarSliders(); actualizarHUD(); } });
 $('#btnObjetivo').addEventListener('click', () => { if (!robot) return; objetivo.visible = true; objetivo.position.copy(tcpMundo()); objetivo.rotation.set(0, 0, yawHerramienta()); seleccionar('objetivo'); toast('Arrastra el objetivo: el brazo lo sigue con cinemática inversa'); });
 const JN = ['Base', 'Hombro', 'Codo', 'Muñeca 1', 'Muñeca 2', 'Muñeca 3'];
@@ -1457,21 +1497,34 @@ $$('[data-h]').forEach(b => b.addEventListener('click', () => { let h = b.datase
 
 // ======================= Datos: YAML, importar, propuestas =======================
 function r3(v) { return (Math.round(v * 1000) / 1000).toFixed(3); }
+const rad3 = a => r3(angDiff(a, 0)); // ángulo en [−π, π], redondeado a 0,001 rad (I7)
+// posiciones.yaml (T1.5, I7): todo en el base_link del robot elegido con la conversión de la planificación (enBase), en
+// metros y radianes, con redondeo fijo de 1 mm y 0,001 rad y el origen de cada valor al final de su línea
 function generarYaml() {
-  const b = BASES[L.robot]; const P = o => `{x: ${r3(o.x - b.x)}, y: ${r3(o.y - b.y)}, z: ${r3((o.z ?? MESA.h) - MESA.h)}}`;
+  const B = o => enBase({ x: o.x, y: o.y, z: o.z ?? MESA.h }), P = o => { const b = B(o); return `{x: ${r3(b.x)}, y: ${r3(b.y)}, z: ${r3(b.z)}}`; };
   const tp = poseBandeja(0); bandeja.updateMatrixWorld(true); const zw = k => zonasB[k].getWorldPosition(new THREE.Vector3());
-  let y = `# posiciones.yaml · gemelo de la celda UR3e · BORRADOR\n# Marco: base_link del robot ${L.robot} (${L.robot === 'B' ? 'derecha' : 'izquierda'} en la foto cenital). Metros y grados.\n# Distribución de partida [PROPUESTA]; ninguna posición está medida todavía salvo mesa y base.\n`;
-  y += `fecha: ${new Date().toISOString().slice(0, 10)}\nrobot: ${L.robot}\npinza: {modelo: OnRobot RG2, tcp_z_m: ${r3(pinza.tcpZ(0))}, carrera_m: 0.110}\n`;
-  y += `mesa: {ancho_m: 1.180, fondo_m: 0.830, alto_m: 0.760, centro_en_base_link: {x: ${r3(-b.x)}, y: ${r3(-b.y)}}}\n`;
-  y += `pedido: ${L.pedido === 1 ? 'un_plato  # al centro de la bandeja' : 'dos_platos  # primero y segundo'}\n`;
-  y += `platos: {sobre_caja: ${L.caja.on}, caja_alto_m: ${r3(L.caja.h)}, caja_lado_m: ${r3(CAJA_LADO)}, agarre: horizontal_por_el_borde, radio_agarre_m: ${r3(R_AGARRE)}}\n`;
-  y += `objetos:\n  zona_fruta: {x: ${r3(L.zona.x - b.x)}, y: ${r3(L.zona.y - b.y)}, z: 0.000, yaw_deg: ${(L.zona.yaw * R2D).toFixed(1)}, ancho_m: ${r3(L.zona.w)}, fondo_m: ${r3(L.zona.d)}}\n`;
-  for (const pk of ['plato1', 'plato2']) y += `  ${pk.replace('plato', 'plato_')}: {x: ${r3(L[pk].x - b.x)}, y: ${r3(L[pk].y - b.y)}, z: ${r3(zPlato() - MESA.h)}}\n`;
-  L.arucoE.forEach((a, i) => y += `  marcador_entrega_${i + 1}: {id: ${4 + i}, diccionario: DICT_4X4_50, x: ${r3(a.x - b.x)}, y: ${r3(a.y - b.y)}, z: 0.000}\n`);
-  y += `  bandeja_recepcion: {x: ${r3(tp.x - b.x)}, y: ${r3(tp.y - b.y)}, z: ${r3(tp.z - MESA.h)}, yaw_deg: ${(tp.yaw * R2D).toFixed(1)}}\n`;
-  y += `  zona_primero: ${P(zw('zona_primero'))}\n  zona_segundo: ${P(zw('zona_segundo'))}\n`;
-  y += `  persona: {x: ${r3(L.persona.x - b.x)}, y: ${r3(L.persona.y - b.y)}, yaw_deg: ${(L.persona.yaw * R2D).toFixed(1)}}\ncamaras:\n`;
-  for (const k in L.cams) { const c = L.cams[k]; y += `  camara_${k}: {grupo: ${c.grupo}, modelo: ELP-USB12MP01-UFV, focal_mm: ${c.f.toFixed(1)}, modo: ${c.modo}, hfov_deg: ${(hfovDe(c) * R2D).toFixed(1)}, posicion: ${P(c.pos)}, mira: ${P(c.mira)}, orientacion_deg: {giro: ${(orientDe(c).pan * R2D).toFixed(1)}, inclinacion: ${(orientDe(c).tilt * R2D).toFixed(1)}, alabeo: ${(orientDe(c).roll * R2D).toFixed(1)}}, pinza_mesa: ${P(c.clamp)}}\n`; }
+  const id = ROB.id, d = ROB.datos, pf = L.prefijoFrames || '', frame = `${pf}base_link`, sup = '# SUPUESTO (disposición propuesta, sin medir)';
+  let y = `# posiciones.yaml · gemelo de la celda UR3e · BORRADOR (generado por IA)\n`;
+  y += `# Robot: ${id === 'nominal' ? 'nominal (sin identificar: cinemática nominal del UR3e)' : `${id} (calibration_${id}.yaml del curso${d.sospechoso ? '; calibración sospechosa, SIN VALIDAR' : ''})`}, en la posición ${L.robot} de la celda (${L.robot === 'B' ? 'derecha' : 'izquierda'} en la foto cenital).\n`;
+  y += `# Frame: ${frame}${pf ? ` (prefijo «${pf}» del URDF doble ${d.doble.fichero.split('/').pop()})` : ' (sin prefijo, como en sim_<id>)'}. Metros y radianes (REP-103), redondeo a 1 mm y 0,001 rad.\n`;
+  y += `# world: los ejes de la mesa, con el origen en el centro de la base sobre el tablero [SUPUESTO hasta comprobarlo en el laboratorio].\n`;
+  y += `# ${frame} está girado ${rad3(ROB.yaw)} rad (${gradosTxt(ROB.yaw)}) respecto a world: mount_yaw − π del xacro del curso [SIN VALIDAR en ROS; docs/estado/frames.md].\n`;
+  y += `# Origen de cada valor, al final de su línea: MEDIDO, FABRICANTE o SUPUESTO. Las cámaras dan el giro desde +y de ${frame} hacia +x.\n`;
+  y += `fecha: ${new Date().toISOString().slice(0, 10)}\nrobot: ${L.robot}  # MEDIDO (posición de la base en la celda)\nrobot_id: ${id}  # elegido en el gemelo\n`;
+  y += `frame: ${frame}\nprefijo_frames: '${pf}'\nworld_a_base_link: {x: 0.000, y: 0.000, z: 0.000, yaw_rad: ${rad3(ROB.yaw)}}  # SUPUESTO (world con los ejes de la mesa); giro del xacro del curso\n`;
+  y += `pinza: {modelo: OnRobot RG2, tcp_z_m: ${r3(pinza.tcpZ(0))}, carrera_m: 0.110}  # tcp_z: SUPUESTO (modelo simplificado) · carrera: MEDIDO\n`;
+  const mc = B({ x: 0, y: 0 });
+  y += `mesa: {ancho_m: 1.180, fondo_m: 0.830, alto_m: 0.760, centro_en_base_link: {x: ${r3(mc.x)}, y: ${r3(mc.y)}}, yaw_rad: ${rad3(yawABase(0))}}  # MEDIDO\n`;
+  y += `pedido: ${L.pedido === 1 ? 'un_plato  # al centro de la bandeja' : 'dos_platos  # primero y segundo'} · elegido en el gemelo\n`;
+  y += `platos: {sobre_caja: ${L.caja.on}, caja_alto_m: ${r3(L.caja.h)}, caja_lado_m: ${r3(CAJA_LADO)}, agarre: horizontal_por_el_borde, radio_agarre_m: ${r3(R_AGARRE)}}  # SUPUESTO\n`;
+  const zf = B(L.zona);
+  y += `objetos:\n  zona_fruta: {x: ${r3(zf.x)}, y: ${r3(zf.y)}, z: ${r3(zf.z)}, yaw_rad: ${rad3(yawABase(L.zona.yaw))}, ancho_m: ${r3(L.zona.w)}, fondo_m: ${r3(L.zona.d)}}  ${sup}\n`;
+  for (const pk of ['plato1', 'plato2']) y += `  ${pk.replace('plato', 'plato_')}: ${P({ x: L[pk].x, y: L[pk].y, z: zPlato() })}  ${sup}\n`;
+  L.arucoE.forEach((a, i) => { const m = B(a); y += `  marcador_entrega_${i + 1}: {id: ${4 + i}, diccionario: DICT_4X4_50, x: ${r3(m.x)}, y: ${r3(m.y)}, z: ${r3(m.z)}}  ${sup}\n`; });
+  const bt = B(tp); y += `  bandeja_recepcion: {x: ${r3(bt.x)}, y: ${r3(bt.y)}, z: ${r3(bt.z)}, yaw_rad: ${rad3(yawABase(tp.yaw))}}  ${sup}\n`;
+  y += `  zona_primero: ${P(zw('zona_primero'))}  ${sup}\n  zona_segundo: ${P(zw('zona_segundo'))}  ${sup}\n`;
+  const pe = B(L.persona); y += `  persona: {x: ${r3(pe.x)}, y: ${r3(pe.y)}, yaw_rad: ${rad3(yawABase(L.persona.yaw))}}  ${sup}\ncamaras:\n`;
+  for (const k in L.cams) { const c = L.cams[k], o = orientDe({ pos: B(c.pos), mira: B(c.mira), roll: c.roll }); y += `  camara_${k}: {grupo: ${c.grupo}, modelo: ELP-USB12MP01-UFV, focal_mm: ${c.f.toFixed(1)}, modo: ${c.modo}, hfov_rad: ${r3(hfovDe(c))}, posicion: ${P(c.pos)}, mira: ${P(c.mira)}, orientacion_rad: {giro: ${rad3(o.pan)}, inclinacion: ${rad3(o.tilt)}, alabeo: ${rad3(o.roll)}}, pinza_mesa: ${P(c.clamp)}}  # pose: SUPUESTO · modelo: MEDIDO · focal y modo: elegidos · hfov: SUPUESTO (lente ideal)\n`; }
   y += `# layout-json: ${JSON.stringify(L)}\n`;
   return y;
 }
@@ -1497,7 +1550,7 @@ $('#btnImport').addEventListener('click', () => {
   vaciarGuardado(); L = r.layout; aplicarLayout(); toast(r.soloLectura ? 'Distribución aplicada en solo lectura: es de una versión más nueva del gemelo' : 'Distribución aplicada');
 });
 function aplicarLayout() {
-  aplicarPedido(); $$('#segRobot button').forEach(x => x.setAttribute('aria-pressed', x.dataset.v === L.robot));
+  cerrarPreguntaRobot(); aplicarPedido(); $$('#segRobot button').forEach(x => x.setAttribute('aria-pressed', x.dataset.v === L.robot));
   colocarRobots(); actualizarZona(); actualizarPlatos(); actualizarAruco(); for (const k in L.cams) actualizarCam(k); aplicarBandeja(simT);
   reiniciarDemo(); pintarCaja(); evaluar(); calcularMapa(); pintarSoloLectura(); guardarLocal(); if (!$('[data-panel="datos"]').hidden) pintarDatos();
 }
@@ -1527,7 +1580,13 @@ const FUENTES = [
   ['Nodos de Robótica', 'coordinador, pedidos, movimiento, pinza, seguridad', 's', 'Propuesta; D3 sin congelar'],
   ['Topics de Visión', '/v1/*, /v2/*, /menu, /service_state', 'm', 'Contexto de Visión del 7-11'],
 ];
-function pintarFuentes() { $('#srcTbl tbody').innerHTML = FUENTES.map(([a, b, t, c]) => `<tr><td>${a}<br><span class="hint">${c}</span></td><td>${b}</td><td><span class="tag ${t}">${{ m: 'MEDIDO', f: 'FABRICANTE', s: 'SUPUESTO' }[t]}</span></td></tr>`).join(''); }
+// Filas que dependen del robot elegido (T1.4 y T1.5): cinemática y orientación de base_link
+function fuentesRobot() {
+  const id = ROB.id, d = ROB.datos;
+  return FUENTES.map(f => f[0] === 'Cinemática del UR3e' && id !== 'nominal' ? [f[0], `calibración del robot ${id}; IK analítica nominal refinada con Levenberg–Marquardt (1e-6 m y 1e-6 rad)`, d.sospechoso ? 's' : 'm', `calibration_${id}.yaml del repo del curso (4e4e1a7)${d.sospechoso ? ', sospechosa' : ''}; SIN VALIDAR en ROS`]
+    : f[0] === 'Orientación de base_link' ? [f[0], `girado ${gradosTxt(ROB.yaw)} respecto a world; world con los ejes de la mesa`, 's', 'Giro: mount_yaw − π del xacro del curso. Ejes de world: comprobar en el laboratorio (docs/estado/frames.md)'] : f);
+}
+function pintarFuentes() { $('#srcTbl tbody').innerHTML = fuentesRobot().map(([a, b, t, c]) => `<tr><td>${a}<br><span class="hint">${c}</span></td><td>${b}</td><td><span class="tag ${t}">${{ m: 'MEDIDO', f: 'FABRICANTE', s: 'SUPUESTO' }[t]}</span></td></tr>`).join(''); }
 
 // ======================= Colocación y evaluación =======================
 function colocarRobots() {
