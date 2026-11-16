@@ -5,7 +5,6 @@ const ESF_UR = {"base":[[0.004,0.0001,0.048,0.071],[-0.012,0.0121,0.04,0.064],[-
 const ESLAB = ['base', 'shoulder', 'upperarm', 'forearm', 'wrist1', 'wrist2', 'wrist3'];
 const G_NOM = ['la base', 'el hombro', 'el brazo', 'el antebrazo', 'la muñeca 1', 'la muñeca 2', 'la muñeca 3', 'el cuerpo de la pinza', 'un dedo de la pinza', 'un dedo de la pinza', 'lo que lleva la pinza'];
 const LIM = [[-2 * PI, 2 * PI], [-2 * PI, 2 * PI], [-PI, PI], [-2 * PI, 2 * PI], [-2 * PI, 2 * PI], [-Infinity, Infinity]]; // joint_limits.yaml del UR3e
-const ACC_MAX = 3; // rad/s² a velocidad 100 % [SUPUESTO]: el yaml del UR3e no fija aceleraciones
 const PESO_J = [1, 1, 1, 0.7, 0.7, 0.4]; // las muñecas mueven menos masa: cuestan menos en el planificador
 const NC_MAX = 48; // esferas máximas del objeto que lleva la pinza
 const ADY = new Set(['0-1', '1-2', '2-3', '3-4', '4-5', '5-6', '6-7', '6-8', '6-9', '7-8', '7-9', '8-9', '7-10', '8-10', '9-10']);
@@ -169,7 +168,7 @@ function holguraTotal(q, ctx = {}) {
   return m;
 }
 function textoChoque(c) { return c.tipo === 'auto' ? `${G_NOM[c.a]} con ${G_NOM[c.b]}` : `${G_NOM[c.a]} con ${NOM_OBS(c.b)}`; }
-function ctxDe(o = {}) { return { w: o.w ?? pinza.w, carga: o.carga === undefined ? D.carga : o.carga, permitir: o.permitir, conBlandos: o.conBlandos, sinEntorno: o.sinEntorno, sinAuto: o.sinAuto }; }
+function ctxDe(o = {}) { return { w: o.w ?? pinza.w, carga: o.carga === undefined ? D.carga : o.carga, permitir: o.permitir, conBlandos: o.conBlandos, sinEntorno: o.sinEntorno, sinAuto: o.sinAuto, perfil: o.perfil }; } // perfil: el de la petición (T1.6); choqueEn no lo usa
 function enLimites(q) { for (let i = 0; i < 6; i++) { if (q[i] >= LIM[i][0] && q[i] <= LIM[i][1]) continue; const alt = q[i] - Math.sign(q[i]) * 2 * PI; if (alt >= LIM[i][0] && alt <= LIM[i][1]) q[i] = alt; else return null; } return q; }
 
 // Tramo articular libre: se comprueba cada 1,4° como máximo (a 0,5 m del eje son 12 mm, menos que cualquier obstáculo)
@@ -198,58 +197,86 @@ function atajar(ruta, ctx, rnd) {
   for (let it = 0; it < 80 && ruta.length > 2; it++) { const i = Math.floor(rnd() * (ruta.length - 2)), j = i + 2 + Math.floor(rnd() * (ruta.length - i - 2)); if (j < ruta.length && tramoLibre(ruta[i], ruta[j], ctx)) ruta.splice(i + 1, j - i - 1); }
   return ruta;
 }
-// Perfil de movimiento con el que planifica el gemelo; entra en la semilla (D5). Hoy solo existe «gemelo»: el campo
-// `perfil` del layout aún no tiene efecto (T1.1). T1.6 pondrá aquí el perfil de la petición.
-const PERFIL_PLAN = 'gemelo';
 // Semilla por petición (T1.2, D5, I6): hash de la entrada canónica del plan (src/rng.js) con los mismos valores por
-// defecto que choqueEn. La misma petición da el mismo plan, se calcule en el orden que se calcule.
+// defecto que choqueEn y el perfil de la petición (T1.6: ctx.perfil; sin perfil, la petición falla). La misma petición da
+// el mismo plan, se calcule en el orden que se calcule; con «gemelo», la entrada es la de antes (PERFIL.entradaSemilla).
 function semillaDe(qa, qb, ctx) {
-  return RNG.semillaPlan({ qa, qb, w: ctx.w ?? pinza.w, carga: ctx.carga === undefined ? D.carga : ctx.carga, obst: ctx.sinEntorno ? null : (ctx.obst || obstaculos()),
-    permitir: ctx.permitir, conBlandos: ctx.conBlandos, sinEntorno: ctx.sinEntorno, sinAuto: ctx.sinAuto, perfil: PERFIL_PLAN });
+  return RNG.semillaPlan(PERFIL.entradaSemilla({ qa, qb, w: ctx.w ?? pinza.w, carga: ctx.carga === undefined ? D.carga : ctx.carga, obst: ctx.sinEntorno ? null : (ctx.obst || obstaculos()),
+    permitir: ctx.permitir, conBlandos: ctx.conBlandos, sinEntorno: ctx.sinEntorno, sinAuto: ctx.sinAuto, perfil: ctx.perfil }));
 }
 function planificar(qa, qb, ctx) {
+  PERFIL.de(ctx.perfil); // toda petición lleva su perfil (T1.6): también el camino recto, que no llega a la semilla
   if (D.sinPlanificador || tramoLibre(qa, qb, ctx)) return { ruta: [qa, qb], plan: false };
   if (choqueEn(qb, ctx)) return null;
   const rnd = RNG.aleat(semillaDe(qa, qb, ctx)); // una sola semilla: si con ella no hay camino, no hay plan (sin reintentos)
   for (const [h, it] of [[PI / 2, 1500], [PI, 3000]]) { const r = rrtConnect(qa, qb, ctx, rnd, h, it); if (r) return { ruta: atajar(r, ctx, rnd), plan: true }; }
   return null;
 }
-// Reparto del tiempo: perfil suave con la velocidad articular del UR3e (escalada) y aceleración limitada
-function duracion(ruta, factor) {
-  let S = 0, maxRec = 0; const acum = [0], rec = [0, 0, 0, 0, 0, 0];
-  for (let k = 1; k < ruta.length; k++) { let d = 0; for (let i = 0; i < 6; i++) { const dq = Math.abs(ruta[k][i] - ruta[k - 1][i]); d = Math.max(d, dq / VMAX[i]); rec[i] += dq; } S += d; acum.push(S); }
-  maxRec = Math.max(...rec); const v = D.vel * factor;
-  return { S, acum, T: Math.max(0.25, 1.5 * S / v, Math.sqrt(6 * maxRec / (ACC_MAX * v))) };
-}
-async function ejecutar(ruta, factor = 1, Tmin = 0) {
-  const { S, acum, T: T0 } = duracion(ruta, factor); const T = Math.max(T0, Tmin); D.motion += T;
+// Reparto del tiempo según el perfil de la petición (src/perfil.js, T1.6): «gemelo», perfil suave con la velocidad
+// articular del UR3e escalada por la de la demo y aceleración limitada; «curso», trapecio por articulación a escala 0,1
+// (aproximación, no TOTG: DT4)
+function duracion(ruta, factor, perfil) { return PERFIL.duracion(ruta, { perfil, vel: D.vel, factor, vmax: VMAX }); }
+// Tiempo mínimo de una recta cartesiana: en «gemelo», 0,5 m/s de TCP al 100 % de la velocidad de la demo; en «curso», ninguno
+// (MoveIt no limita la velocidad del TCP; la recta va a escala 0,1 como el resto [SUPUESTO: el grupo no la limita])
+function tMinCart(largo, f, perfil) { return PERFIL.de(perfil).escala === null ? 1.5 * largo / (0.5 * D.vel * f) : 0; }
+async function ejecutar(ruta, factor, Tmin, perfil) {
+  const { S, acum, T: T0 } = duracion(ruta, factor, perfil); const T = Math.max(T0, Tmin); D.motion += T;
   await anim(T, s => {
     const u = smooth(s) * S; let k = 1; while (k < acum.length - 1 && acum[k] < u) k++;
     const a = ruta[k - 1], b = ruta[k], f = acum[k] > acum[k - 1] ? clamp((u - acum[k - 1]) / (acum[k] - acum[k - 1]), 0, 1) : 1;
     robot.setQ(a.map((v, i) => v + (b[i] - v) * f));
   });
 }
-// Movimiento articular planificado (como move_group con OMPL)
-async function moveJ(qT, factor = 1, opts = {}, desc = 'el destino') {
-  const ctx = ctxDe({ ...opts, conBlandos: true }); const q0 = robot.q.slice();
-  if (choqueEn(q0, ctx) || choqueEn(qT, ctx)) ctx.conBlandos = false; // si sale o llega tocando fruta o un plato de la bandeja, esos no cuentan
-  // si sale en contacto (acaba de soltar algo), se permite separarse de eso, como el adaptador FixStartStateCollision de MoveIt
-  ctx.permitir = [...(ctx.permitir || [])]; for (let k = 0; k < 3; k++) { const c = choqueEn(q0, ctx); if (!c || c.tipo !== 'entorno') break; ctx.permitir.push(c.b); }
+// Petición de un movimiento articular planificado desde q0 (como move_group con OMPL), sin moverse. opts.perfil decide
+// qué pasa si la postura de partida ya toca algo (T1.6, decisión 5 del brief):
+//  · «gemelo»: se permite separarse de lo que toca (acaba de soltar algo), como el adaptador FixStartStateCollision;
+//  · «curso»: si toca algo que no está en opts.permitir, falla con START_STATE_IN_COLLISION (CheckStartStateCollision;
+//    en Jazzy no existe FixStartStateCollision).
+// En los dos, si sale o llega tocando fruta o un plato de la bandeja, esos no cuentan [en «curso», SUPUESTO: el grupo no los
+// mete en la escena de planificación]. Devuelve { ruta, plan } o lanza FalloDemo.
+function prepararMoveJ(q0, qT, opts = {}, desc = 'el destino') {
+  const pf = PERFIL.de(opts.perfil); const ctx = ctxDe({ ...opts, conBlandos: true });
+  if (choqueEn(q0, ctx) || choqueEn(qT, ctx)) ctx.conBlandos = false;
+  if (pf.arranque === 'separar') { ctx.permitir = [...(ctx.permitir || [])]; for (let k = 0; k < 3; k++) { const c = choqueEn(q0, ctx); if (!c || c.tipo !== 'entorno') break; ctx.permitir.push(c.b); } }
+  else { const c = choqueEn(q0, ctx); if (c) throw new FalloDemo(`MoveIt rechazaría el arranque en contacto (START_STATE_IN_COLLISION): ${textoChoque(c)}, al ir hacia ${desc}.`, 'fallo', { causa: 'arranque_contacto', choque: c, q: q0.slice() }); }
   const r = planificar(q0, qT, ctx);
   if (!r) throw new FalloDemo(`No encuentro una trayectoria sin colisiones hasta ${desc}.`, 'fallo', { causa: 'sin_trayectoria', q: qT });
-  if (r.plan) { D.planes++; $('#dPlanes').textContent = D.planes; publicar('/movimiento/plan [PROPUESTA]', ['accion'], { destino: desc, planificador: 'RRTConnect + atajos', puntos_de_paso: r.ruta.length - 2 }); }
-  await ejecutar(r.ruta, factor);
+  return r;
 }
-// Ruta cartesiana por puntos de paso {p, yaw} (computeCartesianPath): IK cada 4 mm sin saltos de configuración ni choques
+async function moveJ(qT, factor = 1, opts = {}, desc = 'el destino') {
+  const r = prepararMoveJ(robot.q.slice(), qT, opts, desc);
+  if (r.plan) { D.planes++; $('#dPlanes').textContent = D.planes; publicar('/movimiento/plan [PROPUESTA]', ['accion'], { destino: desc, planificador: 'RRTConnect + atajos', puntos_de_paso: r.ruta.length - 2 }); }
+  await ejecutar(r.ruta, factor, 0, opts.perfil);
+}
+// Ruta cartesiana por puntos de paso {p, yaw} (computeCartesianPath), según opts.perfil (T1.6):
+//  · «gemelo»: IK cada 4 mm sin saltos de configuración (0,15 rad) ni choques;
+//  · «curso» (MoveIt 2.11+): IK cada 0,01 m y, entre cada par de posturas, el punto medio articular frente al cartesiano
+//    (1 mm y 0,01 rad), subdividiendo hasta PERFIL.TABLA.curso.cart.maxNivel veces; si no se consigue, corta con
+//    causa «cartesiana_incompleta» y la fracción hecha (pct en %, fraccion de 0 a 1, como `fraction` de MoveIt).
+// La IK de cada paso, la comprobación de choques de cada tramo y lo que se hace cuando falla son las mismas en los dos.
 function rutaCartesiana(q0, puntos, opts) {
+  const pf = PERFIL.de(opts.perfil), curso = pf.escala !== null;
   const ctx = ctxDe(opts); const ruta = [q0.slice()]; let largo = 0; for (let k = 1; k < puntos.length; k++) largo += puntos[k].p.distanceTo(puntos[k - 1].p); let hecho = 0;
   const mal = (f, extra = {}) => ({ fallo: f, pct: Math.round(100 * hecho / Math.max(largo, 1e-6)), ...extra });
+  const tz = curso ? pinza.tcpZ(opts.w ?? pinza.w) : 0;
+  const desvio = (qa, qb) => PERFIL.desvioMedio(CIN.fk(qa), CIN.fk(qb), CIN.fk(qa.map((v, i) => (v + qb[i]) / 2)), tz);
   for (let s = 1; s < puntos.length; s++) {
-    const a = puntos[s - 1], b = puntos[s], d = a.p.distanceTo(b.p), dy = angDiff(b.yaw, a.yaw); const n = Math.max(1, Math.ceil(Math.max(d / 0.004, Math.abs(dy) / 0.02)));
+    const a = puntos[s - 1], b = puntos[s], d = a.p.distanceTo(b.p), dy = angDiff(b.yaw, a.yaw); const n = PERFIL.pasosTramo(pf.nombre, d, dy);
     for (let k = 1; k <= n; k++) {
       const prev = ruta[ruta.length - 1], t = k / n; const q = ikTCP(a.p.clone().lerp(b.p, t), a.yaw + dy * t, prev, opts);
       if (!q) { const pp = a.p.clone().lerp(b.p, t); const q2 = ikTCP(pp, a.yaw + dy * t, prev, { ...opts, sinColision: true }); const c = q2 && choqueEn(q2, ctx); const causa = causaDe(c) || (q2 ? 'alcance' : causaSinIK(pp, a.yaw + dy * t, opts)); return mal(c ? `chocaría ${textoChoque(c)}` : causa === 'ik_calibrada' ? 'IK calibrada no converge' : 'se sale del alcance', { causa, choque: c || null, q: q2 || prev, p: pp }); }
-      if (Math.max(...q.map((v, i) => Math.abs(v - prev[i]))) > 0.15) { const q2 = ikTCP(a.p.clone().lerp(b.p, t), a.yaw + dy * t, prev, { ...opts, sinColision: true }); const c = q2 && Math.max(...q2.map((v, i) => Math.abs(v - prev[i]))) <= 0.15 && choqueEn(q2, ctx); const m = mal(c ? `chocaría ${textoChoque(c)}` : 'la postura salta (cerca de una singularidad)', { causa: causaDe(c) || 'singularidad', choque: c || null, q: q2 || q, p: a.p.clone().lerp(b.p, t) }); m.dbg = { prev: prev.map(v => +(v * R2D).toFixed(1)), q: q.map(v => +(v * R2D).toFixed(1)), p: a.p.clone().lerp(b.p, t), seg: s, n: puntos.length }; return m; }
+      if (curso) { // punto medio de MoveIt 2.11+ entre prev y q, con subdivisión; cada subtramo aceptado se comprueba como un paso
+        const t0 = (k - 1) / n, pt = tt => a.p.clone().lerp(b.p, tt);
+        const sub = PERFIL.subdividir(prev, t0, q, t, { desvio, ik: (tm, qc) => ikTCP(pt(tm), a.yaw + dy * tm, qc, opts) }, pf.cart);
+        let qp = prev, tp = t0;
+        for (const [ts, qs] of sub.qs) {
+          if (!tramoLibre(qp, qs, ctx)) { const c = choqueEn(qs, ctx) || choqueEn(qp.map((v, i) => (v + qs[i]) / 2), ctx); return mal(c ? `chocaría ${textoChoque(c)}` : 'chocaría en el camino', { causa: causaDe(c) || 'choque', choque: c, q: qs, p: pt(ts) }); }
+          ruta.push(qs); hecho += d * (ts - tp); qp = qs; tp = ts;
+        }
+        if (sub.fallo) { const fr = hecho / Math.max(largo, 1e-6), F = sub.fallo; return mal(`la ruta cartesiana queda incompleta: entre dos posturas, el punto medio articular se aparta ${fmt(F.dp * 1000, 1)} mm y ${fmt(F.dr, 3)} rad de la recta${F.sinIK ? ' y no hay IK para subdividir' : ` tras ${F.nivel} subdivisiones`} (MoveIt la corta en el ${Math.round(100 * fr)} %)`, { causa: 'cartesiana_incompleta', fraccion: fr, choque: null, q: qp, p: pt(F.t) }); }
+        continue;
+      }
+      if (Math.max(...q.map((v, i) => Math.abs(v - prev[i]))) > pf.cart.salto) { const q2 = ikTCP(a.p.clone().lerp(b.p, t), a.yaw + dy * t, prev, { ...opts, sinColision: true }); const c = q2 && Math.max(...q2.map((v, i) => Math.abs(v - prev[i]))) <= 0.15 && choqueEn(q2, ctx); const m = mal(c ? `chocaría ${textoChoque(c)}` : 'la postura salta (cerca de una singularidad)', { causa: causaDe(c) || 'singularidad', choque: c || null, q: q2 || q, p: a.p.clone().lerp(b.p, t) }); m.dbg = { prev: prev.map(v => +(v * R2D).toFixed(1)), q: q.map(v => +(v * R2D).toFixed(1)), p: a.p.clone().lerp(b.p, t), seg: s, n: puntos.length }; return m; }
       if (!tramoLibre(prev, q, ctx)) { const c = choqueEn(q, ctx) || choqueEn(prev.map((v, i) => (v + q[i]) / 2), ctx); return mal(c ? `chocaría ${textoChoque(c)}` : 'chocaría en el camino', { causa: causaDe(c) || 'choque', choque: c, q, p: a.p.clone().lerp(b.p, t) }); }
       ruta.push(q); hecho += d / n;
     }
@@ -269,7 +296,7 @@ async function moveL(p, yaw, opts = {}, desc = 'un punto') {
     D.sustituidos++; pintarCalidad(); publicar('/movimiento/aviso [PROPUESTA]', ['accion'], { tramo: desc, recta_hasta: `${r.pct} %`, motivo: r.fallo, se_usa: 'movimiento articular planificado' });
     return moveJ(qF, f, opts, desc);
   }
-  await ejecutar(r.ruta, f, 1.5 * r.largo / (0.5 * D.vel * f)); // 0,5 m/s de TCP al 100 %
+  await ejecutar(r.ruta, f, tMinCart(r.largo, f, opts.perfil), opts.perfil);
 }
 // Transporte del plato nivelado: sube, gira alrededor de la base a altura constante y baja, sin inclinar el plato
 function rutaNivelada(q0, p1, yaw1, opts) {
@@ -292,7 +319,7 @@ async function moveNivelado(p1, yaw1, opts, desc) {
   const r = rutaNivelada(robot.q, p1, yaw1, opts);
   if (!r.ruta) throw new FalloDemo(`No puedo llevar el plato nivelado hasta ${desc}: ${r.fallo} (llega al ${r.pct} %).`);
   publicar('/movimiento/transporte [PROPUESTA]', ['accion'], { destino: desc, restriccion: 'plato nivelado', largo_mm: mm(r.largo) });
-  const f = factorPersona(p1); await ejecutar(r.ruta, f, 1.5 * r.largo / (0.5 * D.vel * f));
+  const f = factorPersona(p1); await ejecutar(r.ruta, f, tMinCart(r.largo, f, opts.perfil), opts.perfil);
 }
 // Servo para seguir la bandeja: cada paso limita la velocidad de cada articulación y comprueba choques (parada de protección)
 function servo(qObj, dt, ctx, desc) {

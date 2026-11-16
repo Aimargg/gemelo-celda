@@ -133,13 +133,13 @@ test('corrección 3: «IK calibrada no converge» también en rutaCartesiana, en
     const r = await p.evaluate(() => {
       const g = window.__g;
       for (const z of [0.25, 0.1]) for (let x = -0.5; x <= 0.5001; x += 0.025) for (let y = -0.5; y <= 0.5001; y += 0.025) for (let k = 0; k < 12; k++) for (const pitch of [0, 0.5]) {
-        const pw = g.baseAMundo(x, y, z), yaw = g.marco().yawAMundo(k * Math.PI / 6), o = { horiz: true, pitch, w: 0.006 };
+        const pw = g.baseAMundo(x, y, z), yaw = g.marco().yawAMundo(k * Math.PI / 6), o = { horiz: true, pitch, w: 0.006, perfil: 'gemelo' };
         if (!g.ikNoConverge(pw, yaw, o)) continue;
         // una recta cartesiana que acaba en ese punto falla ahí, con su causa y su texto
         const ruta = g.rutaCartesiana(g.robot.q.slice(), [{ p: pw, yaw }, { p: pw, yaw }], o);
         // el plan del plato 1 falla en ese punto al levantarlo (lo que daría cadenaPlato): la comprobación previa lo cuenta
-        const pl = g.CACHE_PLAN.plato1.pl; if (!g.planesAlDia() || !pl) return { sinPlan: true }; pl.cadena = { fallo: { ...ruta, fallo: `al levantarlo de la caja, ${ruta.fallo}`, fase: 'plato', etapa: 1 } };
-        return { causa: ruta.causa, fallo: ruta.fallo, item: g.comprobarPlan().filter(c => c.grave).map(c => c.txt).join(' | ') };
+        const pl = g.CACHE_PLAN.gemelo.plato1.pl; if (!g.planesAlDia() || !pl) return { sinPlan: true }; pl.cadena = { fallo: { ...ruta, fallo: `al levantarlo de la caja, ${ruta.fallo}`, fase: 'plato', etapa: 1 } };
+        return { causa: ruta.causa, fallo: ruta.fallo, item: g.comprobarPlan({ perfil: 'gemelo' }).filter(c => c.grave).map(c => c.txt).join(' | ') };
       }
       return null;
     });
@@ -147,7 +147,7 @@ test('corrección 3: «IK calibrada no converge» también en rutaCartesiana, en
     assert.deepEqual({ causa: r.causa, fallo: r.fallo }, { causa: 'ik_calibrada', fallo: 'IK calibrada no converge' });
     assert.match(r.item, /^Plato 1º: no puedo cogerlo y levantarlo en línea recta: al levantarlo de la caja, IK calibrada no converge/);
     // el panel «La demo no puede empezar» de la demo
-    const d = await p.evaluate(() => window.__g.ensayo({ vel: 0.25, fase: 0, sinRender: true, limite: 60, modo: 'M0', amp: 0 }));
+    const d = await p.evaluate(() => window.__g.ensayo({ vel: 0.25, fase: 0, sinRender: true, limite: 60, modo: 'M0', amp: 0, perfil: 'gemelo' }));
     assert.equal(d.fin, 'previo'); assert.match(d.fallo, /La demo no puede empezar/); assert.match(d.fallo, /IK calibrada no converge/);
     // La fruta: con las calibraciones del curso, las poses verticales de esa comprobación no dan nunca ramas sin converger
     // (búsqueda en rejilla de 5 mm en el informe), así que aquí ninguna rama converge para ninguna pose (se simula) y se
@@ -155,7 +155,7 @@ test('corrección 3: «IK calibrada no converge» también en rutaCartesiana, en
     const f = await p.evaluate(() => {
       const g = window.__g, C = g.CIN, det0 = C.ikDetalle, ik0 = C.ik;
       C.ikDetalle = T => { const d = det0(T); return { ...d, sols: [], descartadas: d.semillas + d.extra }; }; C.ik = T => C.ikDetalle(T).sols;
-      try { return g.comprobarPlan().filter(c => c.grave && c.info.fase === 'fruta').map(c => c.txt); } finally { C.ikDetalle = det0; C.ik = ik0; }
+      try { return g.comprobarPlan({ perfil: 'gemelo' }).filter(c => c.grave && c.info.fase === 'fruta').map(c => c.txt); } finally { C.ikDetalle = det0; C.ik = ik0; }
     });
     assert.ok(f.length >= 1, 'la fruta no se puede coger'); for (const t of f) assert.match(t, /: IK calibrada no converge para cogerla en vertical/);
     comprobar(s.reg);
@@ -169,7 +169,7 @@ test('T1.4-7 e I6 con el 203: planificar A, B, A\' da A = A\'; cambiar de robot 
     // 1) RRT: dos peticiones sobre la escena con el 203 (como en determinismo.test.mjs), en el orden A, B, A
     const rrt = await p.evaluate(() => {
       const g = window.__g, qa = g.qReposo(), escena = g.obstaculos().map(o => ({ ...o }));
-      const peticion = (dq0, r) => { const qb = qa.slice(); qb[0] += dq0; const T = g.CIN.fk(qa.map((v, i) => (v + qb[i]) / 2)); return { qa, qb, ctx: { w: 0.06, carga: null, conBlandos: true, obst: [...escena, { t: 1, x: T[3], y: T[7], z: T[11], r, tag: 'prueba', m: 0.002, R: r }] } }; };
+      const peticion = (dq0, r) => { const qb = qa.slice(); qb[0] += dq0; const T = g.CIN.fk(qa.map((v, i) => (v + qb[i]) / 2)); return { qa, qb, ctx: { w: 0.06, carga: null, conBlandos: true, perfil: 'gemelo', obst: [...escena, { t: 1, x: T[3], y: T[7], z: T[11], r, tag: 'prueba', m: 0.002, R: r }] } }; };
       const P = { A: peticion(1.2, 0.06), B: peticion(-1.0, 0.05) };
       const plan = k => { const r = g.planificar(P[k].qa.slice(), P[k].qb.slice(), { ...P[k].ctx }); return r && { plan: r.plan, ruta: r.ruta.map(q => Array.from(q)) }; };
       return { A: plan('A'), B: plan('B'), A2: plan('A') };
@@ -179,7 +179,7 @@ test('T1.4-7 e I6 con el 203: planificar A, B, A\' da A = A\'; cambiar de robot 
     // 2) Planes de la escena: 203 → nominal → 203. Cada cambio deja los planes sin calcular y recalcula el modelo de colisión
     const firma = () => p.evaluate(() => {
       const g = window.__g, r = v => +(+v).toFixed(9), qs = q => q && Array.from(q, r);
-      return { robot: g.ROB.id, alDia: g.planesAlDia(), pares: g.COL().desactivados, perfil: g.radioA(0.1), planes: Object.fromEntries(['plato1', 'plato2'].map(k => { const pl = g.CACHE_PLAN[k]?.pl; return [k, pl && { yaw: r(pl.yaw), pitch: r(pl.pitch), q: qs(pl.q), qPre: qs(pl.qPre), qL: qs(pl.cadena?.qL), q2: qs(pl.cadena?.pc2?.q), ruta: pl.cadena?.r?.ruta?.map(qs) }]; })) };
+      return { robot: g.ROB.id, alDia: g.planesAlDia(), pares: g.COL().desactivados, perfil: g.radioA(0.1), planes: Object.fromEntries(['plato1', 'plato2'].map(k => { const pl = g.CACHE_PLAN.gemelo[k]?.pl; return [k, pl && { yaw: r(pl.yaw), pitch: r(pl.pitch), q: qs(pl.q), qPre: qs(pl.qPre), qL: qs(pl.cadena?.qL), q2: qs(pl.cadena?.pc2?.q), ruta: pl.cadena?.r?.ruta?.map(qs) }]; })) };
     });
     const calcular = async () => { await p.evaluate(() => window.__g.calcularPlanes()); await esperarPlanes(p); return firma(); };
     const A = await calcular();

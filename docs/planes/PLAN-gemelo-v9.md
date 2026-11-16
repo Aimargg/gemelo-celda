@@ -139,9 +139,9 @@ Estados: pendiente · en curso · entregada · aceptada · correcciones · bloqu
 | T1.3 | 1 | Ficheros de referencia de cinemática generados con el xacro del curso | Claude Code | T0.2, Q4 | bajo | aceptada | cce7601 |
 | T1.4 | 1 | Selector de robot con FK calibrada e IK refinada | Claude Code | T1.1, T1.3 | alto | aceptada | 83afa78, 3554b56 |
 | T1.5 | 1 | `world`↔`base_link` por robot en la conversión y en la exportación | Claude Code | T1.4 | medio | aceptada | dafd643, 3554b56 |
-| T1.6 | 1 | Perfil de movimiento «curso» | Claude Code | T1.2 | medio | pendiente | |
-| T1.7 | 1 | Modelo de sensor de la ELP por modo | Claude Code | T1.1 | bajo | pendiente | |
-| T1.8 | 1 | Flujo «explorar → validar» con los dos perfiles | Claude Code | T1.6 | medio | pendiente | |
+| T1.6 | 1 | Perfil de movimiento «curso» | Claude Code | T1.2 | medio | entregada | 3fe70b7 |
+| T1.7 | 1 | Modelo de sensor de la ELP por modo | Claude Code | T1.1 | bajo | entregada | 9bcf739 |
+| T1.8 | 1 | Flujo «explorar → validar» con los dos perfiles | Claude Code | T1.6 | medio | entregada | b44dff3, 4b80043 |
 | T2.1 | 2 | Origen de cada valor (MEDIDO, FABRICANTE, SUPUESTO) unificado para exportar | Claude Code | F1 | bajo | pendiente | |
 | T2.2 | 2 | YAML `ros__parameters` de poses | Claude Code | T2.1 | medio | pendiente | |
 | T2.3 | 2 | Escena: `CollisionObject` en YAML y `.scene` | Claude Code | T2.1 | medio | pendiente | |
