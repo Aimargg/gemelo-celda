@@ -35,6 +35,7 @@ Duraciones medidas en el contenedor de 2 núcleos (SwiftShader, sin GPU): «ante
 | Fichero | Nivel | Tests | Antes (s) | Ahora (s) | Invariantes y motivo |
 |---|---|---|---|---|---|
 | `carga` | tarea | 3 | 59 | 31 | los dos destinos (D2) y la red cerrada (I2) |
+| `datos` | tarea | 2 + 6 | — | 23 | I7: posiciones.yaml y la tabla de fuentes del panel «Datos» byte a byte (T2.1), red de T2.2–T2.5 |
 | `determinismo` | tarea | 3 | 95 | 50 | I6 con «gemelo» (A, B, A'), sin reintento de semilla (D5), banco de ensayo |
 | `escenas-claude` | tarea | 1 | 48 | 29 | almacén de claude.ai (D2) |
 | `escenas-firestore` | tarea | 2 | 99 | 50 | I2: reglas del simulacro (campos, clave, papelera). «Guardar, editar…» medía 61,7 s antes y 36,2 s ahora |
@@ -56,7 +57,8 @@ Duraciones medidas en el contenedor de 2 núcleos (SwiftShader, sin GPU): «ante
 | `validar` | puerta | 4 | 298 | 213 | barrido de Validar (123,7 s antes), búsqueda (83,6 s antes) y porPerfil al guardar (T1.8) |
 
 «Tests» cuenta los `test()` de cada fichero tal como los ejecuta node:test: `escenas-v8` crea uno por escena en un bucle y
-`carga` tiene una suite (`describe`) con dos tests que comparten la página de su `before`.
+`carga` tiene una suite (`describe`) con dos tests que comparten la página de su `before`; `datos`, un test con 6 subtests
+(el YAML y la tabla de cada caso) sobre la misma página.
 
 ### Invariantes en el nivel de tarea (T2.0-C4)
 
@@ -68,7 +70,7 @@ Duraciones medidas en el contenedor de 2 núcleos (SwiftShader, sin GPU): «ante
 | I4 nada a ROS | sin test todavía (DT8, T3.1) | — |
 | I5 un solo HTML | `unit/i5` | — |
 | I6 determinismo | `determinismo` (A, B, A' «gemelo»), `robot` (con el 203), `perfil` (con «curso») | `determinismo-demo`, `matriz-curso` (órdenes inversos) |
-| I7 exportación | `exportar` (T1.5-1 con 203–206, T1.5-2 ida y vuelta), `unit/marcos` | `cambio-robot` (prefijo en el YAML) |
+| I7 exportación | `exportar` (T1.5-1 con 203–206, T1.5-2 ida y vuelta), `datos` (YAML y tabla byte a byte), `unit/marcos` | `cambio-robot` (prefijo en el YAML) |
 | I8 matriz | `matriz` (8 casos en orden directo) | — |
 
 ## Cierre del navegador (T2.0)
@@ -85,7 +87,7 @@ cambia: cada test cierra en su `finally`, después de sus comprobaciones. Con el
 - `unit/`: `node:test` sobre el código puro de `src/` (cinemática, layout, semilla, perfiles, sensor, I5, niveles).
 - `e2e/`: Playwright + Chromium con SwiftShader sobre los dos destinos; `permitidos.json`, avisos de consola permitidos.
 - `fixtures/`: referencias generadas por el gemelo (`generar.mjs`, `npm run caracterizar`): matrices, escenas v8, cinemática
-  del curso.
+  del curso y `yaml/` (panel «Datos», T2.1).
 - `mocks/`: simulacros de Firestore (con las reglas) y del almacén de claude.ai. No se tocan.
 - `medidas/`: línea base y repetibilidad (`npm run medir`).
 - `navegador.mjs` (navegador y red cerrada), `servidor.mjs` (servidor local), `medir.mjs` (procedimientos compartidos por

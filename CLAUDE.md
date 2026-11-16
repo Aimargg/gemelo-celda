@@ -34,7 +34,8 @@ y no es fuente del repo del proyecto de Robótica (invariante I9).
   búsqueda es heurística (`#g=`, `grupo ==`, rutas `grupos/…`); la exacta solo se hace en el equipo del usuario.
 - `npm run caracterizar`: regenera solo `tests/fixtures/matriz-base.json` desde el gemelo actual, y solo cuando la tarea
   lo pida (p. ej. T1.2), con el diff explicado en el informe. `npm run caracterizar -- --curso` hace lo mismo con
-  `tests/fixtures/matriz-curso.json` (los 8 casos con el perfil «curso»).
+  `tests/fixtures/matriz-curso.json` (los 8 casos con el perfil «curso»); `-- --yaml`, con `tests/fixtures/yaml/`
+  (posiciones.yaml y la tabla de fuentes del panel «Datos» con nominal, 203 y prefijo, T2.1).
 - `escenas-v8/` no se regenera: su `codigo` es fijo (I1). `npm run caracterizar -- --escenas` recalcula solo `esperado`
   (nunca el `codigo`) y exige explicar el diff.
 - `npm run medir`: regenera la línea base (`docs/estado/linea-base-v8.md`). `npm run medir -- <fichero>` escribe la medida
