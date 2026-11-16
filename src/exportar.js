@@ -434,6 +434,70 @@ const EXPORTAR = (() => {
   // Todos los ficheros de ROS de la disposición, en orden fijo: los de T2.2 + T2.4, los de la escena (T2.3) y los de las cámaras (T2.5)
   const todos = (m, O) => [...ficherosRos(m, O), ...ficherosEscena(m, O), ...ficherosCamaras(m, O)];
 
-  return { r3, rad3, huella, cuaternion, posiciones, parametros, ficherosRos, ficherosEscena, ficherosCamaras, todos };
+  // ---------- Paquete .tar (T2.6, decisión 2 de su brief): los ficheros tal cual, bajo una carpeta raíz ----------
+  // Formato ustar (POSIX.1-1988) sin comprimir y determinista: la misma lista da los mismos bytes. Por entrada, una cabecera
+  // de 512 bytes (name 0–99, mode 100, uid 108, gid 116, size 124, mtime 136, chksum 148, typeflag 156, magic «ustar\0» 257,
+  // version «00» 263; uname 265, gname 297, devmajor 329 y devminor 337, vacíos), los datos y ceros hasta el bloque de 512.
+  // mtime = 0, uid = gid = 0, 0644 (0755 los .sh y las carpetas), una entrada de carpeta («<ruta>/», typeflag 5) antes del
+  // primer fichero que la usa y dos bloques de ceros al final. Los números, en octal con ceros a la izquierda y NUL; la suma
+  // de control, de los 512 bytes con su campo en espacios, en 6 cifras, NUL y espacio. El texto va en UTF-8 (sin TextEncoder:
+  // el módulo se prueba en un contexto vm vacío). Una ruta que no cabe en name (100 bytes) se rechaza: no se usa prefix.
+  const BLOQUE = 512, NAME = 100;
+  function utf8(texto) {
+    const out = [];
+    for (const ch of texto) {
+      let c = ch.codePointAt(0); if (c >= 0xd800 && c <= 0xdfff) c = 0xfffd; // una suplente suelta sale como U+FFFD, como en un Blob
+      if (c < 0x80) out.push(c);
+      else if (c < 0x800) out.push(0xc0 | c >> 6, 0x80 | c & 63);
+      else if (c < 0x10000) out.push(0xe0 | c >> 12, 0x80 | c >> 6 & 63, 0x80 | c & 63);
+      else out.push(0xf0 | c >> 18, 0x80 | c >> 12 & 63, 0x80 | c >> 6 & 63, 0x80 | c & 63);
+    }
+    return out;
+  }
+  // Un número en octal para un campo de `ancho` bytes: ancho − 1 cifras y el NUL que ya tiene la cabecera
+  const octal = (v, ancho, campo) => { const s = v.toString(8); if (s.length > ancho - 1) throw new Error(`tar: ${v} no cabe en el campo ${campo} (${ancho - 1} cifras octales)`); return s.padStart(ancho - 1, '0'); };
+  // Una ruta relativa con «/» entre partes: ni vacía, ni absoluta, ni con «.», «..», partes vacías, «\» o caracteres de control
+  function rutaTar(r, que) {
+    if (typeof r !== 'string' || !r) throw new Error(`tar: ${que} vacío o que no es texto`);
+    for (const p of r.split('/')) if (!p || p === '.' || p === '..' || /[\u0000-\u001f\u007f\\]/.test(p)) throw new Error(`tar: ${que} «${r}» no es una ruta relativa válida (sin «/» al principio ni al final, «.», «..», «\\» ni caracteres de control)`);
+    return r;
+  }
+  function cabeceraTar(nombre, tam, modo, tipo) {
+    const h = new Uint8Array(BLOQUE), n = utf8(nombre);
+    if (n.length > NAME) throw new Error(`tar: la ruta «${nombre}» ocupa ${n.length} bytes y el campo name de ustar admite ${NAME}`);
+    const pon = (off, s) => { for (let i = 0; i < s.length; i++) h[off + i] = typeof s === 'string' ? s.charCodeAt(i) : s[i]; };
+    pon(0, n); pon(100, octal(modo, 8, 'mode')); pon(108, octal(0, 8, 'uid')); pon(116, octal(0, 8, 'gid'));
+    pon(124, octal(tam, 12, 'size')); pon(136, octal(0, 12, 'mtime')); pon(148, '        '); pon(156, tipo);
+    pon(257, 'ustar'); pon(263, '00'); // devmajor y devminor, en ceros como los deja GNU tar: solo cuentan en dispositivos
+    let suma = 0; for (const b of h) suma += b;
+    pon(148, octal(suma, 7, 'chksum')); h[154] = 0; h[155] = 0x20;
+    return h;
+  }
+  // ficheros: [{ nombre, texto }] (los de todos(), en su orden); raiz: la carpeta que los contiene en el .tar. Devuelve los
+  // bytes (Uint8Array).
+  function tar(ficheros, raiz) {
+    const partes = [], vistos = new Set(), carpetas = new Set(), r = rutaTar(raiz, 'la carpeta raíz');
+    const entrada = (ruta, datos, modo, tipo) => {
+      partes.push(cabeceraTar(ruta, datos.length, modo, tipo));
+      if (datos.length) { partes.push(Uint8Array.from(datos)); if (datos.length % BLOQUE) partes.push(new Uint8Array(BLOQUE - datos.length % BLOQUE)); }
+    };
+    const carpeta = c => { if (carpetas.has(c)) return; const i = c.lastIndexOf('/'); if (i > 0) carpeta(c.slice(0, i)); carpetas.add(c); entrada(`${c}/`, [], 0o755, '5'); };
+    carpeta(r);
+    for (const f of ficheros) {
+      const ruta = `${r}/${rutaTar(f && f.nombre, 'el nombre del fichero')}`;
+      if (typeof f.texto !== 'string') throw new Error(`tar: el texto de «${f.nombre}» no es texto`);
+      if (vistos.has(ruta)) throw new Error(`tar: «${f.nombre}» está dos veces`);
+      if (carpetas.has(ruta)) throw new Error(`tar: «${ruta}» es un fichero y una carpeta`);
+      vistos.add(ruta); carpeta(ruta.slice(0, ruta.lastIndexOf('/')));
+      for (const c of carpetas) if (vistos.has(c)) throw new Error(`tar: «${c}» es un fichero y una carpeta`);
+      entrada(ruta, utf8(f.texto), /\.sh$/.test(ruta) ? 0o755 : 0o644, '0');
+    }
+    partes.push(new Uint8Array(2 * BLOQUE));
+    const out = new Uint8Array(partes.reduce((s, p) => s + p.length, 0)); let o = 0;
+    for (const p of partes) { out.set(p, o); o += p.length; }
+    return out;
+  }
+
+  return { r3, rad3, huella, cuaternion, posiciones, parametros, ficherosRos, ficherosEscena, ficherosCamaras, todos, tar };
 })();
 if (typeof module !== 'undefined') module.exports = EXPORTAR;

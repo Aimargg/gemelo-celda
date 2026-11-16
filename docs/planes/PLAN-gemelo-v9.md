@@ -149,7 +149,7 @@ Estados: pendiente · en curso · entregada · aceptada · correcciones · bloqu
 | T2.3 | 2 | Escena: `CollisionObject` en YAML y `.scene` | Claude Code | T2.1 | medio | aceptada | 8178f3c, 0ce94fe, 8a65d85, 6d5524b |
 | T2.4 | 2 | TF estáticas (YAML por TF y comandos) | Claude Code | T2.1 | medio | aceptada | e9922e7, 0805778, 10d0d8a, 90637a6 |
 | T2.5 | 2 | `camera_info` nominal y parámetros de `usb_cam` por cámara | Claude Code | T2.1, T1.7 | medio | aceptada | 8443ad3, 0ce94fe, 8a65d85, 6d5524b |
-| T2.6 | 2 | Panel «Exportar a ROS» y guía de validación | Claude Code | T2.2–T2.5 | bajo | en curso | |
+| T2.6 | 2 | Panel «Exportar a ROS» y guía de validación | Claude Code | T2.2–T2.5 | bajo | entregada | 91c7b45, 69f8f91, 79e0a1c |
 | U4 | 2 | Validar los ficheros exportados en `sim_<id>` | Usuario | T2.6 | — | pendiente | — |
 | T3.0 | 3 | Pico: roslib desde jsDelivr y permiso de red local en Pages y en el artefacto | Claude Code + usuario | F2 | medio | pendiente | |
 | T3.1 | 3 | Adaptador `rosEspejo` de solo lectura con estados y reconexión | Claude Code | T3.0 | alto | pendiente | |

@@ -213,6 +213,15 @@ textarea{width:100%;min-height:120px;border:1px solid var(--line);border-radius:
 .props li{border:1px solid var(--line);border-radius:6px;padding:8px;display:flex;justify-content:space-between;gap:8px;align-items:center}
 .props li div{min-width:0}
 .props li small{display:block;color:var(--muted);font-size:11.5px}
+.rosLista li{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:3px 8px;align-items:center;padding:6px 8px}
+.rosLista li > small{grid-column:1 / -1}
+.rosLista li[aria-current="true"]{border-color:var(--accent);background:var(--accent-soft)}
+.rosLista code,.rosGrupo h3 code{font:500 12px/1.35 var(--f-mono);overflow-wrap:anywhere}
+.rosGrupo{display:flex;flex-direction:column;gap:6px}
+.rosGrupo h3 code{color:var(--muted)}
+#rosLista{display:flex;flex-direction:column;gap:12px}
+.rosLista .btns{flex:none;gap:4px;flex-wrap:nowrap}
+.rosLista .btn{padding:5px 8px;font-size:12px}
 .foot{font-size:11.5px;color:var(--muted)}
 .foot a{color:var(--accent)}
 @media (max-width:900px){
@@ -421,6 +430,16 @@ textarea{width:100%;min-height:120px;border:1px solid var(--line);border-radius:
           <p class="hint" id="prefijoTxt">Con <code>sim_&lt;id&gt;</code> (un robot) los frames van sin prefijo: <code>base_link</code>, <code>tool0</code>… Solo los URDF dobles del curso (<code>doble_ur3e_&lt;a&gt;_&lt;b&gt;</code>) añaden <code>&lt;id&gt;_</code> (<code>203_base_link</code>…), según la expansión de su xacro. SIN VALIDAR en ROS: se comprueba con <code>ros2 run tf2_tools view_frames</code> en <code>sim_&lt;id&gt;</code>. Más en <a id="prefijoDoc" href="https://github.com/Aimargg/gemelo-celda/blob/main/docs/estado/frames.md" target="_blank" rel="noopener">docs/estado/frames.md</a>.</p>
           <textarea id="yaml" readonly spellcheck="false"></textarea>
           <div class="btns"><button class="btn" id="btnCopy">Copiar</button><button class="btn" id="btnDlYaml">Descargar</button><button class="btn" id="btnPng">Captura PNG</button></div>
+        </div>
+        <div class="sec" id="rosSec">
+          <h2>Exportar a ROS</h2>
+          <p class="hint" id="rosQue">Ficheros de datos para ROS 2 Jazzy, BORRADOR generado por IA, en el <code>base_link</code> del robot y con el prefijo elegidos arriba. Solo texto y descargas: el gemelo no envía nada a ROS. Cómo comprobarlos en <code>sim_&lt;id&gt;</code>: <a id="rosGuia" href="https://github.com/Aimargg/gemelo-celda/blob/main/docs/validar-en-ros.md" target="_blank" rel="noopener">docs/validar-en-ros.md</a>.</p>
+          <dl class="kv"><dt>Huella de la disposición</dt><dd id="rosHuella">—</dd><dt>Frame raíz</dt><dd id="rosFrame">—</dd><dt>Ficheros</dt><dd id="rosCuenta">—</dd></dl>
+          <p class="hint" id="rosEstado" role="status"></p>
+          <div class="btns"><button class="btn pri" id="btnRosTar">Descargar todo (.tar)</button></div>
+          <p class="hint" id="rosTarTxt"></p>
+          <div class="field2" id="rosVerCaja" hidden><label for="rosVer" id="rosVerNombre"></label><textarea id="rosVer" readonly spellcheck="false"></textarea></div>
+          <div id="rosLista"></div>
         </div>
         <div class="sec">
           <h2>Importar una distribución</h2>
@@ -1562,7 +1581,71 @@ const EXPORTAR = (() => {
   // Todos los ficheros de ROS de la disposición, en orden fijo: los de T2.2 + T2.4, los de la escena (T2.3) y los de las cámaras (T2.5)
   const todos = (m, O) => [...ficherosRos(m, O), ...ficherosEscena(m, O), ...ficherosCamaras(m, O)];
 
-  return { r3, rad3, huella, cuaternion, posiciones, parametros, ficherosRos, ficherosEscena, ficherosCamaras, todos };
+  // ---------- Paquete .tar (T2.6, decisión 2 de su brief): los ficheros tal cual, bajo una carpeta raíz ----------
+  // Formato ustar (POSIX.1-1988) sin comprimir y determinista: la misma lista da los mismos bytes. Por entrada, una cabecera
+  // de 512 bytes (name 0–99, mode 100, uid 108, gid 116, size 124, mtime 136, chksum 148, typeflag 156, magic «ustar\0» 257,
+  // version «00» 263; uname 265, gname 297, devmajor 329 y devminor 337, vacíos), los datos y ceros hasta el bloque de 512.
+  // mtime = 0, uid = gid = 0, 0644 (0755 los .sh y las carpetas), una entrada de carpeta («<ruta>/», typeflag 5) antes del
+  // primer fichero que la usa y dos bloques de ceros al final. Los números, en octal con ceros a la izquierda y NUL; la suma
+  // de control, de los 512 bytes con su campo en espacios, en 6 cifras, NUL y espacio. El texto va en UTF-8 (sin TextEncoder:
+  // el módulo se prueba en un contexto vm vacío). Una ruta que no cabe en name (100 bytes) se rechaza: no se usa prefix.
+  const BLOQUE = 512, NAME = 100;
+  function utf8(texto) {
+    const out = [];
+    for (const ch of texto) {
+      let c = ch.codePointAt(0); if (c >= 0xd800 && c <= 0xdfff) c = 0xfffd; // una suplente suelta sale como U+FFFD, como en un Blob
+      if (c < 0x80) out.push(c);
+      else if (c < 0x800) out.push(0xc0 | c >> 6, 0x80 | c & 63);
+      else if (c < 0x10000) out.push(0xe0 | c >> 12, 0x80 | c >> 6 & 63, 0x80 | c & 63);
+      else out.push(0xf0 | c >> 18, 0x80 | c >> 12 & 63, 0x80 | c >> 6 & 63, 0x80 | c & 63);
+    }
+    return out;
+  }
+  // Un número en octal para un campo de `ancho` bytes: ancho − 1 cifras y el NUL que ya tiene la cabecera
+  const octal = (v, ancho, campo) => { const s = v.toString(8); if (s.length > ancho - 1) throw new Error(`tar: ${v} no cabe en el campo ${campo} (${ancho - 1} cifras octales)`); return s.padStart(ancho - 1, '0'); };
+  // Una ruta relativa con «/» entre partes: ni vacía, ni absoluta, ni con «.», «..», partes vacías, «\» o caracteres de control
+  function rutaTar(r, que) {
+    if (typeof r !== 'string' || !r) throw new Error(`tar: ${que} vacío o que no es texto`);
+    for (const p of r.split('/')) if (!p || p === '.' || p === '..' || /[\u0000-\u001f\u007f\\]/.test(p)) throw new Error(`tar: ${que} «${r}» no es una ruta relativa válida (sin «/» al principio ni al final, «.», «..», «\\» ni caracteres de control)`);
+    return r;
+  }
+  function cabeceraTar(nombre, tam, modo, tipo) {
+    const h = new Uint8Array(BLOQUE), n = utf8(nombre);
+    if (n.length > NAME) throw new Error(`tar: la ruta «${nombre}» ocupa ${n.length} bytes y el campo name de ustar admite ${NAME}`);
+    const pon = (off, s) => { for (let i = 0; i < s.length; i++) h[off + i] = typeof s === 'string' ? s.charCodeAt(i) : s[i]; };
+    pon(0, n); pon(100, octal(modo, 8, 'mode')); pon(108, octal(0, 8, 'uid')); pon(116, octal(0, 8, 'gid'));
+    pon(124, octal(tam, 12, 'size')); pon(136, octal(0, 12, 'mtime')); pon(148, '        '); pon(156, tipo);
+    pon(257, 'ustar'); pon(263, '00'); // devmajor y devminor, en ceros como los deja GNU tar: solo cuentan en dispositivos
+    let suma = 0; for (const b of h) suma += b;
+    pon(148, octal(suma, 7, 'chksum')); h[154] = 0; h[155] = 0x20;
+    return h;
+  }
+  // ficheros: [{ nombre, texto }] (los de todos(), en su orden); raiz: la carpeta que los contiene en el .tar. Devuelve los
+  // bytes (Uint8Array).
+  function tar(ficheros, raiz) {
+    const partes = [], vistos = new Set(), carpetas = new Set(), r = rutaTar(raiz, 'la carpeta raíz');
+    const entrada = (ruta, datos, modo, tipo) => {
+      partes.push(cabeceraTar(ruta, datos.length, modo, tipo));
+      if (datos.length) { partes.push(Uint8Array.from(datos)); if (datos.length % BLOQUE) partes.push(new Uint8Array(BLOQUE - datos.length % BLOQUE)); }
+    };
+    const carpeta = c => { if (carpetas.has(c)) return; const i = c.lastIndexOf('/'); if (i > 0) carpeta(c.slice(0, i)); carpetas.add(c); entrada(`${c}/`, [], 0o755, '5'); };
+    carpeta(r);
+    for (const f of ficheros) {
+      const ruta = `${r}/${rutaTar(f && f.nombre, 'el nombre del fichero')}`;
+      if (typeof f.texto !== 'string') throw new Error(`tar: el texto de «${f.nombre}» no es texto`);
+      if (vistos.has(ruta)) throw new Error(`tar: «${f.nombre}» está dos veces`);
+      if (carpetas.has(ruta)) throw new Error(`tar: «${ruta}» es un fichero y una carpeta`);
+      vistos.add(ruta); carpeta(ruta.slice(0, ruta.lastIndexOf('/')));
+      for (const c of carpetas) if (vistos.has(c)) throw new Error(`tar: «${c}» es un fichero y una carpeta`);
+      entrada(ruta, utf8(f.texto), /\.sh$/.test(ruta) ? 0o755 : 0o644, '0');
+    }
+    partes.push(new Uint8Array(2 * BLOQUE));
+    const out = new Uint8Array(partes.reduce((s, p) => s + p.length, 0)); let o = 0;
+    for (const p of partes) { out.set(p, o); o += p.length; }
+    return out;
+  }
+
+  return { r3, rad3, huella, cuaternion, posiciones, parametros, ficherosRos, ficherosEscena, ficherosCamaras, todos, tar };
 })();
 // GENERADO por tools/fixtures/fk_desde_xacro.py: no editar a mano (ver tools/fixtures/LEEME.md).
 // Calibración cinemática de los UR3e del laboratorio y su montaje respecto a «world».
@@ -2918,10 +3001,13 @@ function recalcular() { actualizarPlatos(); evaluar(); pintarCalc(); vigilarEsce
 // Mover algo con la demo a medias la deja incoherente: se reinicia antes del primer movimiento
 function prepararEdicion() { if (D.activo && !D.playing) { D.activo = false; reiniciarDemo(); toast('Demo reiniciada para mover objetos'); } }
 const CALC = { activo: false };
+// Estado de la sección «Exportar a ROS» del panel «Datos» (T2.6): el modelo y los ficheros que muestra, y si sus descargas
+// están desactivadas por un cálculo o una búsqueda (vigilarRos, desde pintarCalc)
+const ROSX = { m: null, ficheros: [], lista: null, huella: '', giro: null, ver: null, ocupado: null };
 // La barra dice si las trayectorias de explorar («gemelo») están al día; debajo, la de validar (pintarVal, T1.8).
 // El texto de progreso se conserva hasta que acaba el cálculo (el repintado periódico no lo borra).
 function pintarCalc(txt) {
-  if (txt) CALC.txt = txt; pintarVal();
+  if (txt) CALC.txt = txt; pintarVal(); vigilarRos();
   const el = $('#calcBar'); const ver = !!robot && (VAL.activo || !D.activo) && (CALC.activo || !planesAlDia(PERFIL_EXPLORA)); el.hidden = !ver; if (!ver) return;
   $('#calcTxt').textContent = CALC.activo ? (CALC.txt || 'Calculando…') : 'Hay cambios sin calcular'; $('#calcSpin').hidden = !CALC.activo; $('#btnCalc').disabled = CALC.activo;
 }
@@ -3995,13 +4081,106 @@ function escenaExportacion(B, mc, bt, yawBandeja, camaras) {
   for (const k of camaras) objetos.push({ id: `camara_${k.clave}`, que: 'camara', pose: { ...k.pos, rpy: k.rpy }, formas: deTag(`camara:${k.clave}`).map(o => o.t === 1 ? { tipo: 'esfera', radio: o.r, centro: P(o) } : { tipo: 'capsula', radio: o.r, a: { x: o.ax, y: o.ay, z: o.az }, b: { x: o.cx, y: o.cy, z: o.cz } }) });
   return { objetos };
 }
-function generarYaml() { return EXPORTAR.posiciones(modeloExportacion(), ORIGEN, new Date().toISOString().slice(0, 10)); }
+function generarYaml(m = modeloExportacion()) { return EXPORTAR.posiciones(m, ORIGEN, new Date().toISOString().slice(0, 10)); }
 // Ficheros de ROS de la disposición actual: [{ nombre, texto }] en orden fijo, deterministas (sin fecha): los de T2.2 + T2.4,
-// los de la escena (T2.3) y los de las cámaras (T2.5). Los descargará el panel de T2.6; hoy los leen los tests con
-// window.__g.ficherosRos()
-function ficherosRos() { return EXPORTAR.todos(modeloExportacion(), ORIGEN); }
-function pintarDatos() { $('#yaml').value = generarYaml(); pintarFuentes(); }
+// los de la escena (T2.3) y los de las cámaras (T2.5). Los muestra y descarga la sección «Exportar a ROS» (T2.6) y los leen
+// los tests con window.__g.ficherosRos()
+function ficherosRos(m = modeloExportacion()) { return EXPORTAR.todos(m, ORIGEN); }
+// posiciones.yaml, la tabla de fuentes y la sección «Exportar a ROS», con un mismo modelo de exportación
+function pintarDatos() { const m = modeloExportacion(); $('#yaml').value = generarYaml(m); pintarFuentes(); pintarRos(m); }
 $('#btnCopy').addEventListener('click', async () => { const t = $('#yaml'); try { await navigator.clipboard.writeText(t.value); toast('Copiado'); } catch (e) { t.focus(); t.select(); toast('Selecciona y copia con Ctrl+C'); } });
+
+// ======================= Exportar a ROS (T2.6) =======================
+// Sección «Exportar a ROS» del panel «Datos» (decisiones 1, 4 y 5 del brief de T2.6): los ficheros de ficherosRos() de la
+// disposición abierta, en su orden y agrupados por carpeta (cada tramo seguido de ficheros de una misma carpeta, bajo su
+// nombre), cada uno con Ver, Copiar y Descargar, y «Descargar todo (.tar)», con todos bajo celda_ros/ (EXPORTAR.tar). Solo
+// genera texto y descargas: no habla con ROS (I4). Se repinta con pintarDatos: al abrir el panel, al cambiar el prefijo o el
+// robot (aplicarLayout) y al terminar un cálculo (evaluar). Nunca calcula planes. Lo que se ve, se copia y se descarga sale
+// de la misma llamada a modeloExportacion() que da el giro de las cajas (DT38). Mientras se calcula (CALC.activo, también al
+// validar) o se busca una disposición (D.buscando: L es un candidato), «Descargar» y «Descargar todo» están desactivados;
+// pintarCalc lo vigila (vigilarRos) y, al terminar, la sección se repinta con la disposición de ahora y los reactiva.
+const RAIZ_TAR = 'celda_ros';
+// Para qué sirve cada fichero, en una línea (las TF dicen su arista: el padre y el hijo de su propio texto)
+const aristaTF = t => { const p = /^ {4}frame_id: '([^']*)'/m.exec(t), h = /^ {4}child_frame_id: '([^']*)'/m.exec(t); return p && h ? `${p[1]} → ${h[1]}` : null; };
+const QUE_ROS = [
+  [/^parametros_celda\.yaml$/, () => 'Poses y medidas de la celda, para --params-file'],
+  [/^tf\/(.+)\.yaml$/, (m, t) => `TF estática ${aristaTF(t) || `hacia ${m[1]}`}`],
+  [/^tf_estaticas\.sh$/, () => 'Todas las TF con static_transform_publisher (bash)'],
+  [/^escena_colision\.yaml$/, () => 'CollisionObject para un nodo del grupo (no se carga en U4)'],
+  [/^celda\.scene$/, () => 'Escena de MoveIt en world: load_geometry_from_file o RViz'],
+  [/^celda\.scene\.txt$/, () => 'Explica celda.scene: su world, cómo cargarla y el origen'],
+  [/^camera_info\/(.+)\.yaml$/, () => 'Intrínseca nominal, para ~/.ros/camera_info/'],
+  [/^usb_cam\/(.+)\.yaml$/, () => 'Parámetros de usb_cam: frame_id, camera_info_url y exposición'],
+];
+function queEsRos(f) { for (const [re, t] of QUE_ROS) { const m = re.exec(f.nombre); if (m) return t(m, f.texto); } return 'Fichero de ROS de la disposición'; }
+const nombreDescarga = n => n.replace(/\//g, '_'); // un navegador no descarga carpetas: tf/mesa.yaml → tf_mesa.yaml (el .tar las conserva)
+const rosOcupado = () => CALC.activo ? 'calculo' : D.buscando ? 'busqueda' : null;
+// Giro de las cajas de la escena (DT38), del modelo que da los ficheros: 'plan', 'base', 'calculo' o 'sin-cajas'
+function giroCajas(m) { const g = new Set(m.escena.objetos.filter(o => o.que === 'caja').map(o => o.giro || 'calculo')); return !g.size ? 'sin-cajas' : g.has('calculo') ? 'calculo' : g.has('base') ? 'base' : 'plan'; }
+const TXT_GIRO = {
+  plan: ['ok', 'giro del plan', 'Las cajas de los platos llevan el giro del plan: el del agarre que eligió el gemelo al calcular las trayectorias.'],
+  base: ['warn', 'giro provisional', 'Las cajas llevan el giro provisional, hacia la base del robot, porque las trayectorias no están al día. «Calcular trayectorias» pone el del plan.'],
+  calculo: ['warn', 'giro a medias', 'Las cajas llevan el giro de un cálculo a medias, que ningún plan usa. «Calcular trayectorias» pone el del plan.'],
+  'sin-cajas': ['ok', 'sin cajas', 'Los platos van sobre la mesa: la escena no lleva cajas.'],
+};
+const TXT_OCUPADO = {
+  calculo: ['calculando', 'Hay un cálculo de trayectorias en marcha: «Descargar» y «Descargar todo» se activan cuando termine, porque las cajas llevarían un giro que ningún plan usa. «Ver» y «Copiar» enseñan lo que hay ahora.'],
+  busqueda: ['buscando', 'Hay una búsqueda de una disposición en marcha: «Descargar» y «Descargar todo» se activan cuando termine, porque los ficheros serían los de una disposición candidata. «Ver» y «Copiar» enseñan lo que hay ahora.'],
+};
+function pintarRos(m = modeloExportacion()) {
+  const F = ficherosRos(m), lista = listaRos(F); // la lista solo se vuelve a escribir si cambia (nombres o líneas de las TF)
+  Object.assign(ROSX, { m, ficheros: F, huella: EXPORTAR.huella(m.layoutJson), giro: giroCajas(m) });
+  $('#rosHuella').textContent = ROSX.huella; $('#rosFrame').textContent = m.robot.frame; $('#rosCuenta').textContent = String(F.length);
+  $('#rosTarTxt').innerHTML = `Se descarga como <code>${RAIZ_TAR}_${ROSX.huella}.tar</code>: los ${F.length} ficheros bajo <code>${RAIZ_TAR}/</code>, con sus carpetas. «Descargar» de un fichero suelto cambia «/» por «_» en su nombre (<code>tf/mesa.yaml</code> → <code>tf_mesa.yaml</code>).`;
+  if (lista !== ROSX.lista) { ROSX.lista = lista; $('#rosLista').innerHTML = lista; }
+  verRos(ROSX.ver);
+  pintarRosEstado(rosOcupado());
+}
+// La lista: un grupo por tramo seguido de ficheros de una misma carpeta, en el orden de ficherosRos()
+function listaRos(F) {
+  const grupos = [];
+  for (const f of F) { const i = f.nombre.lastIndexOf('/'), c = f.nombre.slice(0, i + 1), g = grupos[grupos.length - 1]; if (g && g.c === c) g.f.push(f); else grupos.push({ c, f: [f] }); }
+  const fila = (f, c) => { const n = esc(f.nombre); return `<li data-nombre="${n}"><code>${esc(f.nombre.slice(c.length)).replace(/_/g, '_<wbr>')}</code><div class="btns"><button class="btn" data-ros="ver" aria-label="Ver ${n}">Ver</button><button class="btn" data-ros="copiar" aria-label="Copiar ${n}">Copiar</button><button class="btn" data-ros="dl" aria-label="Descargar ${n}" title="Se descarga como ${esc(nombreDescarga(f.nombre))}">Descargar</button></div><small>${esc(queEsRos(f))}</small></li>`; };
+  return grupos.map(g => `<div class="rosGrupo" data-carpeta="${esc(g.c)}"><h3><code>${RAIZ_TAR}/${esc(g.c)}</code></h3><ul class="props rosLista">${g.f.map(f => fila(f, g.c)).join('')}</ul></div>`).join('');
+}
+// La línea del estado (el giro de las cajas o lo que está en marcha) y las descargas, activas o no
+function pintarRosEstado(oc) {
+  ROSX.ocupado = oc; const el = $('#rosEstado'), [cls, tag, txt] = oc ? ['warn', ...TXT_OCUPADO[oc]] : TXT_GIRO[ROSX.giro];
+  el.dataset.giro = ROSX.giro; el.dataset.ocupado = oc || ''; el.innerHTML = `<span class="pill ${cls}">${tag}</span> ${txt}`;
+  $$('#btnRosTar, #rosLista [data-ros="dl"]').forEach(b => { b.disabled = !!oc; });
+}
+// Desde pintarCalc (al empezar, durante y al terminar un cálculo, y cada 18 fotogramas): si cambia lo que está en marcha y
+// el panel está a la vista, desactiva las descargas o, al terminar, repinta la sección con la disposición de ahora
+function vigilarRos() {
+  const oc = rosOcupado(); if (oc === ROSX.ocupado || !ROSX.m || $('[data-panel="datos"]').hidden) return;
+  if (oc) pintarRosEstado(oc); else pintarRos();
+}
+// «Ver»: el fichero en el textarea de solo lectura de la sección (nombre null: lo cierra)
+function verRos(nombre, mostrar = false) {
+  const f = nombre ? ROSX.ficheros.find(x => x.nombre === nombre) : null; ROSX.ver = f ? f.nombre : null;
+  $('#rosVerCaja').hidden = !f; $('#rosVer').value = f ? f.texto : ''; $('#rosVerNombre').textContent = f ? `${f.nombre} · solo lectura` : '';
+  $$('#rosLista li').forEach(li => li.setAttribute('aria-current', String(li.dataset.nombre === ROSX.ver)));
+  if (f && mostrar) $('#rosVerCaja').scrollIntoView({ block: 'nearest' });
+  return f;
+}
+// «Copiar»: al portapapeles o, si no hay, el fichero seleccionado en el textarea para copiarlo a mano (como #btnCopy)
+async function copiarRos(nombre) {
+  const f = ROSX.ficheros.find(x => x.nombre === nombre); if (!f) return;
+  try { await navigator.clipboard.writeText(f.texto); toast(`Copiado: ${f.nombre}`); } catch (e) { verRos(nombre, true); const t = $('#rosVer'); t.focus(); t.select(); toast('Selecciona y copia con Ctrl+C'); }
+}
+// Las descargas vuelven a leer la disposición (pintarRos) para bajar justo lo que se ve; nunca durante un cálculo o una búsqueda
+function puedeDescargarRos() { const oc = rosOcupado(); if (oc) { pintarRosEstado(oc); toast(oc === 'calculo' ? 'Espera a que termine el cálculo para descargar' : 'Espera a que termine la búsqueda para descargar'); return false; } pintarRos(); return true; }
+$('#rosLista').addEventListener('click', e => {
+  const b = e.target.closest('button[data-ros]'), li = b && b.closest('li[data-nombre]'); if (!li) return; const n = li.dataset.nombre;
+  if (b.dataset.ros === 'ver') verRos(n, true);
+  else if (b.dataset.ros === 'copiar') copiarRos(n);
+  else if (puedeDescargarRos()) { const f = ROSX.ficheros.find(x => x.nombre === n); if (f) descargar(nombreDescarga(f.nombre), f.texto); else toast('Ese fichero ya no está en la disposición'); }
+});
+$('#btnRosTar').addEventListener('click', () => {
+  if (!puedeDescargarRos()) return; let bytes;
+  try { bytes = EXPORTAR.tar(ROSX.ficheros, RAIZ_TAR); } catch (e) { toast(`No se ha podido crear el .tar: ${e.message}`); return; }
+  descargar(`${RAIZ_TAR}_${ROSX.huella}.tar`, new Blob([bytes], { type: 'application/x-tar' }));
+});
 // ======================= Escenas del grupo =======================
 // Dos almacenes con la misma interfaz:
 //  · 'claude': la página es un artefacto de claude.ai. Cada persona guarda sus escenas en propuestas/<su id> (lista «items»).
