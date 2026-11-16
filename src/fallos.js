@@ -164,25 +164,28 @@ function valida(c) {
   const pe = l.persona; if (Math.abs(pe.x) < MESA.w / 2 + 0.2 && Math.abs(pe.y) < MESA.d / 2 + 0.2) return false; if (l.bandeja.alt < 0.9 || l.bandeja.alt > 1.15) return false;
   c.layout = l; return true;
 }
+// Copia de los planes de cada perfil (CACHE_PLAN[perfil][plato], T1.6) para dejarlos como estaban tras la búsqueda
+function copiaCaches() { return Object.fromEntries(Object.entries(CACHE_PLAN).map(([pf, c]) => [pf, { ...c }])); }
+function restaurarCaches(c0) { for (const pf in CACHE_PLAN) delete CACHE_PLAN[pf]; for (const pf in c0) CACHE_PLAN[pf] = { ...c0[pf] }; }
 function aplicarLayoutRapido() { aplicarPedido(); actualizarZona(); actualizarPlatos(); pintarCaja(); actualizarAruco(); aplicarBandeja(simT); VERSION_ESCENA++; }
 async function buscarAlternativa(info) {
   if (D.buscando || !robot) return; D.buscando = true; const box = $('#dRecom'); const bt = $('#fBuscar'); if (bt) bt.disabled = true;
-  const L0 = JSON.parse(JSON.stringify(L)); const cache0 = { ...CACHE_PLAN }; const cfg = { modo: D.modo, amp: D.amp, vel: D.vel, pedido: L.pedido, fase: D.fase }; const ult = D.ultFallo;
+  const L0 = JSON.parse(JSON.stringify(L)); const cache0 = copiaCaches(); const cfg = { modo: D.modo, amp: D.amp, vel: D.vel, pedido: L.pedido, fase: D.fase }; const ult = D.ultFallo;
   const todos = candidatos(info); const cands = todos.slice(0, 24).concat(todos.slice(24).filter(c => c.ref)); let cancel = false; const t0 = performance.now(); const pasan = []; D.tBusca = { seco: 0, demo: 0, n: 0 };
   const prog = (t) => { box.innerHTML = `<div class="recom busca"><span class="spin"></span><div><b>Buscando…</b> ${t}</div><button class="btn" id="fCancel">Cancelar</button></div>`; const c = $('#fCancel'); if (c) c.onclick = () => { cancel = true; }; };
   try {
     for (let i = 0; i < cands.length && !cancel && pasan.length < 3; i++) {
       prog(`ensayo en seco ${i + 1} de ${cands.length}: ${cands[i].texto}`); await new Promise(r => setTimeout(r, 30));
-      L = JSON.parse(JSON.stringify(cands[i].layout)); aplicarLayoutRapido(); const ts = performance.now(); const chk = comprobarPlan({ parar: true }); D.tBusca.seco += performance.now() - ts; D.tBusca.n++; if (!chk.some(c => c.grave)) pasan.push(cands[i]);
+      L = JSON.parse(JSON.stringify(cands[i].layout)); aplicarLayoutRapido(); const ts = performance.now(); const chk = comprobarPlan({ parar: true, perfil: PERFIL_EXPLORA }); D.tBusca.seco += performance.now() - ts; D.tBusca.n++; if (!chk.some(c => c.grave)) pasan.push(cands[i]);
       if (performance.now() - t0 > 90000) break;
     }
     let mejor = null;
     for (let i = 0; i < pasan.length && !cancel; i++) { // la buena es la que completa la demo simulada con los mismos ajustes
       prog(`demo completa simulada con «${pasan[i].texto}» (${cfg.modo}, balanceo ${fmt(cfg.amp * 100, 1)} cm, ${Math.round(cfg.vel * 100)} %)`); await new Promise(r => setTimeout(r, 30));
       L = JSON.parse(JSON.stringify(pasan[i].layout)); aplicarLayoutRapido(); D.mantenerFallo = true;
-      const td = performance.now(); const r = await ensayo({ ...cfg, sinRender: true }); D.tBusca.demo += performance.now() - td; if (r.fin === 'ok') { mejor = { ...pasan[i], t: r.t_mov, err: r.errores_mm }; break; }
+      const td = performance.now(); const r = await ensayo({ ...cfg, perfil: PERFIL_EXPLORA, sinRender: true }); D.tBusca.demo += performance.now() - td; if (r.fin === 'ok') { mejor = { ...pasan[i], t: r.t_mov, err: r.errores_mm }; break; }
     }
-    L = L0; for (const k in CACHE_PLAN) delete CACHE_PLAN[k]; Object.assign(CACHE_PLAN, cache0); aplicarLayoutRapido(); D.mantenerFallo = true; D.activo = false; reiniciarDemo();
+    L = L0; restaurarCaches(cache0); aplicarLayoutRapido(); D.mantenerFallo = true; D.activo = false; reiniciarDemo();
     if (ult) { pintarPasos(ult.paso, true); estado(ult.tipo === 'abort' ? 'ABORTADO' : ult.tipo === 'previo' ? 'NO INICIADO' : 'PARADO'); }
     if (cancel) box.innerHTML = '<div class="recom">Búsqueda cancelada.</div>';
     else if (mejor) {

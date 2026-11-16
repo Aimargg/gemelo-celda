@@ -11,13 +11,15 @@ for (const caja of [true, false]) for (const modo of ['M0', 'M1']) for (const am
 export const CAMPOS_MATRIZ = ['fin', 'choques', 'roces', 'pausas'];
 export const nombreCaso = c => `${c.caja ? 'caja' : 'mesa'} ${c.modo} balanceo ${c.amp * 100} cm vel ${c.vel * 100} %`;
 
-// Ejecuta los casos en orden en la página dada; devuelve el resultado de ensayo() sin el cfg y con el fallo recortado
+// Ejecuta los casos en orden en la página dada; devuelve el resultado de ensayo() sin el cfg y con el fallo recortado.
+// Perfil de movimiento «gemelo» explícito (T1.6: sin perfil, ensayo() usa el de la escena, y la de partida es «curso»):
+// la caracterización y las medidas no cambian de perfil. Un caso puede pedir otro con su propio campo perfil.
 export async function ensayar(page, casos) {
   const out = [];
   for (const c of casos) {
     const t = Date.now();
     // cfg.fase es la fase de la bandeja al empezar el ensayo: ensayo() empieza con simT = 0 (H3, T1.2)
-    const r = await page.evaluate(c => window.__g.ensayo({ ...c }).then(r => { delete r.cfg; r.fallo = r.fallo.replace(/\s+/g, ' ').slice(0, 200); return r; }), c);
+    const r = await page.evaluate(c => window.__g.ensayo({ perfil: 'gemelo', ...c }).then(r => { delete r.cfg; r.fallo = r.fallo.replace(/\s+/g, ' ').slice(0, 200); return r; }), c);
     out.push({ caso: nombreCaso(c), cfg: c, ...r, ms: Date.now() - t });
   }
   return out;
@@ -41,11 +43,11 @@ export async function codigoDe(page, escena) {
 // demoCompleto: el registro entero del ensayo (t_sim, planes…), para medir la repetibilidad (tests/medidas/repetibilidad.mjs)
 export async function medirEscena(page, codigo, { demoCompleto = false } = {}) {
   const abierta = await page.evaluate(c => { window.__g.abrirCodigo(c); return document.getElementById('escNom').textContent; }, codigo);
-  await page.evaluate(() => window.__g.calcularPlanes());
+  await page.evaluate(() => window.__g.calcularPlanes('gemelo'));
   await esperarPlanes(page);
   const r = await page.evaluate(() => {
-    const g = window.__g; const graves = g.comprobarPlan().filter(c => c.grave).map(c => c.txt);
-    return { layout: JSON.parse(JSON.stringify(g.L())), veredicto: { ok: !graves.length, n: graves.length, graves }, alDia: g.planesAlDia() };
+    const g = window.__g; const graves = g.comprobarPlan({ perfil: 'gemelo' }).filter(c => c.grave).map(c => c.txt);
+    return { layout: JSON.parse(JSON.stringify(g.L())), veredicto: { ok: !graves.length, n: graves.length, graves }, alDia: g.planesAlDia('gemelo') };
   });
   const [d] = await ensayar(page, [{ ...BASE, modo: 'M0', amp: 0.02 }]);
   const { ms, ...todo } = d;

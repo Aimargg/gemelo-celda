@@ -33,7 +33,13 @@ const CAJA_LADO = 0.10;
 const ARUCO = ['1011010100110010', '0000111110011010', '0011001100101101', '1001100101000110', '0101010010011110', '0111100111001101', '1001111000101110', '1100010011110010', '1111111011011010', '1100111101010110', '1111100110010001', '0001000110100111', '0000111010110111', '0010101000001111', '0010010010110001', '0010011000111110'];
 // @@LAYOUT@@
 // @@RNG@@
+// @@PERFIL@@
 // @@CALIBRACION@@
+// Perfil con el que se explora (arrastrar, «Calcular trayectorias», el primer cálculo, la vista de cada objeto): siempre
+// «gemelo» (D6, decisión 2 del brief de T1.6). El de la escena (L.perfil) es el de la demo y el del veredicto principal.
+const PERFIL_EXPLORA = 'gemelo';
+// Un layout de una versión más nueva (solo lectura) puede traer un perfil que esta página no conoce: el de las escenas nuevas
+const perfilEscena = () => PERFIL.NOMBRES.includes(L.perfil) ? L.perfil : LAYOUT.NUEVA.perfil;
 
 function layoutDefecto() {
   return {
@@ -322,7 +328,17 @@ function actualizarPlatos() {
     caja.position.set(L[k].x, L[k].y, MESA.h);
     const b = BASES[L.robot]; caja.rotation.z = Math.atan2(L[k].y - b.y, L[k].x - b.x); caja.updateMatrixWorld(true);
     if (OBJ[k].parent === scene) OBJ[k].position.set(L[k].x, L[k].y, zPlato());
-    const pl = robot && L.caja.on && !EDITANDO && planAlDia(k) ? CACHE_PLAN[k].pl : null; if (pl) { caja.rotation.z = pl.yaw; caja.updateMatrixWorld(true); }
+    const pl = robot && L.caja.on && !EDITANDO && planAlDia(k, PERFIL_EXPLORA) ? cachePlan(PERFIL_EXPLORA)[k].pl : null; if (pl) { caja.rotation.z = pl.yaw; caja.updateMatrixWorld(true); }
+  }
+}
+// La caja se orienta con una cara hacia la pinza según el agarre elegido (pasosPlan). Cada perfil puede elegir otro agarre:
+// la demo y la comprobación previa de un perfil orientan las cajas con el plan de ese perfil (T1.6), como lo haría
+// actualizarPlatos con el de explorar. Si una caja gira, sube VERSION_ESCENA (cambian los obstáculos).
+function orientarCajas(pf) {
+  const b = BASES[L.robot];
+  for (const k of ['plato1', 'plato2']) {
+    const caja = OBJ['caja' + k.slice(-1)]; const pl = robot && L.caja.on && !EDITANDO && planAlDia(k, pf) ? cachePlan(pf)[k].pl : null;
+    const yaw = pl ? pl.yaw : Math.atan2(L[k].y - b.y, L[k].x - b.x); if (caja.rotation.z !== yaw) { caja.rotation.z = yaw; caja.updateMatrixWorld(true); VERSION_ESCENA++; }
   }
 }
 
@@ -650,8 +666,8 @@ function planColocar(zw, qRef, flip, carga = null, pitch = 0, todos = false) {
   return todos ? lista : null;
 }
 // Elige la colocación cuyo transporte nivelado es posible (prueba las entradas en orden)
-function colocacionConTransporte(zw, q0, pl, carga) {
-  const o = { horiz: true, pitch: pl.pitch, flip: pl.flip, minZ: -0.3, w: 0.006, carga }; let ult = { fallo: 'no hay ninguna entrada válida a la zona', pct: 0 };
+function colocacionConTransporte(zw, q0, pl, carga, perfil) {
+  const o = { horiz: true, pitch: pl.pitch, flip: pl.flip, minZ: -0.3, w: 0.006, carga, perfil: PERFIL.de(perfil).nombre }; let ult = { fallo: 'no hay ninguna entrada válida a la zona', pct: 0 };
   const cands = planColocar(zw, q0, pl.flip, carga, pl.pitch, true); // primero las de más margen: la bandeja se mueve y conviene no colocar al límite
   for (const c of cands) { // robustez: ¿sigue habiendo postura cercana y libre si la bandeja se desplaza 3 cm o sube y baja 2 cm?
     let ok = 0, tot = 0; for (const dx of [-0.03, 0, 0.03]) for (const dy of [-0.03, 0, 0.03]) for (const dz of [-0.02, 0.02]) { tot++; const qq = ikTCP(c.tcp.clone().add(new THREE.Vector3(dx, dy, dz)), c.yaw, c.q, { ...o, permitir: ['bandeja', 'manos'] }); if (qq && Math.max(...qq.map((v, i) => Math.abs(v - c.q[i]))) < 0.35) ok++; }
@@ -694,17 +710,22 @@ function recalcular() { actualizarPlatos(); evaluar(); pintarCalc(); vigilarEsce
 // Mover algo con la demo a medias la deja incoherente: se reinicia antes del primer movimiento
 function prepararEdicion() { if (D.activo && !D.playing) { D.activo = false; reiniciarDemo(); toast('Demo reiniciada para mover objetos'); } }
 const CALC = { activo: false };
+// La barra dice si las trayectorias de explorar («gemelo») están al día (T1.8 añade la de validar)
 function pintarCalc(txt) {
-  const el = $('#calcBar'); const ver = !!robot && !D.activo && (CALC.activo || !planesAlDia()); el.hidden = !ver; if (!ver) return;
+  const el = $('#calcBar'); const ver = !!robot && !D.activo && (CALC.activo || !planesAlDia(PERFIL_EXPLORA)); el.hidden = !ver; if (!ver) return;
   $('#calcTxt').textContent = CALC.activo ? (txt || 'Calculando…') : 'Hay cambios sin calcular'; $('#calcSpin').hidden = !CALC.activo; $('#btnCalc').disabled = CALC.activo;
 }
-async function calcularPlanes() {
-  if (CALC.activo || !robot) return; CALC.activo = true; pintarCalc('Calculando…'); await new Promise(r => setTimeout(r, 30));
-  try { for (const [pk] of platosActivos()) { const n = pk === 'plato1' ? '1º' : '2º'; await planPlatoAsync(pk, p => pintarCalc(`Calculando el plato ${n}: agarre ${p.i + 1} de ${p.n}`)); } }
+// Calcula las trayectorias de los platos con un perfil (T1.6). Sin argumento, el de explorar: la barra «Calcular»,
+// soltar un objeto y el primer cálculo al cargar usan siempre «gemelo» (decisión 2 del brief). La demo, guardar y validar
+// piden el suyo.
+async function calcularPlanes(perfil = PERFIL_EXPLORA) {
+  if (CALC.activo || !robot) return; PERFIL.de(perfil); CALC.activo = true; pintarCalc('Calculando…'); await new Promise(r => setTimeout(r, 30));
+  const tp = perfil === PERFIL_EXPLORA ? '' : ` con el perfil «${perfil}»`;
+  try { for (const [pk] of platosActivos()) { const n = pk === 'plato1' ? '1º' : '2º'; await planPlatoAsync(pk, perfil, p => pintarCalc(`Calculando el plato ${n}${tp}: agarre ${p.i + 1} de ${p.n}`)); } }
   finally { CALC.activo = false; }
-  actualizarPlatos(); evaluar(); pintarCalc(); if (planesAlDia()) toast('Trayectorias calculadas');
+  actualizarPlatos(); evaluar(); pintarCalc(); if (planesAlDia(perfil)) toast(`Trayectorias calculadas${tp}`);
 }
-$('#btnCalc').addEventListener('click', calcularPlanes);
+$('#btnCalc').addEventListener('click', () => calcularPlanes(PERFIL_EXPLORA));
 let sel = null;
 const objetivo = new THREE.Group(); scene.add(objetivo); objetivo.visible = false;
 { const r = new THREE.Mesh(new THREE.TorusGeometry(0.03, 0.004, 8, 32), new THREE.MeshBasicMaterial({ color: '#e6b422' })); objetivo.add(r); objetivo.add(new THREE.AxesHelper(0.06)); objetivo.userData.anillo = r; }
@@ -936,13 +957,17 @@ function pintarPasos(i, fallo = false) { $('#dSteps').innerHTML = PASOS.map(([t,
 function paso(i) { D.paso = i; pintarPasos(i); }
 
 // ======================= Comprobación previa del plan =======================
-// opts.parar: para en el primer fallo grave (lo usa la búsqueda de disposiciones, que solo necesita saber si pasa)
+// opts.perfil: el perfil de los planes que se comprueban (T1.6; obligatorio: el de la demo, el de explorar o el de validar).
+// opts.parar: para en el primer fallo grave (lo usa la búsqueda de disposiciones, que solo necesita saber si pasa).
+// Las cajas se orientan con los planes de ese perfil mientras dura y vuelven a los de explorar al acabar.
 const PARAR_CHK = { out: null };
 function comprobarPlan(opts = {}) {
-  const q0 = robot ? robot.q.slice() : null;
-  try { return comprobarPlan0(opts); } catch (e) { if (e !== PARAR_CHK) throw e; robot.setQ(q0); return PARAR_CHK.out; }
+  const pf = PERFIL.de(opts.perfil).nombre; const q0 = robot ? robot.q.slice() : null;
+  if (robot) orientarCajas(pf);
+  try { return comprobarPlan0(opts, pf); } catch (e) { if (e !== PARAR_CHK) throw e; robot.setQ(q0); return PARAR_CHK.out; }
+  finally { if (robot && pf !== PERFIL_EXPLORA) orientarCajas(PERFIL_EXPLORA); }
 }
-function comprobarPlan0(opts) {
+function comprobarPlan0(opts, pf) {
   const out = []; if (!robot) return out;
   const q0 = robot.q.slice(); let ctxI = {}; const add = (cls, txt, grave = false) => { out.push({ cls, txt, grave, info: { ...ctxI } }); if (grave && opts.parar) { PARAR_CHK.out = out; throw PARAR_CHK; } };
   const zTr = MESA.h + H_TR;
@@ -967,8 +992,8 @@ function comprobarPlan0(opts) {
     const F = pk === 'plato1' ? FRUTAS.manzana : FRUTAS.uvas, nP = pk === 'plato1' ? 2 : 1; const pts = puntosSoltar(pc, F, nP); const zMax = pts[0].arr.z; ctxI.h = zMax - MESA.h;
     const ok = pts.every(p => llegaVertical(p.arr, q0) && llegaVertical(p.sol, q0));
     if (ok) add('ok', `Soltar ${nP} ${nP > 1 ? 'piezas' : 'pieza'} en el plato ${n} (pasando a ${fmt((zMax - MESA.h) * 100, 0)} cm)`); else add('bad', `Plato ${n}: no llego a soltar la fruta encima (hay que pasar a ${fmt((zMax - MESA.h) * 100, 0)} cm sobre la mesa). Acércalo a la base o baja la caja.`, true);
-    ctxI = { fase: 'plato', pk }; const pl = planPlatoCache(pk);
-    if (!pl) { const f = planForzado(pk); if (f) D.posturaImposible = { q: f.q, w: 0.03, c: f.choque, pk };
+    ctxI = { fase: 'plato', pk }; const pl = planPlatoCache(pk, pf);
+    if (!pl) { const f = planForzado(pk, pf); if (f) D.posturaImposible = { q: f.q, w: 0.03, c: f.choque, pk };
       add('bad', f && f.choque ? `Plato ${n}: el robot real no puede cogerlo en horizontal por el borde: chocaría ${textoChoque(f.choque)}${f.hol.min < 0 ? ` (${mm(-f.hol.min)} mm)` : ''}. ${L.caja.on ? 'Sube la caja o mueve el plato.' : 'Ponlo sobre la caja.'}` : `Plato ${n}: no hay ninguna dirección para cogerlo en horizontal por el borde`, true); }
     else if (pl.hol.min < -0.002) add('warn', `Plato ${n}: al cogerlo en horizontal, ${pl.hol.contra === 'caja' ? 'la pinza entra en la caja' : 'la muñeca o la pinza bajan por debajo de la mesa'} (${mm(pl.hol.min)} mm). ${L.caja.on ? 'Sube la caja.' : 'Ponlo sobre la caja.'}`);
     else add('ok', `Coger el plato ${n} en horizontal (holgura ${mm(pl.hol.min)} mm, entrada ${pl.k ? (pl.k > 0 ? '+' : '') + pl.k * 15 + '°' : 'radial'}${pl.pitch ? `, muñeca inclinada ${Math.round(pl.pitch * R2D)}°` : ''})`);
@@ -976,11 +1001,11 @@ function comprobarPlan0(opts) {
   // bandeja
   const bp = poseBandeja(simT); bandeja.updateMatrixWorld(true);
   for (const [pk, zk] of platosActivos()) { // ensayo en seco: levantar, llevar nivelado y dejar
-    ctxI = { fase: 'transporte', pk, zona: zk }; const pl = planPlatoCache(pk); const n = pk === 'plato1' ? '1º' : '2º'; const hB = fmt((bp.z - MESA.h) * 100, 0);
+    ctxI = { fase: 'transporte', pk, zona: zk }; const pl = planPlatoCache(pk, pf); const n = pk === 'plato1' ? '1º' : '2º'; const hB = fmt((bp.z - MESA.h) * 100, 0);
     if (!pl) { add('bad', `Plato ${n} → ${zk}: sin agarre no se puede comprobar el transporte`); continue; }
     if (pl.cadena && pl.cadena.pc2) add('ok', `Llevar el plato ${n} nivelado hasta ${zk} y dejarlo (bandeja a ${hB} cm)`);
-    else if (pl.cadena.fallo.fase === 'plato') { ctxI = { fase: 'plato', pk }; add('bad', `Plato ${n}: no puedo cogerlo y levantarlo en línea recta: ${pl.cadena.fallo.fallo} (llega al ${pl.cadena.fallo.pct} %).`, true); }
-    else add('bad', `Plato ${n} → ${zk}: no puedo llevarlo nivelado y dejarlo sin chocar: ${pl.cadena.fallo.fallo} (llega al ${pl.cadena.fallo.pct} %). Bandeja a ${hB} cm sobre la mesa.`, true);
+    else if (pl.cadena.fallo.fase === 'plato') { ctxI = { fase: 'plato', pk, causa: pl.cadena.fallo.causa, pct: pl.cadena.fallo.pct }; add('bad', `Plato ${n}: no puedo cogerlo y levantarlo en línea recta: ${pl.cadena.fallo.fallo} (llega al ${pl.cadena.fallo.pct} %).`, true); }
+    else { ctxI.causa = pl.cadena.fallo.causa; ctxI.pct = pl.cadena.fallo.pct; add('bad', `Plato ${n} → ${zk}: no puedo llevarlo nivelado y dejarlo sin chocar: ${pl.cadena.fallo.fallo} (llega al ${pl.cadena.fallo.pct} %). Bandeja a ${hB} cm sobre la mesa.`, true); }
   }
   robot.setQ(q0);
   return out;
@@ -995,10 +1020,11 @@ function mostrarFallo(titulo, txt, tipo = 'fallo') { if (D.buscando) return; con
 
 // ======================= Guion de la demo =======================
 const MENU = { primeros: [{ plato: 'Manzanas', piezas: 2, alergenos: [] }, { plato: 'Frambuesas', piezas: 1, alergenos: ['frambuesa'] }], segundos: [{ plato: 'Uvas', piezas: 1, alergenos: [] }, { plato: 'Limón', piezas: 1, alergenos: [] }] };
-async function demo() {
-  const run = D.run; D.t0 = simT; D.fin = null; D.ctx = {};
+// pf: perfil de movimiento de toda la demo (T1.6): cada movimiento lo lleva en su petición
+async function demo(pf) {
+  PERFIL.de(pf); const run = D.run; D.t0 = simT; D.fin = null; D.ctx = {}; D.perfilDemo = pf;
   try {
-    const chk = comprobarPlan(); pintarCheck(chk);
+    const chk = comprobarPlan({ perfil: pf }); pintarCheck(chk); orientarCajas(pf);
     const graves = chk.filter(c => c.grave); if (graves.length) throw new FalloDemo(graves.map(g => g.txt).join(' '), 'previo', { causa: 'previo', items: graves });
     paso(0); estado('REPOSO'); publicar('/v1/dialog_state', ['ident'], { paso: 'reposo', mensaje: 'Haz el gesto de inicio' }); await esperar(1.2);
     paso(1); estado('IDENTIFICANDO');
@@ -1017,19 +1043,19 @@ async function demo() {
     publicar('/v1/tray_status', ['tstat'], { estado: 'lista', desviacion_mm: 0 });
     const bp = poseBandeja(simT), tb = enBase(bp); publicar('/v1/tray_pose', ['tpose'], { marco: 'base_link', x: +tb.x.toFixed(3), y: +tb.y.toFixed(3), z: +tb.z.toFixed(3), yaw_deg: gradosBase(bp.yaw), marcadores_vistos: 3 }); await esperar(0.6);
     paso(5); publicar('/v2/fruits', ['img', 'det', 'fruits'], { marco: 'base_link', piezas: piezas.filter(p => !p.usada).map(p => `${p.id}: ${p.tipo}`) }); await esperar(0.5);
-    await servirPlato('plato1', 'manzana', 2, zonaDe('plato1'), 1);
-    if (!uno) { paso(6); await servirPlato('plato2', 'uvas', 1, 'zona_segundo', 2); }
+    await servirPlato('plato1', 'manzana', 2, zonaDe('plato1'), 1, pf);
+    if (!uno) { paso(6); await servirPlato('plato2', 'uvas', 1, 'zona_segundo', 2, pf); }
     paso(uno ? 6 : 7); D.ctx = { fase: 'reposo', accion: 'volver a la postura de reposo' }; estado('HECHO'); publicar('/service_state', ['svc'], { estado: 'hecho' });
-    await irA(posReposo(), PI / 2, {}, 'la postura de reposo'); trayState.balanceo = false;
+    await irA(posReposo(), PI / 2, { perfil: pf }, 'la postura de reposo'); trayState.balanceo = false;
     if (D.ep) cerrarChoque(); D.fin = 'ok'; D.playing = false; $('#dPlay').textContent = 'Reproducir demo';
-    if (!D.buscando) toast(`Servicio completo: ${fmt(D.motion, 1)} s de movimiento al ${Math.round(D.vel * 100)} %`);
+    if (!D.buscando) toast(`Servicio completo: ${fmt(D.motion, 1)} s de movimiento ${pf === 'curso' ? 'con el perfil «curso» (escala 0,1)' : `al ${Math.round(D.vel * 100)} %`}`);
   } catch (e) {
     if (run !== D.run) return; // reinicio pedido por el usuario
     if (D.ep) cerrarChoque();
     if (e instanceof FalloDemo && e.tipo === 'abort') { // el coordinador publica el aborto y retira el brazo antes de terminar
       estado('ABORTADO'); pintarPasos(D.paso, true); mostrarFalloInfo(e, `Servicio abortado en el paso ${D.paso + 1} (${PASOS[D.paso][0]}).`, 'abort');
       publicar('/service_state', ['svc'], { estado: 'abortado', paso: PASOS[D.paso][0] }); D.platoEnPinza = null;
-      try { await retirarSeguro(); } catch (e2) { }
+      try { await retirarSeguro(pf); } catch (e2) { }
       if (run !== D.run) return;
       if (D.ep) cerrarChoque(); D.fin = 'abort'; D.playing = false; $('#dPlay').textContent = 'Reproducir demo'; actualizarHUD(); return;
     }
@@ -1042,18 +1068,18 @@ async function demo() {
   }
 }
 // Retirada tras un aborto (DEC-04): sube y se aparta hacia la base sin cambiar la orientación (si lleva el plato, no lo vuelca)
-async function retirarSeguro() {
+async function retirarSeguro(pf) {
   const ax = ejesHerramienta(); const p = tcpMundo(); const arriba = p.clone().add(new THREE.Vector3(0, 0, 0.06));
   if (Math.abs(ax.z.z) < 0.7) {
-    const yaw = Math.atan2(ax.z.y, ax.z.x); const flip = Math.sign(CIN.fk(robot.q)[8]) || 1; const o = { horiz: true, flip, pitch: Math.asin(clamp(-ax.z.z, -1, 1)), minZ: -0.3, permitir: ['bandeja', 'plato:*'] };
+    const yaw = Math.atan2(ax.z.y, ax.z.x); const flip = Math.sign(CIN.fk(robot.q)[8]) || 1; const o = { horiz: true, flip, pitch: Math.asin(clamp(-ax.z.z, -1, 1)), minZ: -0.3, permitir: ['bandeja', 'plato:*'], perfil: pf };
     const b = BASES[L.robot]; const hacia = new THREE.Vector3(b.x - p.x, b.y - p.y, 0).normalize();
     await moveL(arriba, yaw, o, 'la retirada'); await moveL(arriba.clone().addScaledVector(hacia, 0.1), yaw, o, 'la retirada');
-  } else { await moveL(arriba, yawHerramienta(), {}, 'la retirada'); await irA(posReposo(), PI / 2, {}, 'la postura de reposo'); }
+  } else { await moveL(arriba, yawHerramienta(), { perfil: pf }, 'la retirada'); await irA(posReposo(), PI / 2, { perfil: pf }, 'la postura de reposo'); }
 }
-async function servirPlato(pk, tipo, n, zona, num) {
+async function servirPlato(pk, tipo, n, zona, num, pf) {
   const plato = OBJ[pk]; const pc = plato.getWorldPosition(new THREE.Vector3());
   const pts = puntosSoltar(pc, FRUTAS[tipo], n); const zTr = MESA.h + H_TR;
-  if (Math.abs(ejesHerramienta().z.z) < 0.7) { estado(`TRANSITO_${num}`); await irA(posReposo(), PI / 2, {}, 'la postura de tránsito'); } // de horizontal a vertical, lejos de la fruta
+  if (Math.abs(ejesHerramienta().z.z) < 0.7) { estado(`TRANSITO_${num}`); await irA(posReposo(), PI / 2, { perfil: pf }, 'la postura de tránsito'); } // de horizontal a vertical, lejos de la fruta
   for (let k = 0; k < n; k++) {
     const pz = piezas.find(p => !p.usada && p.tipo === tipo); if (!pz) throw new FalloDemo(`No queda ${FRUTAS[tipo].nombre.toLowerCase()} en la zona de fruta`); pz.usada = true;
     estado(`SIRVIENDO_${num} · ${k + 1}/${n}`); D.piezaObjetivo = pz; D.ctx = { fase: 'fruta', pk, accion: `coger ${pz.F.nombre.toLowerCase()} (pieza ${pz.id}) en la zona de fruta` };
@@ -1062,30 +1088,30 @@ async function servirPlato(pk, tipo, n, zona, num) {
     const c = ag.c, yaw = ag.yaw;
     publicar('servir_pieza [PROPUESTA]', ['accion'], { pieza: pz.id, tipo, plato: pk, agarre_z_m: +pz.F.h.toFixed(3), giro_pinza_deg: Math.round(gradosBase(yaw)), marco_giro: 'base_link', hueco_con_vecinas_mm: ag.hol === Infinity ? '—' : mm(ag.hol) });
     await pinzaA(wAb);
-    await irA(new THREE.Vector3(c.x, c.y, zTr), yaw, {}, `la vertical de ${pz.F.nombre.toLowerCase()}`);
+    await irA(new THREE.Vector3(c.x, c.y, zTr), yaw, { perfil: pf }, `la vertical de ${pz.F.nombre.toLowerCase()}`);
     const dz = alturaAgarre(pz.F) - pz.F.h, cierre = Math.max(0.01, Math.min(pz.F.w, 2 * Math.sqrt(Math.max(0, pz.F.r ** 2 - dz ** 2))) - 0.004); // ancho de la pieza a la altura de la yema
     const baja = pinza.tcpZ(cierre) - pinza.tcpZ(wAb); // al cerrar, las yemas de la RG2 avanzan: se baja menos para que acaben a la altura de agarre
-    await moveL(new THREE.Vector3(c.x, c.y, MESA.h + alturaAgarre(pz.F) + baja), yaw, { estricto: true }, `${pz.F.nombre.toLowerCase()}`);
+    await moveL(new THREE.Vector3(c.x, c.y, MESA.h + alturaAgarre(pz.F) + baja), yaw, { estricto: true, perfil: pf }, `${pz.F.nombre.toLowerCase()}`);
     publicar('/pinza/cerrar [PROPUESTA]', ['gripper'], { ancho_mm: mm(cierre), altura_agarre_mm: mm(alturaAgarre(pz.F)) }); await pinzaA(cierre); adjuntar(pz.obj, pinza.tcp); pz.enPinza = true; D.piezaObjetivo = null;
     const dest = pts[k].arr; D.ctx = { fase: 'soltar', pk, accion: `soltar ${pz.F.nombre.toLowerCase()} en el plato ${num}` };
-    await moveL(new THREE.Vector3(c.x, c.y, dest.z), yawHerramienta(), { permitir: ['mesa'] }, 'la altura de traslado'); // la pieza sale apoyada en la mesa
-    await irA(dest, yawHerramienta(), {}, `la vertical del plato ${num}`);
-    await moveL(pts[k].sol, yawHerramienta(), { permitir: ['plato:' + pk] }, `la altura de soltar en el plato ${num}`);
+    await moveL(new THREE.Vector3(c.x, c.y, dest.z), yawHerramienta(), { permitir: ['mesa'], perfil: pf }, 'la altura de traslado'); // la pieza sale apoyada en la mesa
+    await irA(dest, yawHerramienta(), { perfil: pf }, `la vertical del plato ${num}`);
+    await moveL(pts[k].sol, yawHerramienta(), { permitir: ['plato:' + pk], perfil: pf }, `la altura de soltar en el plato ${num}`);
     await pinzaA(wAb); adjuntar(pz.obj, scene); pz.enPinza = false;
     const z0 = pz.obj.position.z, zt = pc.z + 0.006 + pz.F.h; await anim(0.35, s => { pz.obj.position.z = z0 + (zt - z0) * s * s; }); adjuntar(pz.obj, plato);
     publicar('/v2/serve_check', ['fruits'], { plato: pk, cayo_en_plato: true, piezas: k + 1 });
-    await moveL(dest, yawHerramienta(), { permitir: ['plato:' + pk] }, 'la altura de traslado');
+    await moveL(dest, yawHerramienta(), { permitir: ['plato:' + pk], perfil: pf }, 'la altura de traslado');
   }
   // coger el plato en horizontal por el borde
   estado(`LLEVANDO_${num}`); D.ctx = { fase: 'plato', pk, accion: `coger el plato ${num} por el borde` };
-  const pl = planPlatoCache(pk) || planAgarrePlato(pc, robot.q, { pk }); if (!pl) throw new FalloDemo(`No hay ninguna dirección para coger el plato ${num} en horizontal sin chocar.`, 'fallo', { causa: 'sin_trayectoria' });
-  const oh = { horiz: true, flip: pl.flip, pitch: pl.pitch, minZ: -0.3 };
+  const pl = planPlatoCache(pk, pf) || planAgarrePlato(pc, robot.q, { pk }); if (!pl) throw new FalloDemo(`No hay ninguna dirección para coger el plato ${num} en horizontal sin chocar.`, 'fallo', { causa: 'sin_trayectoria' });
+  const oh = { horiz: true, flip: pl.flip, pitch: pl.pitch, minZ: -0.3, perfil: pf };
   publicar('coger_plato [PROPUESTA]', ['accion'], { plato: pk, agarre: 'horizontal por el borde', aproximacion_deg: pl.k * 15, inclinacion_deg: Math.round(pl.pitch * R2D), holgura_mm: mm(pl.hol.min) });
   await pinzaA(0.03);
   // postura de aproximación: la más cercana a la actual o la planificada en seco; se queda la primera con la que toda la cadena (acercarse, levantar, llevar y dejar) sale bien con la bandeja donde está ahora
   const qCerca = ikTCP(pl.pre, pl.yaw, robot.q, { ...oh, w: 0.03 }); const zAhora = zonasB[zona].getWorldPosition(new THREE.Vector3());
   const opciones = [qCerca, pl.qPre].filter((q, i, a) => q && (i === 0 || !a[0] || Math.max(...q.map((v, j) => Math.abs(v - a[0][j]))) > 0.05));
-  let qAprox = null; for (const qp of opciones) { const ch = cadenaPlato(pk, { ...pl, qPre: qp }, zAhora); if (ch.pc2) { qAprox = qp; break; } }
+  let qAprox = null; for (const qp of opciones) { const ch = cadenaPlato(pk, { ...pl, qPre: qp }, zAhora, pf); if (ch.pc2) { qAprox = qp; break; } }
   if (!qAprox) qAprox = qCerca || pl.qPre; // si ninguna pasa, se intenta igual: el paso que falle explicará por qué
   await moveJ(qAprox, factorPersona(pl.pre), { ...oh, w: 0.03 }, `la aproximación al plato ${num}`); // movimiento articular planificado hasta 7 cm del borde
   await moveL(pl.tcp, pl.yaw, { ...oh, permitir: ['plato:' + pk], estricto: true }, `el borde del plato ${num}`);
@@ -1095,17 +1121,17 @@ async function servirPlato(pk, tipo, n, zona, num) {
   // colocar en la bandeja
   estado(`COLOCANDO_${num}`); D.ctx = { fase: 'transporte', pk, zona, accion: `llevar el plato ${num} nivelado hasta ${zona}` }; publicar('/service_state', ['svc'], { estado: `colocando ${num}` });
   const zonaObj = zonasB[zona]; let zr = zonaObj.getWorldPosition(new THREE.Vector3()); // pose de recepción
-  let tr = colocacionConTransporte(zr, robot.q, pl, D.carga);
+  let tr = colocacionConTransporte(zr, robot.q, pl, D.carga, pf);
   for (let it = 1; !tr.pc2 && it < 4; it++) { // la bandeja se balancea: como MoveIt con replanificación, se espera un momento y se vuelve a planificar con su nueva pose
     publicar('/movimiento/aviso [PROPUESTA]', ['accion'], { tramo: `llevar el plato ${num}`, intento: it, motivo: tr.fallo.fallo, se_hace: 'esperar 0,6 s y replanificar con la bandeja en su pose nueva' });
-    await esperar(0.6); zr = zonaObj.getWorldPosition(new THREE.Vector3()); tr = colocacionConTransporte(zr, robot.q, pl, D.carga);
+    await esperar(0.6); zr = zonaObj.getWorldPosition(new THREE.Vector3()); tr = colocacionConTransporte(zr, robot.q, pl, D.carga, pf);
   }
   if (!tr.pc2) throw new FalloDemo(`No puedo llevar el plato ${num} nivelado hasta ${zona} y dejarlo sin chocar: ${tr.fallo.fallo} (llega al ${tr.fallo.pct} %). Bandeja a ${mm(zr.z - MESA.h)} mm sobre la mesa.`, 'fallo', { causa: tr.fallo.causa || 'choque', choque: tr.fallo.choque, q: tr.fallo.q, punto: tr.fallo.p, pct: tr.fallo.pct, horiz: true });
   const pc2 = tr.pc2; D.ctx = { fase: 'bandeja', pk, zona, accion: `dejar el plato ${num} en ${zona}` };
-  const ohP = { horiz: true, flip: pl.flip, pitch: pl.pitch, minZ: -0.3, w: 0.006, permitir: ['bandeja'] }; const ctxP = ctxDe(ohP);
+  const ohP = { horiz: true, flip: pl.flip, pitch: pl.pitch, minZ: -0.3, w: 0.006, permitir: ['bandeja'], perfil: pf }; const ctxP = ctxDe(ohP);
   const objetivoDe = z => new THREE.Vector3(z.x - pc2.d.x * R_AGARRE, z.y - pc2.d.y * R_AGARRE, z.z + H_BORDE + 0.004);
   publicar('/movimiento/transporte [PROPUESTA]', ['accion'], { destino: `encima de ${zona}`, restriccion: 'plato nivelado', largo_mm: mm(tr.r.largo) });
-  await ejecutar(tr.r.ruta, factorPersona(pc2.pre), 1.5 * tr.r.largo / (0.5 * D.vel * factorPersona(pc2.pre)));
+  await ejecutar(tr.r.ruta, factorPersona(pc2.pre), tMinCart(tr.r.largo, factorPersona(pc2.pre), pf), pf);
   const THR = 0.025, LAT = 0.12, T_ABORTO = 10;
   let z = pc2.pre.z, quieto = 0, pausado = false, tPausa = 0, tLoop = 0, sinIK = 0;
   if (D.modo === 'M0') {
@@ -1155,33 +1181,38 @@ function reiniciarDemo() {
   D.carga = null; pintarCalidad(); $('#dLog').innerHTML = ''; $('#dMsg').textContent = 'Pulsa «Reproducir demo» para ver los mensajes del guion.'; if (!D.mantenerFallo) $('#dFallo').hidden = true;
   $('#dPlay').textContent = 'Reproducir demo'; D.minCam = {}; sincronizarSliders();
 }
+// La demo usa el perfil de la escena (L.perfil, T1.6): antes de empezar se calculan sus trayectorias si no están al día
 $('#dPlay').addEventListener('click', async () => {
-  if (!robot || CALC.activo) return;
-  if ((!D.activo || D.fin) && !planesAlDia()) { await calcularPlanes(); if (!planesAlDia()) return; }
-  if (!D.activo || D.fin) { reiniciarDemo(); D.activo = true; tctl.detach(); sel = null; pintarLista(); pintarSel(); D.playing = true; $('#dPlay').textContent = 'Pausar'; demo(); return; }
+  if (!robot || CALC.activo) return; const pf = perfilEscena();
+  if ((!D.activo || D.fin) && !planesAlDia(pf)) { await calcularPlanes(pf); if (!planesAlDia(pf)) return; }
+  if (!D.activo || D.fin) { reiniciarDemo(); D.activo = true; tctl.detach(); sel = null; pintarLista(); pintarSel(); D.playing = true; $('#dPlay').textContent = 'Pausar'; demo(pf); return; }
   D.playing = !D.playing; $('#dPlay').textContent = D.playing ? 'Pausar' : 'Continuar';
 });
 $('#dReset').addEventListener('click', () => { D.activo = false; reiniciarDemo(); actualizarCheck(); });
 
 // ======================= Evaluación, HUD y paneles =======================
 function enBase(p) { return mundoABase(p); } // punto del mundo en base_link: la misma conversión que la planificación (marco(), T1.5)
-const CACHE_PLAN = {};
-// todo lo que entra en la escena de colisión o en la cadena: robot (posición A/B y cinemática, T1.4), plato, el otro plato, caja (y su altura), zona de fruta, persona, bandeja, cámaras (posición y hacia dónde miran) y pedido
-function clavePlan(pk) {
+// Planes de los platos por perfil (T1.6, decisión 3): CACHE_PLAN[perfil][plato]. Validar con «curso» no pisa lo calculado
+// con «gemelo» ni al revés. cachePlan crea la del perfil si no existe (un test puede vaciar CACHE_PLAN entero).
+const CACHE_PLAN = { gemelo: {}, curso: {} };
+const cachePlan = pf => CACHE_PLAN[PERFIL.de(pf).nombre] || (CACHE_PLAN[pf] = {});
+// todo lo que entra en la escena de colisión o en la cadena: robot (posición A/B y cinemática, T1.4), plato, el otro plato, caja (y su altura), zona de fruta, persona, bandeja, cámaras (posición y hacia dónde miran) y pedido, más el perfil (T1.6)
+function clavePlan(pk, pf) {
   const P = L.persona, B = L.bandeja; const r3 = v => (+v).toFixed(3), ps = o => `${r3(o.x)},${r3(o.y)}`;
-  return [L.robot, ROB.id, r3(L[pk].x), r3(L[pk].y), r3(zPlato()), L.caja.on, r3(L.caja.h), ps(L.plato1), ps(L.plato2), ps(L.zona), r3(L.zona.yaw), ps(P), r3(P.yaw), B.alt, B.ade, L.pedido, Object.values(L.cams).map(c => ps(c.pos) + ',' + r3(c.pos.z) + ',' + ps(c.mira) + ',' + r3(c.roll || 0)).join(';')].join('|');
+  return [PERFIL.de(pf).nombre, L.robot, ROB.id, r3(L[pk].x), r3(L[pk].y), r3(zPlato()), L.caja.on, r3(L.caja.h), ps(L.plato1), ps(L.plato2), ps(L.zona), r3(L.zona.yaw), ps(P), r3(P.yaw), B.alt, B.ade, L.pedido, Object.values(L.cams).map(c => ps(c.pos) + ',' + r3(c.pos.z) + ',' + ps(c.mira) + ',' + r3(c.roll || 0)).join(';')].join('|');
 }
-const planAlDia = pk => CACHE_PLAN[pk]?.key === clavePlan(pk);
-const planesAlDia = () => !robot || platosActivos().every(([pk]) => planAlDia(pk));
-const sinPlan = () => EDITANDO || !planesAlDia(); // hay cambios en la escena que aún no se han calculado
-// Planificar es lo caro: solo se hace al pulsar «Calcular trayectorias» o al reproducir la demo, nunca al mover un objeto
-function planPlatoCache(pk) { if (!planAlDia(pk)) { const it = pasosPlan(pk); while (!it.next().done); } return CACHE_PLAN[pk].pl; }
-async function planPlatoAsync(pk, prog) { // igual, pero cede el control entre candidatos para que la página no se congele
-  if (planAlDia(pk)) return; const it = pasosPlan(pk);
+const planAlDia = (pk, pf) => cachePlan(pf)[pk]?.key === clavePlan(pk, pf);
+const planesAlDia = (pf = PERFIL_EXPLORA) => !robot || platosActivos().every(([pk]) => planAlDia(pk, pf));
+const sinPlan = () => EDITANDO || !planesAlDia(PERFIL_EXPLORA); // hay cambios en la escena que aún no se han calculado (explorar)
+// Planificar es lo caro: solo se hace al pulsar «Calcular trayectorias», al reproducir la demo, al validar o al guardar,
+// nunca al mover un objeto
+function planPlatoCache(pk, pf) { if (!planAlDia(pk, pf)) { const it = pasosPlan(pk, pf); while (!it.next().done); } return cachePlan(pf)[pk].pl; }
+async function planPlatoAsync(pk, pf, prog) { // igual, pero cede el control entre candidatos para que la página no se congele
+  if (planAlDia(pk, pf)) return; const it = pasosPlan(pk, pf);
   for (let r = it.next(); !r.done; r = it.next()) { if (prog) prog(r.value); await new Promise(res => setTimeout(res, 0)); }
 }
-function* pasosPlan(pk) {
-  const pc = new THREE.Vector3(L[pk].x, L[pk].y, zPlato()); const key = clavePlan(pk);
+function* pasosPlan(pk, pf) {
+  const pc = new THREE.Vector3(L[pk].x, L[pk].y, zPlato()); const key = clavePlan(pk, pf);
   {
     const bal = trayState.balanceo, sub = trayState.subida; trayState.balanceo = false; trayState.subida = 1; aplicarBandeja(simT); VERSION_ESCENA++; // el plan se hace con la bandeja en su pose de recepción
     const conFruta = OBJ[pk].children.some(c => piezas.some(p => p.obj === c));
@@ -1189,24 +1220,24 @@ function* pasosPlan(pk) {
     const cands = planAgarrePlato(pc, qReposo(), { pk, todos: true }); let elegido = null, cadena = null;
     if (OBS_EXTRA.length) { OBS_EXTRA = []; VERSION_ESCENA++; } // la fruta prevista ya va en la carga del plato
     const zw = zonasB[zonaDe(pk)].getWorldPosition(new THREE.Vector3());
-    let i = 0; for (const c of cands) { yield { i: i++, n: cands.length }; c.carga = cargaPlan(pk, c); const ch = cadenaPlato(pk, c, zw); if (ch.pc2) { elegido = c; cadena = ch; break; } const rango = f => f ? (f.etapa ?? 0) * 1000 + (f.pct ?? 0) : -1; if (!cadena || rango(ch.fallo) > rango(cadena.fallo)) cadena = ch; } // se explica el fallo de la opción que llegó más lejos
+    let i = 0; for (const c of cands) { yield { i: i++, n: cands.length }; c.carga = cargaPlan(pk, c); const ch = cadenaPlato(pk, c, zw, pf); if (ch.pc2) { elegido = c; cadena = ch; break; } const rango = f => f ? (f.etapa ?? 0) * 1000 + (f.pct ?? 0) : -1; if (!cadena || rango(ch.fallo) > rango(cadena.fallo)) cadena = ch; } // se explica el fallo de la opción que llegó más lejos
     const pl = elegido || cands[0] || null; if (pl) { pl.cadena = elegido ? cadena : (cadena || { fallo: { fallo: 'sin datos', pct: 0 } }); const ca = [OBJ.caja1, OBJ.caja2][pk === 'plato1' ? 0 : 1]; if (L.caja.on) { ca.rotation.z = pl.yaw; ca.updateMatrixWorld(true); VERSION_ESCENA++; } }
-    CACHE_PLAN[pk] = { key, pl, forz: undefined };
+    cachePlan(pf)[pk] = { key, pl, forz: undefined };
     trayState.balanceo = bal; trayState.subida = sub; aplicarBandeja(simT); VERSION_ESCENA++;
   }
-  return CACHE_PLAN[pk].pl;
+  return cachePlan(pf)[pk].pl;
 }
-// Cadena completa en seco desde el agarre: levantar 8 cm, llevar nivelado y dejar en la zona
-function cadenaPlato(pk, pl, zw) {
-  const o = { horiz: true, pitch: pl.pitch, flip: pl.flip, minZ: -0.3, w: 0.006, carga: pl.carga };
+// Cadena completa en seco desde el agarre: levantar 8 cm, llevar nivelado y dejar en la zona, con el perfil pf
+function cadenaPlato(pk, pl, zw, pf) {
+  const o = { horiz: true, pitch: pl.pitch, flip: pl.flip, minZ: -0.3, w: 0.006, carga: pl.carga, perfil: PERFIL.de(pf).nombre };
   // acercamiento recto de 7 cm a lo largo de los dedos, desde la misma postura que usará la demo (pl.qPre)
-  const ra = rutaCartesiana(pl.qPre, [{ p: pl.pre, yaw: pl.yaw }, { p: pl.tcp, yaw: pl.yaw }], { horiz: true, pitch: pl.pitch, flip: pl.flip, minZ: -0.3, w: 0.03, permitir: ['plato:' + pk] });
+  const ra = rutaCartesiana(pl.qPre, [{ p: pl.pre, yaw: pl.yaw }, { p: pl.tcp, yaw: pl.yaw }], { horiz: true, pitch: pl.pitch, flip: pl.flip, minZ: -0.3, w: 0.03, permitir: ['plato:' + pk], perfil: pf });
   if (!ra.ruta) return { fallo: { ...ra, fallo: `al acercarse al borde del plato, ${ra.fallo}`, fase: 'plato', etapa: 0 } };
   // elevación recta de 8 cm con el plato agarrado (el plato va en la carga)
   const rl = rutaCartesiana(ra.ruta[ra.ruta.length - 1], [{ p: pl.tcp, yaw: pl.yaw }, { p: pl.tcp.clone().add(new THREE.Vector3(0, 0, 0.08)), yaw: pl.yaw }], { ...o, permitir: ['caja:' + pk, 'plato:' + pk] });
   if (!rl.ruta) return { fallo: { ...rl, fallo: `al levantarlo de la caja, ${rl.fallo}`, fase: 'plato', etapa: 1 } };
   const qL = rl.ruta[rl.ruta.length - 1];
-  const t = colocacionConTransporte(zw, qL, pl, pl.carga); return t.pc2 ? { ...t, qL } : { fallo: { ...t.fallo, etapa: 2 } };
+  const t = colocacionConTransporte(zw, qL, pl, pl.carga, pf); return t.pc2 ? { ...t, qL } : { fallo: { ...t.fallo, etapa: 2 } };
 }
 function cargaPlan(pk, pl) { // el plato y la fruta que llevará, en el marco de tool0 tal como quedará agarrado
   const q0 = robot.q.slice(), w0 = pinza.w; robot.setQ(pl.q); pinza.setApertura(0.006); const base = Array.from(cargaDe(OBJ[pk]));
@@ -1214,20 +1245,20 @@ function cargaPlan(pk, pl) { // el plato y la fruta que llevará, en el marco de
   if (!OBJ[pk].children.some(c => piezas.some(p => p.obj === c))) for (const p of puntosSoltar(pc, F, pk === 'plato1' ? 2 : 1)) { const v = new THREE.Vector3(p.sol.x, p.sol.y, pc.z + 0.006 + F.h).applyMatrix4(inv); base.push(v.x, v.y, v.z, F.r); }
   robot.setQ(q0); pinza.setApertura(w0); return new Float64Array(base);
 }
-function planForzado(pk) { // la mejor postura de agarre ignorando el entorno, para enseñar por qué no se puede
-  planPlatoCache(pk); const C = CACHE_PLAN[pk]; if (C.forz === undefined) { const pc = new THREE.Vector3(L[pk].x, L[pk].y, zPlato()); const f = planAgarrePlato(pc, qReposo(), { pk, forzar: true }); if (f) f.choque = choqueEn(f.q, { w: 0.03, carga: null, permitir: ['plato:' + pk] }); C.forz = f; } return C.forz;
+function planForzado(pk, pf) { // la mejor postura de agarre ignorando el entorno, para enseñar por qué no se puede
+  planPlatoCache(pk, pf); const C = cachePlan(pf)[pk]; if (C.forz === undefined) { const pc = new THREE.Vector3(L[pk].x, L[pk].y, zPlato()); const f = planAgarrePlato(pc, qReposo(), { pk, forzar: true }); if (f) f.choque = choqueEn(f.q, { w: 0.03, carga: null, permitir: ['plato:' + pk] }); C.forz = f; } return C.forz;
 }
 function estadoObjeto(k) {
   if (!robot) return null;
   if (k === 'zona') { const z = L.zona; const pts = []; for (const u of [-1, 0, 1]) for (const v of [-1, 0, 1]) { const lx = u * (z.w / 2 - 0.03), ly = v * (z.d / 2 - 0.03); pts.push([z.x + Math.cos(z.yaw) * lx - Math.sin(z.yaw) * ly, z.y + Math.sin(z.yaw) * lx + Math.cos(z.yaw) * ly]); } const r = pts.map(([x, y]) => alcance(x, y, 0.035).cls); const ok = r.filter(c => c > 0).length; return { cls: ok === pts.length ? Math.min(...r) : (ok ? 1 : 0), txt: `${ok}/${pts.length} puntos alcanzables` }; }
   if (['plato1', 'plato2', 'persona'].includes(k) && sinPlan()) return { cls: 1, pend: true, txt: 'sin calcular: pulsa «Calcular trayectorias»' };
   if (k === 'plato1' || k === 'plato2') {
-    const p = L[k]; const hS = zPlato() - MESA.h + 0.09; const a = alcance(p.x, p.y, hS).cls; const pl = planPlatoCache(k);
-    const g = !pl ? 0 : (pl.hol.min < -0.002 ? 0 : (pl.hol.min < 0.01 ? 1 : 2)); const f = !pl ? planForzado(k) : null;
+    const p = L[k]; const hS = zPlato() - MESA.h + 0.09; const a = alcance(p.x, p.y, hS).cls; const pl = planPlatoCache(k, PERFIL_EXPLORA);
+    const g = !pl ? 0 : (pl.hol.min < -0.002 ? 0 : (pl.hol.min < 0.01 ? 1 : 2)); const f = !pl ? planForzado(k, PERFIL_EXPLORA) : null;
     const gtxt = !pl ? (f && f.choque ? `imposible, chocaría ${textoChoque(f.choque)}` : 'no hay dirección') : (pl.hol.min < -0.002 ? `choca con la ${pl.hol.contra} (${mm(pl.hol.min)} mm)` : `holgura ${mm(pl.hol.min)} mm`);
     return { cls: Math.min(a, g), txt: `soltar fruta: ${['no', 'justo', 'sí'][a]} · coger en horizontal: ${gtxt}` };
   }
-  if (k === 'persona') { const pb = poseBandeja(simT); const r = platosActivos().map(([pk]) => planPlatoCache(pk)?.cadena?.pc2 ? 2 : 0); return { cls: Math.min(...r), txt: `llevar y dejar ${r.length > 1 ? 'los platos' : 'el plato'} en la bandeja (a ${fmt((pb.z - MESA.h) * 100, 0)} cm sobre la mesa): ${r.map(c => c ? 'sí' : 'no').join(' / ')}` }; }
+  if (k === 'persona') { const pb = poseBandeja(simT); const r = platosActivos().map(([pk]) => planPlatoCache(pk, PERFIL_EXPLORA)?.cadena?.pc2 ? 2 : 0); return { cls: Math.min(...r), txt: `llevar y dejar ${r.length > 1 ? 'los platos' : 'el plato'} en la bandeja (a ${fmt((pb.z - MESA.h) * 100, 0)} cm sobre la mesa): ${r.map(c => c ? 'sí' : 'no').join(' / ')}` }; }
   return null;
 }
 function pintarLista() {
@@ -1273,9 +1304,15 @@ function pintarCaja() {
   $$('#segCaja button').forEach(x => x.setAttribute('aria-pressed', (x.dataset.v === '1') === L.caja.on));
   $('#cajaH').value = Math.round(L.caja.h * 100); $('#cajaHOut').textContent = `${Math.round(L.caja.h * 100)} cm`; $('#cajaH').disabled = !L.caja.on;
   if (!robot) return; if (sinPlan()) { $('#cajaInfo').innerHTML = '<dt>Agarre de los platos</dt><dd><span class="pill warn">sin calcular</span> pulsa «Calcular trayectorias»</dd>'; return; }
-  $('#cajaInfo').innerHTML = platosActivos().map(([k]) => { const pl = planPlatoCache(k); const n = k === 'plato1' ? '1º' : '2º'; if (!pl) { const f = planForzado(k); return `<dt>Coger el plato ${n}</dt><dd><span class="pill bad">${f && f.choque ? `imposible: ${textoChoque(f.choque)}${f.hol.min < 0 ? `, ${mm(-f.hol.min)} mm` : ''}` : 'sin dirección posible'}</span></dd>`; } const h = pl.hol.min; return `<dt>Holgura al coger el plato ${n}</dt><dd><span class="pill ${h < -0.002 ? 'bad' : h < 0.01 ? 'warn' : 'ok'}">${h < -0.002 ? `choca con la ${pl.hol.contra}: ${mm(h)} mm` : `${mm(h)} mm`}</span></dd>`; }).join('');
+  $('#cajaInfo').innerHTML = platosActivos().map(([k]) => { const pl = planPlatoCache(k, PERFIL_EXPLORA); const n = k === 'plato1' ? '1º' : '2º'; if (!pl) { const f = planForzado(k, PERFIL_EXPLORA); return `<dt>Coger el plato ${n}</dt><dd><span class="pill bad">${f && f.choque ? `imposible: ${textoChoque(f.choque)}${f.hol.min < 0 ? `, ${mm(-f.hol.min)} mm` : ''}` : 'sin dirección posible'}</span></dd>`; } const h = pl.hol.min; return `<dt>Holgura al coger el plato ${n}</dt><dd><span class="pill ${h < -0.002 ? 'bad' : h < 0.01 ? 'warn' : 'ok'}">${h < -0.002 ? `choca con la ${pl.hol.contra}: ${mm(h)} mm` : `${mm(h)} mm`}</span></dd>`; }).join('');
 }
-function actualizarCheck() { if ($('[data-panel="demo"]').hidden || D.activo || !robot) return; if (sinPlan()) { pintarCheck([{ cls: 'warn', txt: 'Hay cambios sin calcular. Pulsa «Calcular trayectorias» o reproduce la demo, que calcula antes de mover el brazo.' }]); return; } pintarCheck(comprobarPlan()); }
+// Comprobación previa de la pestaña Demo: la del perfil de la escena si sus trayectorias están al día; si no, la de explorar
+function actualizarCheck() {
+  if ($('[data-panel="demo"]').hidden || D.activo || !robot) return; pintarPerfilDemo();
+  if (sinPlan()) { pintarCheck([{ cls: 'warn', txt: 'Hay cambios sin calcular. Pulsa «Calcular trayectorias» o reproduce la demo, que calcula antes de mover el brazo.' }]); return; }
+  const pf = planesAlDia(perfilEscena()) ? perfilEscena() : PERFIL_EXPLORA; pintarCheck(comprobarPlan({ perfil: pf }));
+  $('#dCheckPerfil').textContent = pf === perfilEscena() ? `Con el perfil de la escena («${pf}»).` : `Con el perfil de explorar («${pf}»): las trayectorias del perfil de la escena («${perfilEscena()}») se calculan al reproducir la demo, al validar o al guardar.`;
+}
 function toast(t) { if (AVISO_ROBOT) { t = t ? `${t} · ${AVISO_ROBOT}` : AVISO_ROBOT; AVISO_ROBOT = null; } const el = $('#toast'); el.textContent = t; el.classList.add('on'); clearTimeout(el._t); el._t = setTimeout(() => el.classList.remove('on'), 2800); }
 // Aviso visible de solo lectura (T1.1), junto a las etiquetas de la cabecera
 $('.chips').insertAdjacentHTML('afterbegin', '<span class="chip" id="chipSoloLectura" role="status" hidden style="border-color:var(--bad);color:var(--bad);font-weight:600"></span>');
@@ -1353,8 +1390,10 @@ function pintarRobotId() {
 // respecto al robot (los objetos giran alrededor de la base y conservan sus coordenadas en base_link). Si no cambia el
 // giro (nominal, 205 y 206), se cambia sin preguntar y se avisa.
 let PREG_ROBOT = null;
-// Mientras corre la demo, el cálculo o la búsqueda de una disposición no se cambia de robot (correcciones 1 y 2)
-const ocupadoRobot = () => D.playing ? 'Pausa la demo para cambiar de robot' : CALC.activo ? 'Espera a que termine el cálculo para cambiar de robot' : D.buscando ? 'Espera a que termine la búsqueda de una disposición para cambiar de robot' : null;
+// Mientras corre la demo, el cálculo o la búsqueda de una disposición no se cambia de robot (correcciones 1 y 2) ni de
+// perfil de movimiento (T1.6)
+const ocupado = que => D.playing ? `Pausa la demo para cambiar de ${que}` : CALC.activo ? `Espera a que termine el cálculo para cambiar de ${que}` : D.buscando ? `Espera a que termine la búsqueda de una disposición para cambiar de ${que}` : null;
+const ocupadoRobot = () => ocupado('robot');
 function pedirRobotId(id) {
   if (!robot || !LAYOUT.ROBOT_IDS.includes(id)) return;
   const oc = ocupadoRobot(); if (oc) { toast(oc); return; }
@@ -1389,6 +1428,31 @@ function cambiarRobotId(id, modo) {
       : `Robot ${id}: la disposición gira ${gradosTxt(dy)} alrededor de la base y conserva sus coordenadas en base_link.${pre}`);
 }
 $('#segRobotId').addEventListener('click', e => { const b = e.target.closest('button'); if (b) pedirRobotId(b.dataset.v); });
+// ----- Perfil de movimiento de la escena (T1.6, D6) -----
+// L.perfil es el de la demo y el del veredicto principal de la escena; explorar usa siempre «gemelo». Cambiarlo no mueve
+// nada ni recalcula la geometría.
+const TXT_PERFIL = {
+  curso: 'Perfil de la escena: «curso», como MoveIt 2 en la simulación del curso: escala de velocidad y aceleración 0,1 con 5 rad/s² (joint_limits.yaml del curso), ruta cartesiana de MoveIt 2.11+ (pasos de 1 cm y punto medio a 1 mm y 0,01 rad) y el arranque en contacto es un fallo (START_STATE_IN_COLLISION).',
+  gemelo: 'Perfil de la escena: «gemelo», el de la v8: rápido, con la velocidad de la demo, 3 rad/s² [SUPUESTO], rectas cada 4 mm y, si arranca tocando algo, se separa de ello (como FixStartStateCollision).',
+};
+function pintarPerfil() {
+  const pf = perfilEscena(); $$('#segPerfil button').forEach(x => x.setAttribute('aria-pressed', x.dataset.v === pf));
+  $('#perfilNota').innerHTML = `${TXT_PERFIL[pf]} Lo usan la demo y el veredicto que se guarda con la escena. Explorar (arrastrar objetos y «Calcular trayectorias») usa siempre «gemelo».<br><b>Tiempos aproximados</b>: trapecio por articulación sin paradas en los puntos de paso, no la parametrización TOTG de MoveIt [DT4, SIN VALIDAR].`;
+  pintarPerfilDemo();
+}
+function pintarPerfilDemo() {
+  const pf = perfilEscena();
+  $('#dPerfilNota').textContent = pf === 'curso' ? 'La demo usa el perfil de la escena, «curso»: la velocidad no cambia los movimientos planificados ni las rectas, que van a escala 0,1 como en MoveIt del curso; sí cambia el seguimiento de la bandeja (M0 y M1), que es código del grupo. Tiempos aproximados, no TOTG [DT4].'
+    : 'La demo usa el perfil de la escena, «gemelo»: la velocidad escala todos los movimientos. Tiempos aproximados, no TOTG [DT4].';
+}
+function pedirPerfil(pf) {
+  if (!robot || !LAYOUT.PERFILES.includes(pf) || pf === L.perfil) return;
+  const oc = ocupado('perfil'); if (oc) { toast(oc); return; }
+  if (soloLectura()) { toast('Disposición de solo lectura (versión más nueva): no se cambia el perfil'); return; }
+  L.perfil = pf; guardarLocal(); pintarPerfil(); actualizarCheck(); pintarCalc();
+  toast(`Perfil de la escena: «${pf}». No se mueve nada; la demo y el veredicto que se guarda usan este perfil`);
+}
+$('#segPerfil').addEventListener('click', e => { const b = e.target.closest('button'); if (b) pedirPerfil(b.dataset.v); });
 function responderRobot(modo) {
   if (!PREG_ROBOT) return; const oc = ocupadoRobot();
   if (oc) { cerrarPreguntaRobot(); toast(`${oc}: el robot no cambia`); return; } // la pregunta se abrió antes de empezar: no vale
@@ -1580,7 +1644,7 @@ $('#btnImport').addEventListener('click', () => {
 function aplicarLayout() {
   cerrarPreguntaRobot(); aplicarPedido(); $$('#segRobot button').forEach(x => x.setAttribute('aria-pressed', x.dataset.v === L.robot));
   colocarRobots(); actualizarZona(); actualizarPlatos(); actualizarAruco(); for (const k in L.cams) actualizarCam(k); aplicarBandeja(simT);
-  reiniciarDemo(); pintarCaja(); evaluar(); calcularMapa(); pintarSoloLectura(); guardarLocal(); if (!$('[data-panel="datos"]').hidden) pintarDatos();
+  reiniciarDemo(); pintarCaja(); pintarPerfil(); evaluar(); calcularMapa(); pintarSoloLectura(); guardarLocal(); if (!$('[data-panel="datos"]').hidden) pintarDatos();
 }
 const FUENTES = [
   ['Mesa', '1180 × 830 mm, superficie a 760 mm', 'm', 'Cinta + foto (regla y A4, error < 2 %)'],
@@ -1600,8 +1664,9 @@ const FUENTES = [
   ['Fruta', 'piezas de plástico de 4,5–7 cm', 's', 'Foto de referencia del grupo'],
   ['Plato, bandeja y persona', 'plato Ø160 mm · bandeja 450 × 330 mm a 1,00 m del suelo · persona en el lateral derecho, de frente, con la bandeja a la derecha del robot y fuera de la mesa', 's', 'Sin medir; posición elegida porque es donde el robot puede dejar los platos nivelados'],
   ['Modelo de colisión', '162 esferas ajustadas a las mallas de colisión oficiales del UR3e y a la RG2; límites articulares de joint_limits.yaml (codo ±180°)', 'f', 'ur_description (Universal Robots)'],
-  ['Planificación', 'RRT-Connect con atajos para movimientos libres; rectas cada 4 mm sin saltos; plato siempre nivelado', 'm', 'Equivalente a lo que hará MoveIt 2; sin validar en el robot'],
-  ['Aceleración articular', '3 rad/s² al 100 %', 's', 'El yaml del UR3e no fija aceleraciones'],
+  ['Planificación', 'RRT-Connect con atajos para movimientos libres; rectas cada 4 mm sin saltos (perfil «gemelo») o cada 1 cm con el punto medio a 1 mm y 0,01 rad (perfil «curso»); plato siempre nivelado', 'm', 'Equivalente a lo que hará MoveIt 2; sin validar en el robot'],
+  ['Aceleración articular (perfil «gemelo»)', '3 rad/s² al 100 %', 's', 'El yaml del UR3e no fija aceleraciones'],
+  ['Perfil «curso»', 'escala 0,1 de velocidad y aceleración, 5 rad/s², cartesiana de MoveIt 2.11+ y arranque en contacto = fallo', 's', 'config/joint_limits.yaml y el ejemplo del profesor (repo del curso); tiempos con un trapecio por articulación, no TOTG (DT4)'],
   ['Agarre del plato', 'muñeca inclinada hasta 45° respecto a la horizontal', 's', 'Probar con el plato real que no gira ni resbala'],
   ['Bandeja en M0 / M1', 'pausa a 25 mm, aborto a 10 s; latencia 120 ms', 's', 'DEC-04 sin cifras'],
   ['Velocidades', '180°/s (base, hombro, codo), 360°/s (muñecas)', 'f', 'Ficha del UR3e'],
@@ -1667,6 +1732,7 @@ function render() {
 }
 
 // ======================= Banco de pruebas (solo con ?prueba) =======================
+// cfg.perfil: el de la demo ensayada (T1.6); sin él, el de la escena (L.perfil)
 async function ensayo(cfg = {}) {
   // El ensayo empieza con simT = 0 (H3 y criterio 6 de T1.2). La bandeja se mueve con BALANCEO(simT + D.fase), así que
   // cfg.fase es la fase de la bandeja al empezar. Y el resultado no depende de cuánto llevaba la página abierta (simT
@@ -1678,7 +1744,8 @@ async function ensayo(cfg = {}) {
     reiniciarDemo(); if (cfg.caja !== undefined) L.caja.on = cfg.caja; if (cfg.cajaH) L.caja.h = cfg.cajaH; actualizarPlatos(); pintarCaja();
     D.modo = cfg.modo || 'M0'; D.amp = cfg.amp ?? 0.02; D.vel = cfg.vel ?? 0.25;
     reiniciarDemo(); D.activo = true; D.playing = false; D.banco = true; D.fase = cfg.fase ?? Math.random() * 100;
-    const h = 1 / 60; const t0 = simT; const run = D.run; const pr = demo();
+    const pf = PERFIL.de(cfg.perfil ?? perfilEscena()).nombre;
+    const h = 1 / 60; const t0 = simT; const run = D.run; const pr = demo(pf);
     let n = 0;
     while (!D.fin && simT - t0 < (cfg.limite || 600)) {
       if (cfg.hasta && cfg.hasta(D)) { D.banco = false; D.sinRender = false; actualizarHUD(); return { parado: D.estado }; }
@@ -1698,7 +1765,7 @@ async function ensayo(cfg = {}) {
 // ======================= Arranque =======================
 let D_ready = false;
 aplicarPedido(); dibujarGrafo(); pintarPasos(-1);
-actualizarZona(); actualizarPlatos(); actualizarAruco(); for (const k in L.cams) actualizarCam(k); aplicarTema(); pintarCaja(); pintarSoloLectura(); pintarRobotId();
+actualizarZona(); actualizarPlatos(); actualizarAruco(); for (const k in L.cams) actualizarCam(k); aplicarTema(); pintarCaja(); pintarSoloLectura(); pintarRobotId(); pintarPerfil();
 $$('#segRobot button').forEach(x => x.setAttribute('aria-pressed', x.dataset.v === L.robot));
 $('#segPedido').addEventListener('click', e => { const b = e.target.closest('button'); if (!b || D.playing) return; L.pedido = +b.dataset.v; D.activo = false; aplicarPedido(); reiniciarDemo(); actualizarPlatos(); evaluar(); guardarLocal(); toast(L.pedido === 1 ? 'Pide un solo plato: va al centro de la bandeja' : 'Pide primero y segundo'); });
 $('#segRate').addEventListener('click', e => { const b = e.target.closest('button'); if (!b) return; D.rate = +b.dataset.v; $$('#segRate button').forEach(x => x.setAttribute('aria-pressed', x === b)); });
@@ -1706,7 +1773,7 @@ $('#segModoB').addEventListener('click', e => { const b = e.target.closest('butt
 $('#dVel').addEventListener('input', e => { D.vel = e.target.value / 100; $('#dVelOut').textContent = `${e.target.value} %`; });
 $('#dAmp').addEventListener('input', e => { D.amp = e.target.value / 100; $('#dAmpOut').textContent = `${fmt(+e.target.value, 1)} cm`; actualizarCheck(); });
 requestAnimationFrame(bucle);
-if (location.search.includes('prueba')) window.__g = { aplicarPedido, actualizarZona, esferasObjeto, cargaDe, BAND, bandeja, aplicarBandeja: t => aplicarBandeja(t), ladoZonas: () => ladoZonas(), comprobarPlan, llegaVertical, puntosSoltar, FRUTAS, CACHE_PLAN, poseHoriz, ejeHoriz, mundoABase, enLimites, qValida, rutaNivelada: (...a) => rutaNivelada(...a), colocacionConTransporte: (...a) => colocacionConTransporte(...a), planColocar: (...a) => planColocar(...a), zonasB, ikTCP, planAgarrePlato, planColocar, planPlatoCache, KIN_: KIN, BASES, consts: { R_AGARRE, H_BORDE }, COL: () => COL, choqueEn: (q, c) => choqueEn(q, c), obstaculos: () => obstaculos(), textoChoque: c => textoChoque(c), D, L: () => L, cam, orbit, scene, renderer, OBJ, piezas: () => piezas, simT: () => simT, CAMS, actualizarCam, actualizarAruco, actualizarPlatos, metricasCam, estadoObjeto, alcance, comprobarPlan, ensayo, planAgarrePlato, holguraActual, get robot() { return robot; }, KIN, pinza, tcpMundo, zPlato, setL: l => { L = l; }, ESC, ALM, abrirEscena, codigoEscena, abrirCodigo, guardarEscena, escCam: cam, orbit, vista, CALC, calcularPlanes, planesAlDia, recalcular, orientDe, fijarOrient, orientarDesdeQuat, CAMS, seleccionar, tctl, generarYaml, cadenaPlato, cargaPlan, rutaCartesiana: (...a) => rutaCartesiana(...a), zonasB_: () => zonasB, zonaDe, qReposo, aplicarLayout, buscarAlternativa, candidatos, explicar, mostrarFalloInfo, diagnosticarPunto, LAYOUT, ESQ_L, migrarLayout, soloLectura, RNG, planificar: (...a) => planificar(...a), get CIN() { return CIN; }, get ROB() { return ROB; }, CALIBRACION, marco: () => marco(), baseAMundo: (x, y, z) => baseAMundo(x, y, z), tcpDeQ: (q, w) => tcpDeQ(q, w), pedirRobotId: id => pedirRobotId(id), ikNoConverge: (p, y, o) => ikNoConverge(p, y, o), posesTCP, volCol, calcularPerfil, radioA }; // T1.4: robot activo, su cinemática y el marco de base_link (una sola línea: build_web.sh la quita entera)
+if (location.search.includes('prueba')) window.__g = { aplicarPedido, actualizarZona, esferasObjeto, cargaDe, BAND, bandeja, aplicarBandeja: t => aplicarBandeja(t), ladoZonas: () => ladoZonas(), comprobarPlan, llegaVertical, puntosSoltar, FRUTAS, CACHE_PLAN, poseHoriz, ejeHoriz, mundoABase, enLimites, qValida, rutaNivelada: (...a) => rutaNivelada(...a), colocacionConTransporte: (...a) => colocacionConTransporte(...a), planColocar: (...a) => planColocar(...a), zonasB, ikTCP, planAgarrePlato, planColocar, planPlatoCache, KIN_: KIN, BASES, consts: { R_AGARRE, H_BORDE }, COL: () => COL, choqueEn: (q, c) => choqueEn(q, c), obstaculos: () => obstaculos(), textoChoque: c => textoChoque(c), D, L: () => L, cam, orbit, scene, renderer, OBJ, piezas: () => piezas, simT: () => simT, CAMS, actualizarCam, actualizarAruco, actualizarPlatos, metricasCam, estadoObjeto, alcance, comprobarPlan, ensayo, planAgarrePlato, holguraActual, get robot() { return robot; }, KIN, pinza, tcpMundo, zPlato, setL: l => { L = l; }, ESC, ALM, abrirEscena, codigoEscena, abrirCodigo, guardarEscena, escCam: cam, orbit, vista, CALC, calcularPlanes, planesAlDia, recalcular, orientDe, fijarOrient, orientarDesdeQuat, CAMS, seleccionar, tctl, generarYaml, cadenaPlato, cargaPlan, rutaCartesiana: (...a) => rutaCartesiana(...a), zonasB_: () => zonasB, zonaDe, qReposo, aplicarLayout, buscarAlternativa, candidatos, explicar, mostrarFalloInfo, diagnosticarPunto, LAYOUT, ESQ_L, migrarLayout, soloLectura, RNG, planificar: (...a) => planificar(...a), get CIN() { return CIN; }, get ROB() { return ROB; }, CALIBRACION, marco: () => marco(), baseAMundo: (x, y, z) => baseAMundo(x, y, z), tcpDeQ: (q, w) => tcpDeQ(q, w), pedirRobotId: id => pedirRobotId(id), ikNoConverge: (p, y, o) => ikNoConverge(p, y, o), posesTCP, volCol, calcularPerfil, radioA, PERFIL, prepararMoveJ: (...a) => prepararMoveJ(...a), perfilEscena: () => perfilEscena(), planesAlDiaDe: pf => planesAlDia(pf) }; // T1.4: robot activo, su cinemática y el marco de base_link (una sola línea: build_web.sh la quita entera)
 fetch('ur3e-malla.json').then(r => { if (!r.ok) throw new Error(r.status); return r.json(); }).then(j => { const bin = atob(j.glb); const u8 = new Uint8Array(bin.length); for (let i = 0; i < bin.length; i++) u8[i] = bin.charCodeAt(i); new GLTFLoader().parse(u8.buffer, '', cargado, fallo); }).catch(fallo);
 function fallo(err) { $('#loading').textContent = 'No se ha podido cargar el modelo del UR3e.'; console.error(err); }
 function cargado(g) {

@@ -281,6 +281,8 @@ textarea{width:100%;min-height:120px;border:1px solid var(--line);border-radius:
           <p class="hint">Izquierda y derecha según la foto cenital del 10-11. El otro robot queda como obstáculo de otro puesto.</p>
           <div class="seg" id="segRobotId" role="group" aria-label="Robot calibrado"><button data-v="nominal" aria-pressed="true">Nominal</button><button data-v="203" aria-pressed="false">203</button><button data-v="204" aria-pressed="false">204</button><button data-v="205" aria-pressed="false">205</button><button data-v="206" aria-pressed="false">206</button></div>
           <p class="hint" id="robotNota"></p>
+          <div class="seg" id="segPerfil" role="group" aria-label="Perfil de movimiento de la escena"><button data-v="curso" aria-pressed="false">Curso · MoveIt del curso</button><button data-v="gemelo" aria-pressed="false">Gemelo · rápido</button></div>
+          <p class="hint" id="perfilNota"></p>
           <div class="card fallo" id="robotAviso" role="alert" hidden></div>
           <div class="card" id="robotPregunta" role="alertdialog" aria-labelledby="robotPregTit" hidden>
             <b id="robotPregTit"></b>
@@ -369,6 +371,7 @@ textarea{width:100%;min-height:120px;border:1px solid var(--line);border-radius:
             <div class="field"><label for="dVel">Velocidad del robot</label><output id="dVelOut">25 %</output><input type="range" id="dVel" min="10" max="100" step="5" value="25"></div>
             <div class="field"><label for="dAmp">Balanceo de la bandeja</label><output id="dAmpOut">2,0 cm</output><input type="range" id="dAmp" min="0" max="6" step="0.5" value="2"></div>
           </div>
+          <p class="hint" id="dPerfilNota"></p>
           <div class="seg" id="segModoB"><button data-v="M0" aria-pressed="true">M0 · colocar con la pose de recepción</button><button data-v="M1" aria-pressed="false">M1 · seguir la bandeja</button></div>
           <p class="hint">M0 pausa si la bandeja se aparta más de 25 mm de la pose de recepción y coloca cuando vuelve. M1 sigue la pose con 120 ms de retraso entre la captura y el movimiento. Las dos cifras son supuestos: DEC-04 todavía no tiene números.</p>
         </div>
@@ -383,7 +386,7 @@ textarea{width:100%;min-height:120px;border:1px solid var(--line);border-radius:
         <dl class="kv" id="dCalidad"></dl>
         <p class="hint" style="margin:0">Los choques (pinza o muñeca contra la mesa o una caja) se vigilan en todo el recorrido y una esfera roja marca el punto. Un roce es la pinza, o el plato que lleva, pasando por una pieza que no se está cogiendo. Si algo impide seguir, la demo se para y dice por qué; si la bandeja no vuelve a su sitio en 10 s, aborta y retira el brazo (DEC-04).</p>
         <div class="card fallo" id="dFallo" hidden></div>
-        <div class="sec"><h2>Comprobación previa</h2><ul class="chkl" id="dCheck"><li>Se calcula al abrir esta pestaña.</li></ul></div>
+        <div class="sec"><h2>Comprobación previa</h2><p class="hint" id="dCheckPerfil"></p><ul class="chkl" id="dCheck"><li>Se calcula al abrir esta pestaña.</li></ul></div>
         <ol class="steps" id="dSteps"></ol>
         <div class="sec">
           <h2>Grafo ROS 2</h2>

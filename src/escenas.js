@@ -188,8 +188,9 @@ async function guardarEscena(modo) {
   const prop = modo === 'cambios' ? propiaEditable() : null;
   $$('#escGuardarSec button').forEach(b => b.disabled = true);
   try {
-    if (!planesAlDia()) await calcularPlanes(); // se guarda con su comprobación previa, para que el grupo vea si es viable
-    const graves = comprobarPlan().filter(c => c.grave);
+    const pf = perfilEscena(); // se guarda con la comprobación previa del perfil de la escena, para que el grupo vea si es viable
+    if (!planesAlDia(pf)) await calcularPlanes(pf);
+    const graves = comprobarPlan({ perfil: pf }).filter(c => c.grave);
     // durante el cálculo, Importar o Recuperar pueden haber cambiado L: se vuelve a comprobar lo que se va a guardar
     if (soloLectura()) { toast(`Esta disposición es de una versión más nueva del gemelo (v${L.version}): se ve en solo lectura y no se puede guardar`); return; }
     const txt = jsonL(), largo2 = LAYOUT.noGuardable(txt); if (largo2) { toast(`No se guarda: ${largo2}`); return; } // lo que se guarda es este texto

@@ -37,7 +37,7 @@ test('I6: planificar A, después B y después A da el mismo camino para A y A\''
       const g = window.__g, qa = g.qReposo(), escena = g.obstaculos().map(o => ({ ...o }));
       const peticion = (dq0, r) => {
         const qb = qa.slice(); qb[0] += dq0; const T = g.KIN.fk(qa.map((v, i) => (v + qb[i]) / 2));
-        return { qa, qb, ctx: { w: 0.06, carga: null, conBlandos: true, obst: [...escena, { t: 1, x: T[3], y: T[7], z: T[11], r, tag: 'prueba', m: 0.002, R: r }] } };
+        return { qa, qb, ctx: { w: 0.06, carga: null, conBlandos: true, perfil: 'gemelo', obst: [...escena, { t: 1, x: T[3], y: T[7], z: T[11], r, tag: 'prueba', m: 0.002, R: r }] } };
       };
       window.__I6 = { A: peticion(1.2, 0.06), B: peticion(-1.0, 0.05) };
       const libre = (q, P) => g.choqueEn(q, { ...P.ctx }) === null;
@@ -71,7 +71,7 @@ test('sin camino con su semilla, planificar da «sin plan» (null) sin probar ot
       const toca = (c, lista) => lista.some(e => Math.hypot(c[0] - e[0], c[1] - e[1], c[2] - e[2]) < e[3] + RS);
       const jaula = [];
       for (const e of eb) for (const d of dirs) { const k = e[3] + RS + HOL, c = [e[0] + d[0] * k, e[1] + d[1] * k, e[2] + d[2] * k]; if (!toca(c, eb) && !toca(c, ea)) jaula.push({ t: 1, x: c[0], y: c[1], z: c[2], r: RS, tag: 'jaula', m: 0, R: RS }); }
-      window.__I6 = { J: { qa, qb, ctx: { w: 0.06, carga: null, conBlandos: true, obst: jaula } } };
+      window.__I6 = { J: { qa, qb, ctx: { w: 0.06, carga: null, conBlandos: true, perfil: 'gemelo', obst: jaula } } };
       const P = window.__I6.J; return { qa: g.choqueEn(qa, { ...P.ctx }), qb: g.choqueEn(qb, { ...P.ctx }), n: jaula.length };
     });
     assert.deepEqual({ qa: pre.qa, qb: pre.qb }, { qa: null, qb: null }, 'inicio y objetivo libres (si no, planificar saldría antes del RRT)');
@@ -103,7 +103,7 @@ test('una excepción dentro de ensayo() no deja el banco de pruebas puesto', { t
     const r = await p.evaluate(async c => {
       const g = window.__g; let visto = null;
       const hasta = d => { if (d.paso >= 2) { visto = { banco: d.banco, activo: d.activo }; throw new Error('fallo de prueba en hasta'); } return false; };
-      try { await g.ensayo({ ...c, hasta }); return { lanzo: false }; } catch (e) {
+      try { await g.ensayo({ ...c, perfil: 'gemelo', hasta }); return { lanzo: false }; } catch (e) {
         return { lanzo: e.message, visto, despues: { banco: g.D.banco, sinRender: g.D.sinRender, activo: g.D.activo, playing: g.D.playing, estado: g.D.estado }, simT: g.simT() };
       }
     }, CASOS_MATRIZ[0]);
