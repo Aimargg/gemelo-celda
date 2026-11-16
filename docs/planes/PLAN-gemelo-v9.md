@@ -150,7 +150,7 @@ Estados: pendiente · en curso · entregada · aceptada · correcciones · bloqu
 | T2.4 | 2 | TF estáticas (YAML por TF y comandos) | Claude Code | T2.1 | medio | aceptada | e9922e7, 0805778, 10d0d8a, 90637a6 |
 | T2.5 | 2 | `camera_info` nominal y parámetros de `usb_cam` por cámara | Claude Code | T2.1, T1.7 | medio | aceptada | 8443ad3, 0ce94fe, 8a65d85, 6d5524b |
 | T2.6 | 2 | Panel «Exportar a ROS» y guía de validación | Claude Code | T2.2–T2.5 | bajo | aceptada | 91c7b45, 69f8f91, 79e0a1c, 694618e |
-| T2.7 | 2 | Pasada de deuda de F2: exportación (DT31, DT34–DT37) | Claude Code | T2.6 | medio | en curso | |
+| T2.7 | 2 | Pasada de deuda de F2: exportación (DT31, DT34–DT37) | Claude Code | T2.6 | medio | entregada | 7f7f7b2, d2c0dfc, 24bc283, 8b86459, 64a4e5c, ebb6a8c, f37bb5d |
 | T2.8 | 2 | Pasada de deuda de F2: la salida de la bandeja frente a su balanceo (DT30) | Claude Code | T2.7 | medio | pendiente | |
 | U4 | 2 | Validar los ficheros exportados en `sim_<id>` | Usuario | T2.6 | — | pendiente | — |
 | T3.0 | 3 | Pico: roslib desde jsDelivr y permiso de red local en Pages y en el artefacto | Claude Code + usuario | F2 | medio | pendiente | |

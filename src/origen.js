@@ -10,7 +10,10 @@
 const ORIGEN = (() => {
   const M = 'MEDIDO', F = 'FABRICANTE', S = 'SUPUESTO';
   const TIPOS = [M, F, S];
-  const CLASE = { [M]: 'm', [F]: 'f', [S]: 's' }; // clase de la etiqueta en la tabla (.tag.m, .tag.f y .tag.s del CSS)
+  // Lo que ha decidido el grupo (DT34, T2.7) no es un cuarto tipo de D8: es una etiqueta propia, como ELEGIDO (abajo). La
+  // lleva en el campo tipo, en la tabla y en los ficheros, la entrada cuya fuente es una decisión del grupo (agarre_plato).
+  const GRUPO = 'decisión del grupo';
+  const CLASE = { [M]: 'm', [F]: 'f', [S]: 's', [GRUPO]: 'g' }; // clase de la etiqueta en la tabla (.tag.m, .tag.f y .tag.s del CSS; .tag.g, la de .tag)
   const LEYENDA = `${TIPOS.slice(0, -1).join(', ')} o ${TIPOS.at(-1)}`;
   // Formatos de la tabla: los mismos que fmt, mm y gradosTxt de app.js (mismas operaciones, mismo texto)
   const R2D = 180 / Math.PI;
@@ -18,7 +21,8 @@ const ORIGEN = (() => {
   const grados = a => `${fmt(a * R2D, 1).replace('-', '−')}°`;
   const con = (t, detalle) => detalle ? `${t} (${detalle})` : t; // comentario corto: el tipo y, si hace falta, por qué
   // Una entrada por valor exportable. nombre: la fila de la tabla (null = solo en los ficheros exportados).
-  // tipo, valor, fuente: texto o función del contexto. yaml: (tipo, ctx) → comentario corto, que siempre empieza por el tipo.
+  // tipo (uno de TIPOS o GRUPO), valor, fuente: texto o función del contexto. yaml: (tipo, ctx) → comentario corto, que
+  // siempre empieza por el tipo.
   // El orden es el de la tabla.
   const ENTRADAS = [
     { clave: 'mesa', nombre: 'Mesa', tipo: M, valor: '1180 × 830 mm, superficie a 760 mm', fuente: 'Cinta + foto (regla y A4, error < 2 %)', yaml: t => t },
@@ -34,7 +38,7 @@ const ORIGEN = (() => {
     },
     { clave: 'pinza', nombre: 'Pinza', tipo: M, valor: 'OnRobot RG2, 0–110 mm, 0,78 kg, 3–40 N', fuente: 'Apertura medida 110 mm + ficha', yaml: t => t },
     { clave: 'tcp_pinza', nombre: 'TCP de la pinza', tipo: S, valor: c => `${Math.round(c.tcpZ * 1000)} mm cerrada`, fuente: 'Modelo simplificado; medir en PolyScope', yaml: t => con(t, 'modelo simplificado') },
-    { clave: 'agarre_plato', nombre: 'Agarre del plato', tipo: M, valor: 'horizontal por el borde, un dedo encima y otro debajo del ala', fuente: 'Decisión del grupo (12-11)', yaml: t => con(t, 'decisión del grupo') },
+    { clave: 'agarre_plato', nombre: 'Agarre del plato', tipo: GRUPO, valor: 'horizontal por el borde, un dedo encima y otro debajo del ala', fuente: 'Decisión del grupo (12-11)', yaml: t => t },
     { clave: 'caja_plato', nombre: 'Caja bajo el plato', tipo: S, valor: '10 × 10 cm, altura regulable', fuente: 'Propuesta del grupo; tamaño sin medir', yaml: t => t },
     {
       clave: 'orientacion_base_link', nombre: 'Orientación de base_link', tipo: S,
@@ -66,7 +70,7 @@ const ORIGEN = (() => {
     { clave: 'disposicion', nombre: null, tipo: S, valor: 'posiciones de la zona de fruta, los platos, los marcadores, la bandeja, sus zonas, la persona y las cámaras', fuente: 'la disposición propuesta en el gemelo, sin medir', yaml: t => con(t, 'disposición propuesta, sin medir') },
     { clave: 'pose_doble', nombre: null, tipo: S, valor: 'pose de <id>_base_link en el world del URDF doble', fuente: 'xacro del URDF doble del curso (doble_ur3e_<a>_<b>)', yaml: t => con(t, 'sin validar en ROS') },
     // Valores nuevos de parametros_celda.yaml y de las TF estáticas (T2.2, T2.4), también solo en los ficheros
-    { clave: 'nombre_frame', nombre: null, tipo: S, valor: 'nombres de los frames de la celda: mesa, zona_fruta, plato_<n>_inicio, marcador_<id>, bandeja, zona_primero, zona_segundo, camara_<k> y camara_<k>_optical', fuente: 'propuestos por el gemelo (T2.4); los fija el grupo con la arquitectura (D3)', yaml: t => con(t, 'nombre propuesto') },
+    { clave: 'nombre_frame', nombre: null, tipo: S, valor: 'nombres de los frames de la celda: mesa, zona_fruta, plato_<n>_inicio, marcador_<id>, bandeja, zona_primero, zona_segundo, zona_centro, camara_<k> y camara_<k>_optical', fuente: 'propuestos por el gemelo (T2.4); los fija el grupo con la arquitectura (D3)', yaml: t => con(t, 'nombre propuesto') },
     { clave: 'lado_marcador', nombre: null, tipo: S, valor: 'lado de 6 cm de los marcadores de entrega (ids 4 y 5)', fuente: 'el dibujo del gemelo, sin medir: el impreso puede ser otro', yaml: t => con(t, 'lado del dibujo del gemelo, sin medir') },
     { clave: 'marco_optico', nombre: null, tipo: F, valor: 'camara_<k> → camara_<k>_optical: rpy (−π/2, 0, −π/2), sin traslación', fuente: 'convenio de REP-103 (marco del cuerpo y marco óptico de una cámara)', yaml: t => con(t, 'convenio de REP-103') },
     // Valores nuevos de la escena de colisión (T2.3), también solo en los ficheros
@@ -100,6 +104,6 @@ const ORIGEN = (() => {
   const yaml = (clave, ctx) => entrada(clave, ctx).yaml;
   // Las filas de la tabla del panel «Datos», en su orden
   const panel = ctx => ENTRADAS.filter(e => e.nombre !== null).map(e => entrada(e.clave, ctx));
-  return { TIPOS, CLASE, LEYENDA, ELEGIDO, CLAVES, entrada, tipo, yaml, panel };
+  return { TIPOS, CLASE, LEYENDA, ELEGIDO, GRUPO, CLAVES, entrada, tipo, yaml, panel };
 })();
 if (typeof module !== 'undefined') module.exports = ORIGEN;

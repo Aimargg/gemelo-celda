@@ -6,6 +6,7 @@
 # Carga: bash tf_estaticas.sh, con ROS 2 Jazzy en el entorno: una static_transform_publisher por TF; Ctrl+C las para todas [SIN VALIDAR en ROS: U4].
 # En una escena doble, carga las TF de un solo robot: cada frame admite un único padre.
 # Metros y radianes; los ángulos, con setRPY (R = Rz(yaw)·Ry(pitch)·Rx(roll), ejes fijos). Los mismos números que tf/<child_frame_id>.yaml.
+# zona_centro (centro de la bandeja): el destino del plato con un pedido de un plato; con dos, como en esta disposición, no se usa.
 # Origen de cada valor, en la línea anterior a cada comando: MEDIDO, FABRICANTE o SUPUESTO; lo que se elige en el gemelo, «elegido en el gemelo».
 trap 'kill $(jobs -p) 2>/dev/null' INT TERM
 # base_link → mesa: SUPUESTO (giro world→base_link sin validar en ROS)
@@ -26,6 +27,8 @@ ros2 run tf2_ros static_transform_publisher --x -0.351 --y 0.279 --z 0.240 --rol
 ros2 run tf2_ros static_transform_publisher --x -0.020 --y 0.100 --z 0.001 --roll 0.000 --pitch 0.000 --yaw 0.000 --frame-id bandeja --child-frame-id zona_primero --ros-args -r __node:=tf_zona_primero &
 # bandeja → zona_segundo: SUPUESTO (sin medir)
 ros2 run tf2_ros static_transform_publisher --x -0.020 --y -0.100 --z 0.001 --roll 0.000 --pitch 0.000 --yaw 0.000 --frame-id bandeja --child-frame-id zona_segundo --ros-args -r __node:=tf_zona_segundo &
+# bandeja → zona_centro: SUPUESTO (sin medir)
+ros2 run tf2_ros static_transform_publisher --x -0.020 --y 0.000 --z 0.001 --roll 0.000 --pitch 0.000 --yaw 0.000 --frame-id bandeja --child-frame-id zona_centro --ros-args -r __node:=tf_zona_centro &
 # base_link → camara_cenital: SUPUESTO (disposición propuesta, sin medir) · nominal: la sustituye la calibración
 ros2 run tf2_ros static_transform_publisher --x 0.497 --y 0.124 --z 0.410 --roll 0.000 --pitch 0.988 --yaw -2.393 --frame-id base_link --child-frame-id camara_cenital --ros-args -r __node:=tf_camara_cenital &
 # camara_cenital → camara_cenital_optical: FABRICANTE (convenio de REP-103)

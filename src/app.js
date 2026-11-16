@@ -419,6 +419,10 @@ function poseBandeja(t) {
   const yaw = P.yaw + o.dyaw * A * 1.6; const lx = ade + o.dx * A, ly = o.dy * A;
   return { x: P.x + Math.cos(P.yaw) * lx - Math.sin(P.yaw) * ly, y: P.y + Math.sin(P.yaw) * lx + Math.cos(P.yaw) * ly, z: alt + o.dz * A, yaw };
 }
+// Pose de plan de la bandeja (DT35): la de recepción, sin balanceo y subida, con la que se planifica cada plato (pasosPlan).
+// Fuera de la demo es poseBandeja(t); durante la demo, poseBandeja(0) lleva el balanceo de la fase D.fase. La exportan la TF
+// bandeja, bandeja_recepcion y sus zonas (modeloExportacion). No cambia trayState: lo deja como estaba.
+function poseBandejaPlan() { const b = trayState.balanceo, s = trayState.subida; trayState.balanceo = false; trayState.subida = 1; try { return poseBandeja(0); } finally { trayState.balanceo = b; trayState.subida = s; } }
 function aplicarBandeja(t) {
   const p = poseBandeja(t); bandeja.position.set(p.x, p.y, p.z); bandeja.rotation.set(0, 0, p.yaw); bandeja.updateMatrixWorld(true);
   persona.position.set(L.persona.x + D.personaOff * Math.cos(L.persona.yaw + PI), L.persona.y + D.personaOff * Math.sin(L.persona.yaw + PI), 0); persona.rotation.z = L.persona.yaw; persona.updateMatrixWorld(true);
@@ -731,18 +735,21 @@ function calcularMapa() {
 const tctl = new TransformControls(cam, renderer.domElement); tctl.setSize(0.75); scene.add(tctl);
 tctl.addEventListener('dragging-changed', e => { orbit.enabled = !e.value; EDITANDO = e.value; if (e.value) prepararEdicion(); else { guardarLocal(); recalcular(); } });
 function recalcular() { actualizarPlatos(); evaluar(); pintarCalc(); vigilarEscena(); } // soltar un objeto solo refresca lo ligero; los planes se calculan con el botón
-// Mover algo con la demo a medias la deja incoherente: se reinicia antes del primer movimiento
-function prepararEdicion() { if (D.activo && !D.playing) { D.activo = false; reiniciarDemo(); toast('Demo reiniciada para mover objetos'); } }
+// Mover algo con la demo a medias la deja incoherente: se reinicia antes del primer movimiento. aviso: el motivo que se
+// enseña (la capa del otro robot da el suyo, DT31)
+function prepararEdicion(aviso = 'Demo reiniciada para mover objetos') { if (D.activo && !D.playing) { D.activo = false; reiniciarDemo(); toast(aviso); } }
 const CALC = { activo: false };
 // Estado de la sección «Exportar a ROS» del panel «Datos» (T2.6): el modelo y los ficheros que muestra, y si sus descargas
 // están desactivadas por un cálculo o una búsqueda (vigilarRos, desde pintarCalc)
 const ROSX = { m: null, ficheros: [], lista: null, huella: '', giro: null, ver: null, ocupado: null };
 // La barra dice si las trayectorias de explorar («gemelo») están al día; debajo, la de validar (pintarVal, T1.8).
 // El texto de progreso se conserva hasta que acaba el cálculo (el repintado periódico no lo borra).
+// #btnCalc sigue a CALC.activo también cuando la barra se oculta (DT41): si no, al acabar un cálculo con los planes al día se
+// quedaba desactivado hasta que el repintado periódico volvía a enseñar la barra, y un clic en ese rato se perdía.
 function pintarCalc(txt) {
-  if (txt) CALC.txt = txt; pintarVal(); vigilarRos();
+  if (txt) CALC.txt = txt; pintarVal(); vigilarRos(); $('#btnCalc').disabled = CALC.activo;
   const el = $('#calcBar'); const ver = !!robot && (VAL.activo || !D.activo) && (CALC.activo || !planesAlDia(PERFIL_EXPLORA)); el.hidden = !ver; if (!ver) return;
-  $('#calcTxt').textContent = CALC.activo ? (CALC.txt || 'Calculando…') : 'Hay cambios sin calcular'; $('#calcSpin').hidden = !CALC.activo; $('#btnCalc').disabled = CALC.activo;
+  $('#calcTxt').textContent = CALC.activo ? (CALC.txt || 'Calculando…') : 'Hay cambios sin calcular'; $('#calcSpin').hidden = !CALC.activo;
 }
 // Calcula las trayectorias de los platos con un perfil (T1.6). Sin argumento, el de explorar: la barra «Calcular»,
 // soltar un objeto y el primer cálculo al cargar usan siempre «gemelo» (decisión 2 del brief). La demo, guardar y validar
@@ -1622,7 +1629,7 @@ function otroVisible() { return !!(otro && otro.root.visible); } // declaración
 function cambiarOtro(v) {
   if (!otro) return;
   if (D.playing || CALC.activo || VAL.activo || D.buscando) { $('#lyOtro').checked = otro.root.visible; toast('Espera a que termine la demo o el cálculo para cambiar el robot del otro puesto'); return; }
-  prepararEdicion(); otro.root.visible = v; VERSION_ESCENA++; actualizarPlatos(); evaluar(); pintarCalc();
+  prepararEdicion('Demo reiniciada: ha cambiado el robot del otro puesto'); otro.root.visible = v; VERSION_ESCENA++; actualizarPlatos(); evaluar(); pintarCalc(); // cambian los obstáculos (DT31)
 }
 const capas = { lyCol: v => volCol.forEach(m => m.visible = v), lyFoto: v => foto.visible = v, lyOtro: v => cambiarOtro(v), lyTF: v => TF.forEach(t => { t.visible = v; t.userData.lbl.visible = v; }), lyEtq: v => labels.domElement.style.display = v ? '' : 'none', lyCirc: v => circ.visible = v, lyFrus: v => Object.values(CAMS).forEach(R => { R.frus.visible = R.huella.visible = v; }) };
 for (const id in capas) $('#' + id).addEventListener('change', e => capas[id](e.target.checked));
@@ -1759,7 +1766,9 @@ function ctxOrigen() { const s = sensorEscena(); return { robotId: ROB.id, sospe
 // nada del gemelo: posiciones.yaml, parametros_celda.yaml y las TF estáticas salen de los mismos números.
 function modeloExportacion() {
   const v = p => ({ x: p.x, y: p.y, z: p.z }), B = o => v(enBase({ x: o.x, y: o.y, z: o.z ?? MESA.h }));
-  const tp = poseBandeja(0); bandeja.updateMatrixWorld(true); const zw = k => zonasB[k].getWorldPosition(new THREE.Vector3());
+  // La bandeja en su pose de plan (poseBandejaPlan) y sus zonas llevadas a ella con su posición en la bandeja, la de su TF
+  // (DT35): durante la demo, la bandeja dibujada se balancea y lo exportado no la sigue
+  const tp = poseBandejaPlan(), enPlan = l => ({ x: tp.x + Math.cos(tp.yaw) * l.x - Math.sin(tp.yaw) * l.y, y: tp.y + Math.sin(tp.yaw) * l.x + Math.cos(tp.yaw) * l.y, z: tp.z + l.z });
   const id = ROB.id, d = ROB.datos, pf = L.prefijoFrames || '';
   // Una disposición de solo lectura puede traer un robot que esta versión no conoce: se dice y se usa el nominal (corrección 5)
   const doble = pf && d.doble ? { nombre: d.doble.fichero.split('/').pop().replace('.urdf.xacro', ''), x: d.doble.x, y: d.doble.y, z: 0, yaw: d.doble.yaw - PI } : null;
@@ -1784,7 +1793,7 @@ function modeloExportacion() {
     zona: { ...zf, yaw: yawABase(L.zona.yaw), ancho: L.zona.w, fondo: L.zona.d },
     // marcadores de entrega: planos sobre la mesa y con sus ejes (OBJ.arucoE no gira), de 6 cm (aruco(4 + i, 0.06))
     marcadores: L.arucoE.map((a, i) => ({ id: 4 + i, diccionario: 'DICT_4X4_50', lado: 0.06, ...B(a), yaw: yawABase(0) })),
-    bandeja: { ...bt, yaw: yawABase(tp.yaw), zonas: ['zona_primero', 'zona_segundo'].map(k => ({ clave: k, base: B(zw(k)), local: v(zonasB[k].position) })) },
+    bandeja: { ...bt, yaw: yawABase(tp.yaw), zonas: ['zona_primero', 'zona_segundo', 'zona_centro'].map(k => ({ clave: k, base: B(enPlan(zonasB[k].position)), local: v(zonasB[k].position) })) }, // zona_centro siempre (DT36)
     persona: { ...pe, yaw: yawABase(L.persona.yaw) },
     camaras,
     escena: escenaExportacion(B, mc, bt, yawABase(tp.yaw), camaras),

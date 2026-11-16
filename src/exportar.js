@@ -37,8 +37,16 @@ const EXPORTAR = (() => {
     return `# Frame: ${R.frame}${como}. Metros y radianes (REP-103), redondeo a 1 mm y 0,001 rad.\n`;
   }
 
+  // zona_centro (DT36): se exporta siempre, como las otras dos zonas; los ficheros que la llevan dicen en una línea si esta
+  // disposición la usa (un plato) o no (dos)
+  const CENTRO = 'zona_centro';
+  const lineaCentro = m => !m.bandeja.zonas.some(z => z.clave === CENTRO) ? []
+    : [`${CENTRO} (centro de la bandeja): el destino del plato con un pedido de un plato${m.pedido === 1 ? ', como el de esta disposición' : '; con dos, como en esta disposición, no se usa'}.`];
+
   // ---------- posiciones.yaml (T1.5, T2.1): el mismo texto que escribía generarYaml ----------
-  // fecha: 'AAAA-MM-DD' (la única línea que cambia de un día a otro)
+  // fecha: 'AAAA-MM-DD' (la única línea que cambia de un día a otro). Lo que viene de la disposición sin validar (robot_id,
+  // frame, prefijo_frames y su prefijo en las líneas de comentario) se escribe con el mismo escape que los ficheros de ROS
+  // (cad, comentario y limpio; DT35): una disposición de solo lectura de una versión más nueva puede traer cualquier texto.
   function posiciones(m, O, fecha) {
     const c = m.ctx, og = k => O.yaml(k, c), ot = k => O.tipo(k, c);
     const R = m.robot, frame = R.frame, sup = `# ${og('disposicion')}`;
@@ -46,14 +54,16 @@ const EXPORTAR = (() => {
     // valide en ROS (corrección 6 de T1.5)
     const conGiro = R.yaw !== 0, giroSup = `${ot('orientacion_base_link')} (giro world→base_link sin validar en ROS)`;
     let y = `# posiciones.yaml · gemelo de la celda UR3e · BORRADOR (generado por IA)\n`;
-    y += lineaRobot(m) + lineaFrame(m);
+    y += comentario(lineaRobot(m)) + comentario(lineaFrame(m));
     y += `# world: el world del gemelo, con los ejes de la mesa y el origen en el centro de la base sobre el tablero [${ot('orientacion_base_link')} hasta comprobarlo en el laboratorio].\n`;
-    y += `# ${frame} está girado ${rad3(R.yaw)} rad (${grados(R.yaw)}) respecto a ese world: mount_yaw − π del xacro del curso [SIN VALIDAR en ROS; docs/estado/frames.md].\n`;
-    y += `# Origen de cada valor, al final de su línea: ${O.LEYENDA}. Las cámaras dan el giro desde +y de ${frame} hacia +x.\n`;
-    y += `fecha: ${fecha}\nrobot: ${R.posicion}  # ${og(R.posicion === 'B' ? 'base_b' : 'base_a')}\nrobot_id: ${R.desconocido ? `${R.idLayout}  # de la disposición; el gemelo no lo conoce y usa la cinemática nominal` : `${R.id}  # ${O.ELEGIDO}`}\n`;
+    y += `# ${limpio(frame)} está girado ${rad3(R.yaw)} rad (${grados(R.yaw)}) respecto a ese world: mount_yaw − π del xacro del curso [SIN VALIDAR en ROS; docs/estado/frames.md].\n`;
+    y += `# Origen de cada valor, al final de su línea: ${O.LEYENDA}; lo que ha decidido el grupo, «${O.GRUPO}». Las cámaras dan el giro desde +y de ${limpio(frame)} hacia +x.\n`;
+    for (const l of lineaCentro(m)) y += `# ${l}\n`;
+    // La posición A/B es una elección del gemelo (DT34); la posición medida de cada base no se escribe en este fichero
+    y += `fecha: ${fecha}\nrobot: ${R.posicion}  # ${O.ELEGIDO}\nrobot_id: ${R.desconocido ? `${cad(R.idLayout)}  # de la disposición; el gemelo no lo conoce y usa la cinemática nominal` : `${cad(R.id)}  # ${O.ELEGIDO}`}\n`;
     const w = R.worldABase;
-    y += `frame: ${frame}\nprefijo_frames: '${R.prefijo}'\nworld_a_base_link: {x: ${r3(w.x)}, y: ${r3(w.y)}, z: ${r3(w.z)}, yaw_rad: ${rad3(R.yaw)}}  # world del gemelo (ejes de la mesa): ${ot('orientacion_base_link')} · giro: mount_yaw − π del xacro del curso, ${og('orientacion_base_link')}\n`;
-    if (R.doble) y += `pose_en_world_doble: {frame: ${frame}, x: ${r3(R.doble.x)}, y: ${r3(R.doble.y)}, z: ${r3(R.doble.z)}, yaw_rad: ${rad3(R.doble.yaw)}}  # xacro del curso, ${R.doble.nombre}: ${og('pose_doble')}\n`;
+    y += `frame: ${cad(frame)}\nprefijo_frames: ${cad(R.prefijo)}\nworld_a_base_link: {x: ${r3(w.x)}, y: ${r3(w.y)}, z: ${r3(w.z)}, yaw_rad: ${rad3(R.yaw)}}  # world del gemelo (ejes de la mesa): ${ot('orientacion_base_link')} · giro: mount_yaw − π del xacro del curso, ${og('orientacion_base_link')}\n`;
+    if (R.doble) y += `pose_en_world_doble: {frame: ${cad(frame)}, x: ${r3(R.doble.x)}, y: ${r3(R.doble.y)}, z: ${r3(R.doble.z)}, yaw_rad: ${rad3(R.doble.yaw)}}  # xacro del curso, ${R.doble.nombre}: ${og('pose_doble')}\n`;
     y += `pinza: {modelo: ${m.pinza.modelo}, tcp_z_m: ${r3(m.pinza.tcpZ)}, carrera_m: ${r3(m.pinza.carrera)}}  # tcp_z: ${og('tcp_pinza')} · carrera: ${og('pinza')}\n`;
     const me = m.mesa;
     y += `mesa: {ancho_m: ${r3(me.ancho)}, fondo_m: ${r3(me.fondo)}, alto_m: ${r3(me.alto)}, centro_en_base_link: {x: ${r3(me.x)}, y: ${r3(me.y)}}, yaw_rad: ${rad3(me.yaw)}}  # ${conGiro ? `medidas: ${og('mesa')} · centro_en_base_link y yaw_rad: ${giroSup}` : og('mesa')}\n`;
@@ -105,11 +115,12 @@ const EXPORTAR = (() => {
   const raiz = nodos => `/**:\n  ros__parameters:\n${bloque(nodos, 4)}`;
 
   // Cabecera de los ficheros de ROS (decisión 8): sin fecha, con el robot, el frame, la huella y cómo se carga
-  function cabecera(m, O, nombre, carga, extra = [], donde = 'al final de su línea') {
+  // grupo: el fichero lleva valores que ha decidido el grupo (DT34): la leyenda dice su etiqueta
+  function cabecera(m, O, nombre, carga, extra = [], donde = 'al final de su línea', grupo = false) {
     return [`# ${nombre} · gemelo de la celda UR3e · generado por el gemelo (IA), BORRADOR\n`, comentario(lineaRobot(m)), comentario(lineaFrame(m)),
       `# Huella de la disposición: ${huella(m.layoutJson)} (FNV-1a de 32 bits de JSON.stringify(L), en UTF-8): casa este fichero con su disposición.\n`,
       `# Carga: ${carga} [SIN VALIDAR en ROS: U4].\n`, ...extra.map(l => `# ${l}\n`),
-      `# Origen de cada valor, ${donde}: ${O.LEYENDA}; lo que se elige en el gemelo, «${O.ELEGIDO}».\n`].join('');
+      `# Origen de cada valor, ${donde}: ${O.LEYENDA}; lo que se elige en el gemelo, «${O.ELEGIDO}»${grupo ? `; lo que ha decidido el grupo, «${O.GRUPO}»` : ''}.\n`].join('');
   }
 
   // ---------- parametros_celda.yaml (T2.2): ros__parameters para --params-file ----------
@@ -167,9 +178,10 @@ const EXPORTAR = (() => {
       `Poses en ${limpio(R.frame)}: xyz [x, y, z] en m y rpy [roll, pitch, yaw] en rad (setRPY: R = Rz(yaw)·Ry(pitch)·Rx(roll), ejes fijos), o solo yaw si el objeto solo gira en z; tamaños en m; focal_mm en mm (DT19).`,
       'world_a_base_link y pose_en_world_doble: la pose de base_link en el world del gemelo y en el del URDF doble. frame_id: el frame de la TF del objeto (tf_estaticas.sh).',
       'Nombres en celda: robot (posicion, id, frame, prefijo_frames, world_a_base_link, pose_en_world_doble), pinza, mesa, pedido, platos (caja_tamano_m, plato_1, plato_2),',
-      '  zona_fruta, marcadores (ids, marcador_<id>), bandeja (zona_primero, zona_segundo), persona (xy, yaw) y camaras (nombres, <nombre>: frame_id del marco óptico,',
+      `  zona_fruta, marcadores (ids, marcador_<id>), bandeja (${b.zonas.map(zb => limpio(zb.clave)).join(', ')}), persona (xy, yaw) y camaras (nombres, <nombre>: frame_id del marco óptico,`,
       '  xyz y rpy del marco camara_<nombre>, mira, orientacion_rad como en posiciones.yaml y pinza_mesa).',
-    ]) + raiz([mapa('celda', ...nodos)]);
+      ...lineaCentro(m),
+    ], undefined, true) + raiz([mapa('celda', ...nodos)]);
   }
 
   // ---------- TF estáticas (T2.4): un tf/<child_frame_id>.yaml por arista y tf_estaticas.sh ----------
@@ -198,19 +210,20 @@ const EXPORTAR = (() => {
   // Un argumento de bash: tal cual si es un nombre normal; si no, entre comillas simples (nada de la disposición se ejecuta)
   const sh = s => /^[A-Za-z0-9_./:-]+$/.test(s) ? s : `'${limpio(s).replace(/'/g, "'\\''")}'`;
 
-  // Aristas de la decisión 6, en orden fijo: { padre, hijo, p {x, y, z}, rpy, origen, que, nominal }. La raíz es
+  // Aristas de la decisión 6, en orden fijo: { padre, hijo, p {x, y, z}, rpy, origen, que, nominal, notas (líneas de más para
+  // la cabecera de su tf/<hijo>.yaml) }. Las zonas de la bandeja, también zona_centro (DT36). La raíz es
   // <prefijo>base_link (sin arista a world: la publica el URDF); los frames de la celda no llevan prefijo.
   function aristas(m, O) {
     const c = m.ctx, og = k => O.yaml(k, c), ot = k => O.tipo(k, c);
     const raizTF = m.robot.frame, sup = og('disposicion'), cero = { x: 0, y: 0, z: 0 };
     const giro = m.robot.yaw !== 0 ? `${ot('orientacion_base_link')} (giro world→base_link sin validar en ROS)` : og('mesa'); // como posiciones.yaml
-    const A = [], a = (padre, hijo, p, rpy, origen, que, nominal = null) => A.push({ padre, hijo, p, rpy, origen, que, nominal });
+    const A = [], a = (padre, hijo, p, rpy, origen, que, nominal = null, notas = []) => A.push({ padre, hijo, p, rpy, origen, que, nominal, notas });
     a(raizTF, 'mesa', m.mesa, [0, 0, m.mesa.yaw], giro, 'centro de la cara de arriba de la mesa, con su giro');
     a(raizTF, 'zona_fruta', m.zona, [0, 0, m.zona.yaw], sup, 'centro y giro de la zona de fruta');
     for (const p of m.platos.lista) a(raizTF, `${p.clave}_inicio`, p, [0, 0, m.mesa.yaw], sup, `dónde está el ${p.clave.replace('_', ' ')} antes de cogerlo, con los ejes de la mesa (el robot lo mueve y una TF estática no lo sigue)`);
     for (const k of m.marcadores) a(raizTF, `marcador_${ent(k.id)}`, k, [0, 0, k.yaw], sup, `marcador de entrega ${ent(k.id)} (${limpio(k.diccionario)}), plano sobre la mesa y con sus ejes; convenio de ArUco de OpenCV: z sale de la cara impresa, x a la derecha e y hacia arriba del patrón`);
     a(raizTF, 'bandeja', m.bandeja, [0, 0, m.bandeja.yaw], sup, 'pose de plan de la bandeja (sin balanceo), en la cara de arriba', 'nominal: la sustituye la pose que publique Visión');
-    for (const z of m.bandeja.zonas) a('bandeja', z.clave, z.local, [0, 0, 0], og('plato_bandeja_persona'), `${z.clave}, donde se deja un plato en la bandeja: cuelga de la bandeja para seguirla cuando Visión publique su pose`);
+    for (const z of m.bandeja.zonas) a('bandeja', z.clave, z.local, [0, 0, 0], og('plato_bandeja_persona'), `${z.clave}, donde se deja un plato en la bandeja: cuelga de la bandeja para seguirla cuando Visión publique su pose`, null, z.clave === CENTRO ? lineaCentro(m) : []);
     for (const k of m.camaras) {
       const cam = `camara_${limpio(k.clave)}`;
       a(raizTF, cam, k.pos, k.rpy, sup, `marco del cuerpo de la cámara ${limpio(k.clave)} (REP-103): x hacia donde mira, y a la izquierda, z arriba`, 'nominal: la sustituye la calibración');
@@ -233,13 +246,14 @@ const EXPORTAR = (() => {
       `TF estática ${limpio(e.padre)} → ${e.hijo}: ${e.que}.${e.nominal ? ` ${e.nominal}.` : ''}`,
       `Giro: roll ${r}, pitch ${p}, yaw ${y} rad (setRPY: R = Rz(yaw)·Ry(pitch)·Rx(roll), ejes fijos), en cuaternión (x, y, z, w) normalizado con 9 decimales.`,
       'Las claves x, y, z y w van entre comillas: YAML 1.1 lee una «y» suelta como true.',
-      ESCENA_DOBLE,
+      ESCENA_DOBLE, ...e.notas,
     ]) + raiz(nodos);
   }
   // tf_estaticas.sh: un static_transform_publisher (flags con nombre, ángulos en rad) por arista, en segundo plano, y wait
   function script(m, O, A) {
     let t = '#!/bin/bash\n' + cabecera(m, O, 'tf_estaticas.sh', 'bash tf_estaticas.sh, con ROS 2 Jazzy en el entorno: una static_transform_publisher por TF; Ctrl+C las para todas', [
       ESCENA_DOBLE, 'Metros y radianes; los ángulos, con setRPY (R = Rz(yaw)·Ry(pitch)·Rx(roll), ejes fijos). Los mismos números que tf/<child_frame_id>.yaml.',
+      ...lineaCentro(m),
     ], 'en la línea anterior a cada comando');
     t += "trap 'kill $(jobs -p) 2>/dev/null' INT TERM\n";
     for (const e of A) {

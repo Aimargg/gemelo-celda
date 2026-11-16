@@ -36,6 +36,7 @@ Duraciones medidas en el contenedor de 2 núcleos (SwiftShader, sin GPU): «ante
 |---|---|---|---|---|---|
 | `carga` | tarea | 3 | 59 | 31 | los dos destinos (D2) y la red cerrada (I2) |
 | `datos` | tarea | 2 + 6 | — | 23 | I7: posiciones.yaml y la tabla de fuentes del panel «Datos» byte a byte (T2.1), red de T2.2–T2.5 |
+| `deuda-f2` | tarea | 1 + 2 | — | 17 | T2.7: DT35 (zonas de plan durante la demo; posiciones.yaml de una v10 con textos raros, en YAML 1.1 y 1.2), DT31 (aviso de la capa del otro robot) y DT41 (`#btnCalc` tras un cálculo) en una página |
 | `determinismo` | tarea | 3 | 95 | 50 | I6 con «gemelo» (A, B, A'), sin reintento de semilla (D5), banco de ensayo |
 | `escenas-claude` | tarea | 1 | 48 | 29 | almacén de claude.ai (D2) |
 | `escenas-firestore` | tarea | 2 | 99 | 50 | I2: reglas del simulacro (campos, clave, papelera). «Guardar, editar…» medía 61,7 s antes y 36,2 s ahora |
@@ -79,7 +80,7 @@ pasó a `ros-recarga`) y `ros-recarga`, medidos por el coordinador al aceptar T2
 | I4 nada a ROS | sin test todavía (DT8, T3.1) | — |
 | I5 un solo HTML | `unit/i5` | — |
 | I6 determinismo | `determinismo` (A, B, A' «gemelo»), `robot` (con el 203), `perfil` (con «curso») | `determinismo-demo`, `matriz-curso` (órdenes inversos) |
-| I7 exportación | `exportar` (T1.5-1 con 203–206, T1.5-2 ida y vuelta), `datos` (YAML y tabla byte a byte), `ros` (parámetros y TF estáticas de ROS: reglas de rcl, mismo texto que posiciones.yaml, ida y vuelta, árbol TF, cuaterniones, cámaras frente a su cámara de render y origen; escena de colisión: validadores de CollisionObject y de .scene, escena = obstaculos(), .scene = YAML en su world; cámaras: validador de camera_info, píxeles frente a la cámara de render y usb_cam), `ros-referencias` (los ficheros de ROS byte a byte), `ros-panel` (lo que se descarga desde el panel es `ficherosRos()`, también en el .tar), `unit/marcos`, `unit/origen`, `unit/exportar`, `unit/exportar-escena`, `unit/rcl-params`, `unit/validadores-ros`, `unit/tar` | `cambio-robot` (prefijo en el YAML) |
+| I7 exportación | `exportar` (T1.5-1 con 203–206, T1.5-2 ida y vuelta), `datos` (YAML y tabla byte a byte), `ros` (parámetros y TF estáticas de ROS: reglas de rcl, mismo texto que posiciones.yaml, ida y vuelta, árbol TF, cuaterniones, cámaras frente a su cámara de render y origen; escena de colisión: validadores de CollisionObject y de .scene, escena = obstaculos(), .scene = YAML en su world; cámaras: validador de camera_info, píxeles frente a la cámara de render y usb_cam), `ros-referencias` (los ficheros de ROS byte a byte), `ros-panel` (lo que se descarga desde el panel es `ficherosRos()`, también en el .tar), `deuda-f2` (zonas de plan durante la demo y textos raros de una v10 en posiciones.yaml), `unit/marcos`, `unit/origen`, `unit/exportar`, `unit/exportar-escena`, `unit/rcl-params`, `unit/validadores-ros`, `unit/tar` | `cambio-robot` (prefijo en el YAML) |
 | I8 matriz | `matriz` (8 casos en orden directo) | — |
 
 ## Cierre del navegador (T2.0)

@@ -78,10 +78,10 @@ test('T1.5-4: el campo del prefijo explica cuándo se usa, enlaza a docs/estado/
     await p.waitForFunction(() => window.__g.L().prefijoFrames === '203_' && JSON.parse(localStorage.getItem('gemelo-ur3e-v4') || '{}').prefijoFrames === '203_', null, { timeout: 30000, polling: 50 });
     const y = await p.evaluate(() => document.getElementById('yaml').value);
     assert.match(y, /^# Frame: 203_base_link \(prefijo «203_» del URDF doble doble_ur3e_203_204\.urdf\.xacro\)/m);
-    assert.match(y, /^frame: 203_base_link$/m); assert.match(y, /^prefijo_frames: '203_'$/m);
+    assert.match(y, /^frame: '203_base_link'$/m); // DT35: entre comillas, como en los ficheros de ROS assert.match(y, /^prefijo_frames: '203_'$/m);
     // corrección 6: con prefijo, la pose de <id>_base_link en el world del URDF doble (la del JSON de T1.3) y su origen
     const doble = (txt, id) => { const w = REF(id).world_base_link.doble, r3 = v => (Math.round(v * 1000) / 1000).toFixed(3);
-      assert.equal(txt.split('\n').find(l => l.startsWith('pose_en_world_doble:')), `pose_en_world_doble: {frame: ${w.frame}, x: ${r3(w.xyz[0])}, y: ${r3(w.xyz[1])}, z: 0.000, yaw_rad: ${r3(w.rpy[2])}}  # xacro del curso, ${w.fichero.split('/').pop().replace('.urdf.xacro', '')}: SUPUESTO (sin validar en ROS)`); };
+      assert.equal(txt.split('\n').find(l => l.startsWith('pose_en_world_doble:')), `pose_en_world_doble: {frame: '${w.frame}', x: ${r3(w.xyz[0])}, y: ${r3(w.xyz[1])}, z: 0.000, yaw_rad: ${r3(w.rpy[2])}}  # xacro del curso, ${w.fichero.split('/').pop().replace('.urdf.xacro', '')}: SUPUESTO (sin validar en ROS)`); };
     doble(y, '203');
     assert.match(y, /^world_a_base_link: .*# world del gemelo \(ejes de la mesa\)/m);
     await p.click('.tabs [data-tab="escena"]'); await elegir(p, '204', 'rpMesa'); await p.click('.tabs [data-tab="datos"]');

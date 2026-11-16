@@ -1,6 +1,6 @@
 {
   "descripcion": "Caracterización del panel «Datos» (T2.1, decisión 7): posiciones.yaml (<caso>.yaml) y las filas de la tabla de fuentes de cada caso de CASOS_YAML (tests/medir.mjs), en este orden y en una página recién cargada. El test (tests/e2e/datos.test.mjs) compara el YAML byte a byte salvo la línea «fecha:» y cada fila de la tabla (texto, fuente, etiqueta, clase y HTML).",
-  "fuente_src": "37a82e6",
+  "fuente_src": "ebb6a8c",
   "comando": "npm run caracterizar -- --yaml",
   "casos": [
     {
@@ -70,9 +70,9 @@
           "dato": "Agarre del plato",
           "fuente": "Decisión del grupo (12-11)",
           "valor": "horizontal por el borde, un dedo encima y otro debajo del ala",
-          "etiqueta": "MEDIDO",
-          "clase": "tag m",
-          "html": "<td>Agarre del plato<br><span class=\"hint\">Decisión del grupo (12-11)</span></td><td>horizontal por el borde, un dedo encima y otro debajo del ala</td><td><span class=\"tag m\">MEDIDO</span></td>"
+          "etiqueta": "decisión del grupo",
+          "clase": "tag g",
+          "html": "<td>Agarre del plato<br><span class=\"hint\">Decisión del grupo (12-11)</span></td><td>horizontal por el borde, un dedo encima y otro debajo del ala</td><td><span class=\"tag g\">decisión del grupo</span></td>"
         },
         {
           "dato": "Caja bajo el plato",
@@ -279,9 +279,9 @@
           "dato": "Agarre del plato",
           "fuente": "Decisión del grupo (12-11)",
           "valor": "horizontal por el borde, un dedo encima y otro debajo del ala",
-          "etiqueta": "MEDIDO",
-          "clase": "tag m",
-          "html": "<td>Agarre del plato<br><span class=\"hint\">Decisión del grupo (12-11)</span></td><td>horizontal por el borde, un dedo encima y otro debajo del ala</td><td><span class=\"tag m\">MEDIDO</span></td>"
+          "etiqueta": "decisión del grupo",
+          "clase": "tag g",
+          "html": "<td>Agarre del plato<br><span class=\"hint\">Decisión del grupo (12-11)</span></td><td>horizontal por el borde, un dedo encima y otro debajo del ala</td><td><span class=\"tag g\">decisión del grupo</span></td>"
         },
         {
           "dato": "Caja bajo el plato",
@@ -488,9 +488,9 @@
           "dato": "Agarre del plato",
           "fuente": "Decisión del grupo (12-11)",
           "valor": "horizontal por el borde, un dedo encima y otro debajo del ala",
-          "etiqueta": "MEDIDO",
-          "clase": "tag m",
-          "html": "<td>Agarre del plato<br><span class=\"hint\">Decisión del grupo (12-11)</span></td><td>horizontal por el borde, un dedo encima y otro debajo del ala</td><td><span class=\"tag m\">MEDIDO</span></td>"
+          "etiqueta": "decisión del grupo",
+          "clase": "tag g",
+          "html": "<td>Agarre del plato<br><span class=\"hint\">Decisión del grupo (12-11)</span></td><td>horizontal por el borde, un dedo encima y otro debajo del ala</td><td><span class=\"tag g\">decisión del grupo</span></td>"
         },
         {
           "dato": "Caja bajo el plato",
