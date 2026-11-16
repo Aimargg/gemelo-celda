@@ -1,6 +1,6 @@
 {
   "descripcion": "Caracterización de la v8: 8 casos fijos de __g.ensayo, en este orden y en una página recién cargada (tras el primer calcularPlanes), con la fase de la bandeja al empezar cada ensayo (ensayo() empieza con simT = 0 desde T1.2) y la semilla del RRT por petición. El test compara fin, choques, roces y pausas; el resto es informativo (en T0.2 también salió igual en 6 ejecuciones).",
-  "fuente_src": "0cde036",
+  "fuente_src": "4b80043",
   "comando": "npm run caracterizar",
   "casos": [
     {
@@ -17,8 +17,8 @@
       "fin": "ok",
       "estado": "HECHO",
       "paso": 8,
-      "t_sim": 138.8,
-      "t_mov": 124.9,
+      "t_sim": 150.3,
+      "t_mov": 136.5,
       "errores_mm": [
         0,
         0
@@ -27,7 +27,7 @@
       "roces": 0,
       "pausas": 0,
       "autocol": 0,
-      "planes": 4,
+      "planes": 5,
       "sust": 0,
       "fallo": ""
     },
@@ -45,17 +45,17 @@
       "fin": "ok",
       "estado": "HECHO",
       "paso": 8,
-      "t_sim": 147.6,
-      "t_mov": 127.3,
+      "t_sim": 149.6,
+      "t_mov": 135.1,
       "errores_mm": [
         5,
-        22
+        12
       ],
       "choques": 0,
       "roces": 0,
-      "pausas": 3,
+      "pausas": 0,
       "autocol": 0,
-      "planes": 3,
+      "planes": 5,
       "sust": 0,
       "fallo": ""
     },
@@ -73,8 +73,8 @@
       "fin": "ok",
       "estado": "HECHO",
       "paso": 8,
-      "t_sim": 138.8,
-      "t_mov": 124.9,
+      "t_sim": 150.3,
+      "t_mov": 136.5,
       "errores_mm": [
         0,
         0
@@ -83,7 +83,7 @@
       "roces": 0,
       "pausas": 0,
       "autocol": 0,
-      "planes": 4,
+      "planes": 5,
       "sust": 0,
       "fallo": ""
     },
@@ -101,11 +101,11 @@
       "fin": "ok",
       "estado": "HECHO",
       "paso": 8,
-      "t_sim": 141.6,
-      "t_mov": 127.1,
+      "t_sim": 149.7,
+      "t_mov": 135.2,
       "errores_mm": [
         4,
-        6
+        2
       ],
       "choques": 0,
       "roces": 0,

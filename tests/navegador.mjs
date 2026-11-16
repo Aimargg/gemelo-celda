@@ -2,7 +2,7 @@
 // Qué intercepta (solo aquí, nunca en la página: I5):
 //   · https://cdn.jsdelivr.net/npm/three@0.160.0/**  → node_modules/three (versión comprobada abajo)
 //   · fonts.googleapis.com / fonts.gstatic.com       → respuesta vacía (la página cae a las fuentes del sistema)
-//   · /config.js y /firebase.js del servidor local    → config de prueba y tests/legacy/firebase-mock.js (solo destino web)
+//   · /config.js y /firebase.js del servidor local    → config de prueba y tests/mocks/firebase-mock.js (solo destino web)
 // Cualquier otra petición fuera de 127.0.0.1 se aborta y queda en registro.externas; comprobar() la convierte en fallo (I2).
 // Los WebSocket externos se cortan con ctx.routeWebSocket (nunca llegan al servidor) y también cuentan como externas.
 import { chromium } from 'playwright';
@@ -13,7 +13,7 @@ import { RAIZ } from './servidor.mjs';
 const THREE_DIR = path.join(RAIZ, 'node_modules/three');
 const THREE_VER = JSON.parse(fs.readFileSync(path.join(THREE_DIR, 'package.json'), 'utf8')).version;
 if (THREE_VER !== '0.160.0') throw new Error(`node_modules/three es ${THREE_VER}; el gemelo usa 0.160.0 (npm install)`);
-const FIREBASE_MOCK = fs.readFileSync(path.join(RAIZ, 'tests/legacy/firebase-mock.js'), 'utf8');
+const FIREBASE_MOCK = fs.readFileSync(path.join(RAIZ, 'tests/mocks/firebase-mock.js'), 'utf8');
 // Config de prueba: proyecto inexistente; nunca llega a la red porque firebase.js es el simulador
 export const CONFIG_PRUEBA = 'window.FIREBASE_CONFIG = { apiKey: "clave-api-de-prueba", authDomain: "prueba.invalid", projectId: "gemelo-prueba", storageBucket: "prueba.invalid", messagingSenderId: "0", appId: "1:0:web:prueba" };\n';
 export const CLAVE_BUENA = 'clave-buena'; // la única que acepta firebase-mock.js (I3: nunca la real)

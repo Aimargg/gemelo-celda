@@ -115,7 +115,8 @@
       "version": 9,
       "robotId": "nominal",
       "perfil": "gemelo",
-      "sensor": "gemelo-v8"
+      "sensor": "gemelo-v8",
+      "prefijoFrames": ""
     },
     "veredicto": {
       "ok": false,
@@ -133,5 +134,5 @@
       "pausas": 0
     }
   },
-  "esperado_fuente_src": "0cde036"
+  "esperado_fuente_src": "4b80043"
 }

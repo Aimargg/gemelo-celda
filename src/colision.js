@@ -97,9 +97,10 @@ function colocar(q, w, carga, kin = CIN) {
 
 // Obstáculos en el marco base_link: mesa, cajas, platos, fruta, bandeja, persona, cámaras y el otro robot.
 // Pasan del mundo a base_link con marco() (traslación y giro de la base, T1.4); con el nominal, la misma resta que antes.
+// La clave de la caché lleva si se ve el robot del otro puesto (H4): mostrarlo u ocultarlo cambia la lista.
 let _obsCache = { key: '', lista: null }, _otroCache = { key: '', lista: null };
 function obstaculos() {
-  const key = `${VERSION_ESCENA}|${L.robot}|${ROB.id}|${simT.toFixed(4)}`; if (_obsCache.key === key) return _obsCache.lista;
+  const key = `${VERSION_ESCENA}|${L.robot}|${ROB.id}|${simT.toFixed(4)}|${otro && otro.root.visible ? 1 : 0}`; if (_obsCache.key === key) return _obsCache.lista;
   const mb = marco(), o = [];
   const esf = (x, y, z, r, tag, m, blando) => { const p = mb.aBase(x, y, z); o.push({ t: 1, x: p[0], y: p[1], z: p[2], r, tag, m, blando, R: r }); };
   const cap = (a, c, r, tag, m) => { const pa = mb.aBase(a.x, a.y, a.z), pc = mb.aBase(c.x, c.y, c.z); const ax = pa[0], ay = pa[1], az = pa[2], cx = pc[0], cy = pc[1], cz = pc[2]; o.push({ t: 2, ax, ay, az, cx, cy, cz, r, tag, m, x: (ax + cx) / 2, y: (ay + cy) / 2, z: (az + cz) / 2, R: r + Math.hypot(cx - ax, cy - ay, cz - az) / 2 }); };
@@ -299,8 +300,10 @@ async function moveL(p, yaw, opts = {}, desc = 'un punto') {
   await ejecutar(r.ruta, f, tMinCart(r.largo, f, opts.perfil), opts.perfil);
 }
 // Transporte del plato nivelado: sube, gira alrededor de la base a altura constante y baja, sin inclinar el plato
+// El primer punto es el TCP real de q0 con la apertura de la petición (opts.w; DT23): con pinza.w quedaba desplazado
+// (2,3 mm con w = 6 mm). Cada resultado lleva ese punto en `inicio`.
 function rutaNivelada(q0, p1, yaw1, opts) {
-  const t0 = tcpDeQ(q0); const p0 = t0.p, yaw0 = Math.atan2(t0.ejeZ.y, t0.ejeZ.x); const b = BASES[L.robot]; let ult = null;
+  const t0 = tcpDeQ(q0, opts.w ?? pinza.w); const p0 = t0.p, yaw0 = Math.atan2(t0.ejeZ.y, t0.ejeZ.x); const b = BASES[L.robot]; let ult = null;
   const pol = p => ({ r: Math.hypot(p.x - b.x, p.y - b.y), f: Math.atan2(p.y - b.y, p.x - b.x) });
   // Variantes, de la más simple a la más rebuscada: el giro de la pinza respecto al radio puede pasar por tangencial (aleja la muñeca
   // del eje de la base, donde está la singularidad del hombro) y el camino puede abrirse hacia fuera
@@ -311,7 +314,7 @@ function rutaNivelada(q0, p1, yaw1, opts) {
     const pts = [{ p: p0, yaw: yaw0 }]; const n = Math.max(4, Math.ceil(Math.abs(df) * Math.max(A.r, B.r) / 0.02));
     for (let k = 0; k <= n; k++) { const t = k / n, f = A.f + df * t, r = A.r + (B.r - A.r) * t + bulto * Math.sin(PI * t); pts.push({ p: new THREE.Vector3(b.x + r * Math.cos(f), b.y + r * Math.sin(f), zs), yaw: f + rel(t) }); }
     pts.push({ p: p1, yaw: yaw1 });
-    const r = rutaCartesiana(q0, pts, opts); if (r.ruta) return r; if (!ult || r.pct > ult.pct) ult = r;
+    const r = rutaCartesiana(q0, pts, opts); r.inicio = p0; if (r.ruta) return r; if (!ult || r.pct > ult.pct) ult = r;
   }
   return ult;
 }

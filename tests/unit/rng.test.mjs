@@ -70,3 +70,27 @@ test('aleat: la misma semilla da la misma serie y semillas distintas, series dis
   assert.notDeepEqual(serie(s), serie(s + 1));
   assert.ok(serie(s, 1000).every(v => v >= 0 && v < 1));
 });
+
+// DT12: un obstáculo con un array (o un objeto) entre sus campos. Antes, el array entraba en la semilla a precisión
+// completa (String(array)) y un objeto como «[object Object]»: +1e-7 la cambiaba y un objeto distinto no.
+test('DT12: los números dentro de arrays y objetos de un obstáculo se redondean a 1e-6 como los sueltos', () => {
+  const conArray = () => { const p = PET(); p.obst[1] = { ...p.obst[1], pts: [0.1, -0.2, [0.3, 0.4]], extra: { a: 0.5, b: [0.6] }, v: new Float64Array([0.7, 0.8]) }; return p; };
+  const s = semillaPlan(conArray());
+  assert.equal(semillaPlan(conArray()), s, 'determinista');
+  const cambios = { 'array': (o, d) => { o.pts[0] += d; }, 'array anidado': (o, d) => { o.pts[2][1] -= d; }, 'objeto': (o, d) => { o.extra.a += d; },
+    'array en un objeto': (o, d) => { o.extra.b[0] += d; }, 'array con tipo': (o, d) => { o.v[1] += d; } };
+  for (const [nombre, f] of Object.entries(cambios)) {
+    const p = conArray(); f(p.obst[1], 1e-5); assert.notEqual(semillaPlan(p), s, `${nombre} + 1e-5`);
+    const q = conArray(); f(q.obst[1], 1e-7); assert.equal(semillaPlan(q), s, `${nombre} + 1e-7`);
+  }
+  // el orden de las claves de un objeto no cambia la semilla; un objeto con otros valores, sí
+  const r = conArray(); r.obst[1].extra = { b: [0.6], a: 0.5 }; assert.equal(semillaPlan(r), s);
+  const o2 = conArray(); o2.obst[1].extra = { a: 0.5, b: [0.6], c: 1 }; assert.notEqual(semillaPlan(o2), s);
+});
+
+test('DT12: con obstáculos de campos sueltos (los de hoy), la semilla no cambia: valor de referencia de T1.6', () => {
+  // la petición de tests/unit/perfil.test.mjs (T1.6-3), con el perfil «gemelo» ya en la entrada
+  const PET6 = { qa: [0.1, -1.6, 1.2, -1.1, -1.57, 0.3], qb: [1.3, -1.2, 0.9, -1.3, -1.57, -0.2], w: 0.06, carga: null, permitir: ['plato:plato1', 'caja:plato1'], conBlandos: true, sinEntorno: false, sinAuto: false, perfil: 'gemelo',
+    obst: [{ t: 0, x: -0.434, y: -0.269, z: 0, hx: 0.59, hy: 0.415, tag: 'mesa', m: 0.004, R: 9 }, { t: 1, x: 0.1, y: -0.2, z: 0.05, r: 0.016, tag: 'plato:plato2', m: 0.002, blando: false, R: 0.016 }] };
+  assert.equal(semillaPlan(PET6), 1051553382);
+});

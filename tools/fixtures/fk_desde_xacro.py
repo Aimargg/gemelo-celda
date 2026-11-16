@@ -532,7 +532,6 @@ def a_js(datos, versiones):
         "// Cada entrada de kinematics es el <origin> (xyz en m, rpy en rad; R = Rz(yaw)·Ry(pitch)·Rx(roll)) de la",
         "// articulación de articulacionDe[clave]. world -> base_link = Rz(mount_yaw - pi) (+ x, y en la escena doble).",
         "// sospechoso: tool0 se aleja más de 50 mm del nominal (ver tests/fixtures/cinematica/<id>.json).",
-        "// Aún no entra en el build: se carga en T1.4.",
         "const CALIBRACION = {",
         "  fuente: { repo: " + json.dumps(c["repo"]) + ", commit: " + json.dumps(c["commit"]) + " },",
         "  articulacionDe: { " + ", ".join(f"{k}: {json.dumps(a)}" for k, a in CLAVES) + " },",

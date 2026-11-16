@@ -1,4 +1,4 @@
-// Escenas en la versión de artefacto con el almacén de claude.ai simulado por tests/legacy/mock_claude.html (T0.2 C6).
+// Escenas en la versión de artefacto con el almacén de claude.ai simulado por tests/mocks/mock_claude.html (T0.2 C6).
 import { test, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { arrancarServidor } from '../servidor.mjs';
