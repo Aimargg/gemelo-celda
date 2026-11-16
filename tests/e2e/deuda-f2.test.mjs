@@ -1,14 +1,16 @@
-// Pasada de deuda de F2 en la exportación (T2.7; D8, I7), en una sola página y en este orden:
+// Pasada de deuda de F2 (T2.7; D8, I7), en una sola página y en este orden:
 //   · DT35: durante la demo, con la bandeja balanceándose, posiciones.yaml y los ficheros de ROS dan las zonas y la bandeja de
 //     antes de empezarla (su pose de plan); y una disposición de solo lectura (v10) con un robotId o un prefijo con salto de
 //     línea, «#» y comillas da un posiciones.yaml que yaml@2.9.1 lee igual en YAML 1.1 y 1.2, con el escape de los ficheros
 //     de ROS (los mismos valores que parametros_celda.yaml).
+//   · DT41 (primero, con la página recién cargada): al terminar un cálculo con los planes al día, #btnCalc no se queda
+//     desactivado, y un clic justo después de cambiar de robot lanza el cálculo sin esperar al repintado periódico.
 //   · DT31: con la demo de DT35 en pausa, cambiar la capa «Robot del otro puesto» la reinicia con su motivo en el aviso.
 import { test, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import YAML from 'yaml';
 import { arrancarServidor } from '../servidor.mjs';
-import { abrir, comprobar } from '../navegador.mjs';
+import { abrir, comprobar, esperarPlanes } from '../navegador.mjs';
 
 let srv;
 before(async () => { srv = await arrancarServidor(); });
@@ -29,9 +31,26 @@ const leer = () => { const g = window.__g, b = g.bandeja.position; return { yaml
 const comoROS = s => String(s).replace(/[\u0000-\u001f\u007f\u2028\u2029]/g, ' ');
 const RARO = "207\n# robot: 'x' \"y\" #", PREFIJO_RARO = "p\n# 'a' \"b\" #_";
 
-test('T2.7 (DT35, DT31): zonas de plan durante la demo, la capa del otro robot con la demo en pausa y posiciones.yaml de una v10 con textos raros', { timeout: 600000 }, async t => {
+test('T2.7 (DT41, DT35, DT31): #btnCalc tras un cálculo, zonas de plan durante la demo, la capa del otro robot con la demo en pausa y posiciones.yaml de una v10 con textos raros', { timeout: 600000 }, async t => {
   const s = await abrir(srv.url); const p = s.page;
   try {
+    await t.test('C8 (DT41): al terminar un cálculo con los planes al día #btnCalc queda activo, y un clic justo después de cambiar de robot no se pierde', async () => {
+      // un cálculo que termina con los planes al día (la barra se oculta): se mira en la misma tarea, sin dejar pasar fotogramas
+      const fin = await p.evaluate(async () => { const g = window.__g; await g.calcularPlanes(); return { activo: g.CALC.activo, alDia: g.planesAlDiaDe('gemelo'), barra: document.getElementById('calcBar').hidden, desactivado: document.getElementById('btnCalc').disabled }; });
+      assert.deepEqual(fin, { activo: false, alDia: true, barra: true, desactivado: false }, 'tras el cálculo, con la barra oculta');
+      // cambiar de robot (205: el mismo giro de base_link que el nominal, sin pregunta) y pulsar «Calcular» en la misma tarea,
+      // antes de que el repintado periódico (cada 18 fotogramas) vuelva a enseñar la barra
+      const r = await p.evaluate(() => {
+        const g = window.__g; document.querySelector('#segRobotId [data-v="205"]').click();
+        const o = { robot: g.ROB.id, pregunta: !document.getElementById('robotPregunta').hidden, alDia: g.planesAlDiaDe('gemelo'), barra: document.getElementById('calcBar').hidden, desactivado: document.getElementById('btnCalc').disabled };
+        document.getElementById('btnCalc').click(); return { ...o, calcula: g.CALC.activo };
+      });
+      assert.deepEqual(r, { robot: '205', pregunta: false, alDia: false, barra: true, desactivado: false, calcula: true }, 'el botón está activo y el clic lanza el cálculo');
+      await esperarPlanes(p);
+      // vuelta al nominal, con sus planes, para lo que sigue
+      await p.evaluate(async () => { document.querySelector('#segRobotId [data-v="nominal"]').click(); await window.__g.calcularPlanes(); });
+      assert.deepEqual(await p.evaluate(() => [window.__g.ROB.id, window.__g.planesAlDiaDe('gemelo'), document.getElementById('btnCalc').disabled]), ['nominal', true, false]);
+    });
     await p.click('.tabs [data-tab="datos"]');
     await t.test('C2 (DT35): durante la demo, con la bandeja desplazada, la bandeja y sus zonas exportadas son las de antes de empezarla', async st => {
       const antes = await p.evaluate(leer);

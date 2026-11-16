@@ -3029,10 +3029,12 @@ const CALC = { activo: false };
 const ROSX = { m: null, ficheros: [], lista: null, huella: '', giro: null, ver: null, ocupado: null };
 // La barra dice si las trayectorias de explorar («gemelo») están al día; debajo, la de validar (pintarVal, T1.8).
 // El texto de progreso se conserva hasta que acaba el cálculo (el repintado periódico no lo borra).
+// #btnCalc sigue a CALC.activo también cuando la barra se oculta (DT41): si no, al acabar un cálculo con los planes al día se
+// quedaba desactivado hasta que el repintado periódico volvía a enseñar la barra, y un clic en ese rato se perdía.
 function pintarCalc(txt) {
-  if (txt) CALC.txt = txt; pintarVal(); vigilarRos();
+  if (txt) CALC.txt = txt; pintarVal(); vigilarRos(); $('#btnCalc').disabled = CALC.activo;
   const el = $('#calcBar'); const ver = !!robot && (VAL.activo || !D.activo) && (CALC.activo || !planesAlDia(PERFIL_EXPLORA)); el.hidden = !ver; if (!ver) return;
-  $('#calcTxt').textContent = CALC.activo ? (CALC.txt || 'Calculando…') : 'Hay cambios sin calcular'; $('#calcSpin').hidden = !CALC.activo; $('#btnCalc').disabled = CALC.activo;
+  $('#calcTxt').textContent = CALC.activo ? (CALC.txt || 'Calculando…') : 'Hay cambios sin calcular'; $('#calcSpin').hidden = !CALC.activo;
 }
 // Calcula las trayectorias de los platos con un perfil (T1.6). Sin argumento, el de explorar: la barra «Calcular»,
 // soltar un objeto y el primer cálculo al cargar usan siempre «gemelo» (decisión 2 del brief). La demo, guardar y validar
