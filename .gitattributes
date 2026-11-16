@@ -1,0 +1,6 @@
+# Fin de línea LF en todos los sistemas: en Windows, core.autocrlf=true sacaba los ficheros con CRLF y rompía
+# los scripts de bash, el build (index.html distinto del versionado) y las comparaciones byte a byte de las referencias.
+* text=auto eol=lf
+*.jpg binary
+*.png binary
+*.tar binary
