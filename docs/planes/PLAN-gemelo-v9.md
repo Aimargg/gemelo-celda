@@ -146,9 +146,9 @@ Estados: pendiente · en curso · entregada · aceptada · correcciones · bloqu
 | T2.0 | 2 | Arnés en dos niveles: `npm test` por tarea y suite completa en las puertas (DT32) | Claude Code | F1 | bajo | aceptada | a0ff130, cc86429 |
 | T2.1 | 2 | Origen de cada valor (MEDIDO, FABRICANTE, SUPUESTO) unificado para exportar | Claude Code | F1 | bajo | aceptada | 86184e3, 1d01f34, cc86429 |
 | T2.2 | 2 | YAML `ros__parameters` de poses | Claude Code | T2.1 | medio | aceptada | e9922e7, d062ed8, 10d0d8a, 90637a6 |
-| T2.3 | 2 | Escena: `CollisionObject` en YAML y `.scene` | Claude Code | T2.1 | medio | en curso | |
+| T2.3 | 2 | Escena: `CollisionObject` en YAML y `.scene` | Claude Code | T2.1 | medio | entregada | 8178f3c, 0ce94fe |
 | T2.4 | 2 | TF estáticas (YAML por TF y comandos) | Claude Code | T2.1 | medio | aceptada | e9922e7, 0805778, 10d0d8a, 90637a6 |
-| T2.5 | 2 | `camera_info` nominal y parámetros de `usb_cam` por cámara | Claude Code | T2.1, T1.7 | medio | en curso | |
+| T2.5 | 2 | `camera_info` nominal y parámetros de `usb_cam` por cámara | Claude Code | T2.1, T1.7 | medio | entregada | 8443ad3, 0ce94fe |
 | T2.6 | 2 | Panel «Exportar a ROS» y guía de validación | Claude Code | T2.2–T2.5 | bajo | pendiente | |
 | U4 | 2 | Validar los ficheros exportados en `sim_<id>` | Usuario | T2.6 | — | pendiente | — |
 | T3.0 | 3 | Pico: roslib desde jsDelivr y permiso de red local en Pages y en el artefacto | Claude Code + usuario | F2 | medio | pendiente | |
