@@ -3474,11 +3474,16 @@ function iniciarClaude() {
   })();
   const tmr = setTimeout(() => { ESC.cargando = false; pintarNav(); }, 10000);
   DB.collection('propuestas').onSnapshot(async snap => {
-    clearTimeout(tmr); const lista = [];
-    for (const d of snap.docs) { const v = d.data() || {}; for (const it of (v.items || [])) if (it && it.layout) lista.push({ ...it, autor: d.id }); }
+    clearTimeout(tmr); const lista = [], ilegibles = [];
+    for (const d of snap.docs) { const v = d.data() || {}; for (const it of (v.items || [])) {
+      if (!it || typeof it !== 'object') continue;
+      const r = it.layout ? migrarLayout(it.layout) : { error: 'no trae disposición' }; // DT11: las ilegibles se listan aparte
+      if (r.error) { if (typeof it.id === 'string') ilegibles.push(ilegibleDe({ ...it, autor: d.id }, it.id, r.error)); continue; }
+      lista.push({ ...it, autor: d.id });
+    } }
     const autores = [...new Set(lista.map(e => e.autor))].filter(a => !ALM.nombres[a]);
     if (USER && autores.length) { try { Object.assign(ALM.nombres, await USER.profiles(autores)); } catch (e) { } }
-    recibirLista(lista, []);
+    avisarIlegibles(ilegibles); recibirLista(lista, [], ilegibles);
   }, () => { ESC.cargando = false; pintarNav(); toast('No se pueden leer las escenas del grupo ahora mismo'); });
 }
 
@@ -3512,17 +3517,30 @@ async function iniciarFirestore() {
   const tmr = setTimeout(() => { ESC.cargando = false; pintarNav(); }, 10000);
   FB.onSnapshot(COL_ESC, snap => {
     clearTimeout(tmr); const vivas = [], papelera = [], ilegibles = [];
-    snap.docs.forEach(d => { const v = d.data() || {}; const r = migrarLayout(v.layout); if (r.error) { ilegibles.push(d.id); return; } (v.borrado ? papelera : vivas).push({ ...v, layout: r.layout, id: d.id }); });
-    // una escena cuya disposición no se puede leer no se lista (como en la v8), pero ahora se avisa, una vez por cambio (T1.1)
-    const k = ilegibles.sort().join(); if (k && k !== ESC.ilegibles) toast(`${ilegibles.length === 1 ? 'Una escena del grupo no se puede abrir' : `${ilegibles.length} escenas del grupo no se pueden abrir`}: su disposición no es válida`); ESC.ilegibles = k;
-    ALM.escribir = null; recibirLista(vivas, papelera);
+    snap.docs.forEach(d => { const v = d.data() || {}; const r = migrarLayout(v.layout); if (r.error) { ilegibles.push(ilegibleDe(v, d.id, r.error)); return; } (v.borrado ? papelera : vivas).push({ ...v, layout: r.layout, id: d.id }); });
+    avisarIlegibles(ilegibles); ALM.escribir = null; recibirLista(vivas, papelera, ilegibles);
   }, err => { clearTimeout(tmr); ESC.cargando = false; if (err && err.code === 'permission-denied') ALM.escribir = false; pintarNav(); toast(err && err.code === 'permission-denied' ? 'La clave del grupo no es válida' : 'No se pueden leer las escenas del grupo ahora mismo'); });
 }
 
+// --- escenas ilegibles (DT11) ---
+// Una escena cuya disposición no pasa migrarLayout (validarLayout) no se puede abrir: se lista aparte, en «Ilegibles», con
+// su motivo, y se puede mandar a la papelera y borrar si las reglas lo permiten (no cambian ni reglas ni campos: I2).
+// Solo se leen los campos de la escena tal como están; los que falten o no sean texto se muestran como «sin …».
+const txtCampo = (v, n = 60) => typeof v === 'string' && v.trim() ? v.slice(0, n) : '';
+function ilegibleDe(v, id, motivo) {
+  return { id, nombre: txtCampo(v.nombre) || `sin nombre (${id})`, autor: txtCampo(v.autor, 40), editadoPor: txtCampo(v.editadoPor, 40), editado: txtCampo(v.editado || v.creado, 40), borrado: v.borrado === true, borradoPor: txtCampo(v.borradoPor, 40), motivo: String(motivo).slice(0, 200) };
+}
+// el aviso de que hay escenas que no se pueden abrir sale una vez por cambio (T1.1)
+function avisarIlegibles(ilegibles) {
+  const k = ilegibles.map(e => e.id + (e.borrado ? '·b' : '')).sort().join(); const vivas = ilegibles.filter(e => !e.borrado).length;
+  if (k && k !== ESC.ilegibles && vivas) toast(`${vivas === 1 ? 'Una escena del grupo no se puede abrir' : `${vivas} escenas del grupo no se pueden abrir`}: su disposición no es válida (las ves en «Ilegibles»)`); ESC.ilegibles = k;
+}
+
 // --- lista recibida (de cualquier almacén) ---
-function recibirLista(vivas, papelera) {
+function recibirLista(vivas, papelera, ilegibles = []) {
   const orden = (a, b) => (b.editado || b.creado || '').localeCompare(a.editado || a.creado || '');
   ESC.lista = vivas.sort(orden); ESC.papelera = papelera.sort(orden); ESC.cargando = false;
+  ESC.ilegLista = ilegibles.sort((a, b) => a.id.localeCompare(b.id)); ESC.ilegNota = ESC.ilegNota || {};
   if (ESC.cur && idxActual() < 0) pasarAMesa('La escena abierta se ha borrado; lo que ves queda en Tu mesa');
   pintarNav();
 }
@@ -3586,7 +3604,24 @@ function pintarPop() {
   const pap = ESC.papelera || []; $('#escPapelera').hidden = !fs || !pap.length; $('#escPapCuenta').textContent = pap.length;
   $('#escPapLista').innerHTML = pap.map((e, k) => `<li><div class="escInfo"><b>${esc(e.nombre)}</b><small>${esc(ALM.quien(e))}${e.borradoPor ? ` · la borró ${esc(e.borradoPor === ALM.yo ? 'tú' : e.borradoPor)}` : ''} · ${fechaCorta(e.editado)}</small></div>
     <div class="btns"><button class="btn" data-restaurar="${k}">Restaurar</button><button class="btn" data-def="${k}">${ESC.borrarId === 'def:' + e.id ? '¿Seguro? Se pierde' : 'Borrar para siempre'}</button></div></li>`).join('');
+  pintarIlegibles(fs);
   $('#escRecuperar').hidden = !leerLS(CLAVE_PREV);
+}
+// «Ilegibles» (DT11): cada escena con su motivo y lo que se puede hacer con ella según el almacén y las reglas
+function pintarIlegibles(fs) {
+  if (!$('#escIlegibles')) $('#escPapelera').insertAdjacentHTML('afterend', '<details class="escSec" id="escIlegibles" hidden><summary>Ilegibles (<span id="escIlegCuenta">0</span>)</summary><p class="hint">No se pueden abrir: su disposición no es válida para esta versión del gemelo. Se pueden borrar.</p><ul class="escLista" id="escIlegLista"></ul></details>');
+  const il = ESC.ilegLista || [], nota = ESC.ilegNota || {}, puede = !!ALM.modo && ALM.escribir !== false;
+  $('#escIlegibles').hidden = !il.length; $('#escIlegCuenta').textContent = il.length;
+  $('#escIlegLista').innerHTML = il.map((e, k) => {
+    const quien = fs ? (e.autor ? `de ${e.autor}` : 'de alguien del grupo') : ALM.quien(e);
+    let btn = '';
+    if (!puede) btn = '<span class="hint">sin permiso para borrar</span>';
+    else if (fs) btn = e.borrado ? `<button class="btn" data-ileg-def="${k}">${ESC.borrarId === 'ileg-def:' + e.id ? '¿Seguro? Se pierde' : 'Borrar para siempre'}</button>`
+      : `<button class="btn" data-ileg-borrar="${k}">${ESC.borrarId === 'ileg:' + e.id ? '¿Seguro?' : 'A la papelera'}</button>`;
+    else btn = ALM.borrable(e) ? `<button class="btn" data-ileg-borrar="${k}">${ESC.borrarId === 'ileg:' + e.id ? '¿Seguro?' : 'Borrar'}</button>` : '<span class="hint">solo la puede borrar quien la guardó o el dueño de la página</span>';
+    return `<li data-ileg="${esc(e.id)}"><div class="escInfo"><b>${esc(e.nombre)}</b><small>${esc(quien)}${e.editado ? ` · ${fechaCorta(e.editado)}` : ''}${e.borrado ? ` · en la papelera${e.borradoPor ? ` (la mandó ${esc(e.borradoPor === ALM.yo ? 'tú' : e.borradoPor)})` : ''}` : ''}</small>
+      <p class="hint motivo">Motivo: ${esc(e.motivo)}</p>${nota[e.id] ? `<p class="hint nota" style="color:var(--bad)">${esc(nota[e.id])}</p>` : ''}</div><div class="btns">${btn}</div></li>`;
+  }).join('');
 }
 function abrirPop() {
   vigilarEscena(); // si la escena abierta se ha tocado, lo que se guarda es la copia
@@ -3697,6 +3732,27 @@ $('#escLista').addEventListener('click', e => {
   const b = e.target.closest('button'); if (!b) return;
   if (b.dataset.abrir) { abrirEscena(+b.dataset.abrir); cerrarPop(); }
   if (b.dataset.borrar) borrarEscena(+b.dataset.borrar);
+});
+// Ilegibles (DT11): a la papelera (Firestore) o borrar (claude.ai), y borrar para siempre desde la papelera (Firestore).
+// Si las reglas lo rechazan, se dice en la propia escena y no se reintenta solo
+const NO_REGLAS = {
+  papelera: 'Las reglas de Firestore no dejan mandarla a la papelera: no tiene la forma de una escena (por ejemplo, su disposición no es un texto de 50.000 caracteres como máximo o le falta el nombre). Como borrar para siempre exige que esté en la papelera, solo se puede borrar desde la consola de Firebase.',
+  def: 'Las reglas de Firestore no dejan borrarla para siempre: solo se puede borrar una escena que esté en la papelera.',
+  claude: 'No se ha podido borrar: el almacén de claude.ai solo deja borrar las escenas propias (o todas, al dueño de la página).',
+};
+$('#escPop').addEventListener('click', async e => {
+  const b = e.target.closest('button[data-ileg-borrar], button[data-ileg-def]'); if (!b) return;
+  const il = ESC.ilegLista || [], x = il[+(b.dataset.ilegBorrar ?? b.dataset.ilegDef)]; if (!x) return; const def = b.dataset.ilegDef !== undefined;
+  if (!confirmar((def ? 'ileg-def:' : 'ileg:') + x.id)) return;
+  ESC.ilegNota = ESC.ilegNota || {}; delete ESC.ilegNota[x.id];
+  try {
+    if (def) { await ALM.borrarDef(x); toast('Escena ilegible borrada para siempre'); }
+    else { await ALM.borrar(x); toast(ALM.modo === 'firestore' ? 'Escena ilegible movida a la papelera' : 'Escena ilegible borrada'); }
+  } catch (er) {
+    const c = er && er.code, regla = c === 'permission-denied' || c === 'invalid_argument';
+    ESC.ilegNota[x.id] = regla ? NO_REGLAS[ALM.modo === 'firestore' ? (def ? 'def' : 'papelera') : 'claude'] : 'No se ha podido completar; inténtalo otra vez.';
+    toast(regla ? 'Las reglas no dejan borrar esa escena: mira el motivo en «Ilegibles»' : 'No se ha podido completar'); pintarPop();
+  }
 });
 $('#escPapLista').addEventListener('click', async e => {
   const b = e.target.closest('button'); if (!b) return; const pap = ESC.papelera || [];
