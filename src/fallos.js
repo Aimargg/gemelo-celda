@@ -112,6 +112,7 @@ function mostrarFalloInfo(e, titulo, tipo) {
   const bb = $('#fBuscar'); if (bb) bb.onclick = () => buscarAlternativa(info, ult);
 }
 function verFallo(info) {
+  const oc = ocupadoSinDemo('ver dónde falla'); if (oc) { toast(oc); return; } // mueve el brazo (revisión de F1, H1)
   if (info.causa === 'previo' && D.posturaImposible) { verPosturaImposible(); return; }
   if (!info.q) return; D.activo = false; robot.setQ(info.q); sincronizarSliders(); actualizarHUD();
   const c = info.choque;
@@ -182,7 +183,8 @@ function aplicarLayoutRapido() { aplicarPedido(); actualizarZona(); actualizarPl
 // aplicar el de «gemelo» marcado «no pasa en curso».
 // ult: el fallo que se explica; sus ensayos parten de la fase de la bandeja en que arrancó esa demo (DT10).
 async function buscarAlternativa(info, ult = D.ultFallo) {
-  if (D.buscando || !robot) return; D.buscando = true; const box = $('#dRecom'); const bt = $('#fBuscar'); if (bt) bt.disabled = true;
+  if (D.buscando || !robot) return; const oc = ocupadoSinDemo('buscar una disposición'); if (oc) { toast(oc); return; } // cambia L y ensaya sobre el mismo D (revisión de F1, H1)
+  D.buscando = true; const box = $('#dRecom'); const bt = $('#fBuscar'); if (bt) bt.disabled = true;
   const fase = ult && Number.isFinite(ult.fase) ? ult.fase : D.fase, fase0 = D.fase;
   const L0 = JSON.parse(JSON.stringify(L)); const cache0 = copiaCaches(); const cfg = { modo: D.modo, amp: D.amp, vel: D.vel, pedido: L.pedido, fase };
   const todos = candidatos(info); const cands = todos.slice(0, 24).concat(todos.slice(24).filter(c => c.ref)); let cancel = false; const t0 = performance.now(); const pasan = []; D.tBusca = { seco: 0, demo: 0, n: 0, fase, gemelo: [], curso: [] };
