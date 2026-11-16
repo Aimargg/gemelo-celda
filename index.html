@@ -3020,8 +3020,9 @@ function calcularMapa() {
 const tctl = new TransformControls(cam, renderer.domElement); tctl.setSize(0.75); scene.add(tctl);
 tctl.addEventListener('dragging-changed', e => { orbit.enabled = !e.value; EDITANDO = e.value; if (e.value) prepararEdicion(); else { guardarLocal(); recalcular(); } });
 function recalcular() { actualizarPlatos(); evaluar(); pintarCalc(); vigilarEscena(); } // soltar un objeto solo refresca lo ligero; los planes se calculan con el botón
-// Mover algo con la demo a medias la deja incoherente: se reinicia antes del primer movimiento
-function prepararEdicion() { if (D.activo && !D.playing) { D.activo = false; reiniciarDemo(); toast('Demo reiniciada para mover objetos'); } }
+// Mover algo con la demo a medias la deja incoherente: se reinicia antes del primer movimiento. aviso: el motivo que se
+// enseña (la capa del otro robot da el suyo, DT31)
+function prepararEdicion(aviso = 'Demo reiniciada para mover objetos') { if (D.activo && !D.playing) { D.activo = false; reiniciarDemo(); toast(aviso); } }
 const CALC = { activo: false };
 // Estado de la sección «Exportar a ROS» del panel «Datos» (T2.6): el modelo y los ficheros que muestra, y si sus descargas
 // están desactivadas por un cálculo o una búsqueda (vigilarRos, desde pintarCalc)
@@ -3911,7 +3912,7 @@ function otroVisible() { return !!(otro && otro.root.visible); } // declaración
 function cambiarOtro(v) {
   if (!otro) return;
   if (D.playing || CALC.activo || VAL.activo || D.buscando) { $('#lyOtro').checked = otro.root.visible; toast('Espera a que termine la demo o el cálculo para cambiar el robot del otro puesto'); return; }
-  prepararEdicion(); otro.root.visible = v; VERSION_ESCENA++; actualizarPlatos(); evaluar(); pintarCalc();
+  prepararEdicion('Demo reiniciada: ha cambiado el robot del otro puesto'); otro.root.visible = v; VERSION_ESCENA++; actualizarPlatos(); evaluar(); pintarCalc(); // cambian los obstáculos (DT31)
 }
 const capas = { lyCol: v => volCol.forEach(m => m.visible = v), lyFoto: v => foto.visible = v, lyOtro: v => cambiarOtro(v), lyTF: v => TF.forEach(t => { t.visible = v; t.userData.lbl.visible = v; }), lyEtq: v => labels.domElement.style.display = v ? '' : 'none', lyCirc: v => circ.visible = v, lyFrus: v => Object.values(CAMS).forEach(R => { R.frus.visible = R.huella.visible = v; }) };
 for (const id in capas) $('#' + id).addEventListener('change', e => capas[id](e.target.checked));

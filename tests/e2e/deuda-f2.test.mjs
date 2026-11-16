@@ -3,6 +3,7 @@
 //     antes de empezarla (su pose de plan); y una disposición de solo lectura (v10) con un robotId o un prefijo con salto de
 //     línea, «#» y comillas da un posiciones.yaml que yaml@2.9.1 lee igual en YAML 1.1 y 1.2, con el escape de los ficheros
 //     de ROS (los mismos valores que parametros_celda.yaml).
+//   · DT31: con la demo de DT35 en pausa, cambiar la capa «Robot del otro puesto» la reinicia con su motivo en el aviso.
 import { test, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import YAML from 'yaml';
@@ -28,7 +29,7 @@ const leer = () => { const g = window.__g, b = g.bandeja.position; return { yaml
 const comoROS = s => String(s).replace(/[\u0000-\u001f\u007f\u2028\u2029]/g, ' ');
 const RARO = "207\n# robot: 'x' \"y\" #", PREFIJO_RARO = "p\n# 'a' \"b\" #_";
 
-test('T2.7 (DT35): zonas de plan durante la demo y posiciones.yaml de una v10 con textos raros', { timeout: 600000 }, async t => {
+test('T2.7 (DT35, DT31): zonas de plan durante la demo, la capa del otro robot con la demo en pausa y posiciones.yaml de una v10 con textos raros', { timeout: 600000 }, async t => {
   const s = await abrir(srv.url); const p = s.page;
   try {
     await p.click('.tabs [data-tab="datos"]');
@@ -54,6 +55,20 @@ test('T2.7 (DT35): zonas de plan durante la demo y posiciones.yaml de una v10 co
         assert.ok(e > 0.001, `${k}: la zona dibujada está a ${(e * 1000).toFixed(1)} mm de la exportada`);
         st.diagnostic(`${k}: la dibujada, a ${(e * 1000).toFixed(1)} mm de la exportada (la bandeja, a ${(d * 1000).toFixed(1)} mm de su pose de plan)`);
       }
+    });
+    await t.test('C5 (DT31): con la demo en pausa, cambiar la capa «Robot del otro puesto» la reinicia y el aviso dice el motivo real', async () => {
+      const antes = await p.evaluate(() => ({ n: window.__toastsPrueba.length, D: { activo: window.__g.D.activo, playing: window.__g.D.playing }, otro: window.__g.otroVisible() }));
+      assert.deepEqual(antes.D, { activo: true, playing: false }, 'la demo de C2 sigue en pausa');
+      const cambiar = () => p.evaluate(() => { const c = document.getElementById('lyOtro'); c.checked = !c.checked; c.dispatchEvent(new Event('change')); });
+      await cambiar();
+      await p.waitForFunction(n => window.__toastsPrueba.slice(n).includes('Demo reiniciada: ha cambiado el robot del otro puesto'), antes.n, { timeout: 30000, polling: 50 });
+      const r = await p.evaluate(n => ({ avisos: window.__toastsPrueba.slice(n), activo: window.__g.D.activo, otro: window.__g.otroVisible() }), antes.n);
+      assert.ok(!r.avisos.includes('Demo reiniciada para mover objetos'), `el aviso antiguo no sale: ${JSON.stringify(r.avisos)}`);
+      assert.deepEqual([r.activo, r.otro], [false, !antes.otro], 'la demo se ha reiniciado y la capa ha cambiado');
+      // sin demo a medias, volver a cambiarla no reinicia nada ni avisa
+      const n1 = await p.evaluate(() => window.__toastsPrueba.length); await cambiar();
+      assert.equal(await p.evaluate(() => window.__g.otroVisible()), antes.otro);
+      assert.ok(!(await p.evaluate(n => window.__toastsPrueba.slice(n), n1)).some(x => x.startsWith('Demo reiniciada')), 'sin demo, sin aviso de reinicio');
     });
     await t.test('C2 (DT35): una v10 de solo lectura con salto de línea, «#» y comillas en robotId y prefijoFrames: posiciones.yaml se lee igual en YAML 1.1 y 1.2', async st => {
       const l = await p.evaluate(() => JSON.parse(JSON.stringify(window.__g.L())));
