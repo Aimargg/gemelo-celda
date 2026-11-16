@@ -27,7 +27,7 @@ export const NIVELES = {
     'tests/e2e/matriz.test.mjs',            // I8: matriz «gemelo» de 8 casos en orden directo
     'tests/e2e/perfil.test.mjs',            // I6 con «curso» (A, B, A') y el perfil de movimiento (T1.6)
     'tests/e2e/robot.test.mjs',             // I6 con el 203 y dibujo = colisión = TCP (T1.4)
-    'tests/e2e/ros.test.mjs',               // I7: parametros_celda.yaml y TF estáticas con nominal, 203 y prefijo (T2.2, T2.4)
+    'tests/e2e/ros.test.mjs',               // I7: ficheros de ROS de T2.2–T2.5 con nominal, 203 y prefijo, en una página
     'tests/e2e/ros-referencias.test.mjs',   // I7: ficheros de ROS byte a byte (Común-C3), red de T2.3, T2.5 y T2.6
     'tests/e2e/sensor.test.mjs',            // modelo de sensor de la ELP (T1.7, D10)
   ],
@@ -37,6 +37,7 @@ export const NIVELES = {
     'tests/e2e/matriz-curso.test.mjs',      // matriz «curso» en orden directo e inverso (I6 con «curso» en la demo)
     'tests/e2e/partida.test.mjs',           // H3 y H4 de F1: tres demos y Guardar (> 60 s)
     'tests/e2e/revision-f1.test.mjs',       // H1 y H2 de la revisión de F1
+    'tests/e2e/ros-recarga.test.mjs',       // Común-C1 tras recargar, con las trayectorias al día en las dos páginas (DT38)
     'tests/e2e/robot-avisos.test.mjs',      // aviso del 204 e «IK calibrada no converge» (T1.4)
     'tests/e2e/salida.test.mjs',            // salida de la bandeja sin contacto (T1.9)
     'tests/e2e/validar.test.mjs',           // Validar: barrido, búsqueda y porPerfil al guardar (T1.8, > 60 s)

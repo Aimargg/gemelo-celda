@@ -14,10 +14,14 @@ import { arrancarServidor, RAIZ } from '../servidor.mjs';
 import { abrir, comprobar } from '../navegador.mjs';
 import { CASOS_YAML, aplicarCaso } from '../medir.mjs';
 import { problemasParams } from '../rcl-params.mjs';
+import { problemasEscena } from '../collision-object.mjs';
+import { problemasScene } from '../scene-texto.mjs';
+import { problemasCameraInfo } from '../camera-info.mjs';
 const ORIGEN = createRequire(import.meta.url)('../../src/origen.js');
 
 const MESA_H = 0.76, ENTEROS = { enteros: ['celda.marcadores.ids'] };
 const REF = id => JSON.parse(fs.readFileSync(path.join(RAIZ, `tests/fixtures/cinematica/${id}.json`), 'utf8')).world_base_link.individual;
+const WBL = id => JSON.parse(fs.readFileSync(path.join(RAIZ, `tests/fixtures/cinematica/${id}.json`), 'utf8')).world_base_link; // individual y doble (T2.3-C4)
 let srv;
 before(async () => { srv = await arrancarServidor(); });
 after(async () => { await srv?.cerrar(); });
@@ -44,6 +48,29 @@ function leerPagina() {
   };
 }
 const texto = (r, nombre) => { const f = r.ficheros.find(x => x.nombre === nombre); assert.ok(f, `falta ${nombre}`); return f.texto; };
+// Lo que hace falta de la página para T2.3 y T2.5, en la misma página: los obstáculos del modelo de colisión del gemelo
+// (obstaculos(), en base_link), el plato tal como se dibuja (radio y grosor de su malla), dónde está cada plato y, por cámara,
+// puntos de la escena con su proyección de three.js en la cámara de render (NDC): la mira, las esquinas de los marcadores de
+// entrega, el centro de los platos y, para que la cámara de la persona tenga al menos 5, las esquinas de la bandeja y sus zonas
+function leerEscenaCamaras() {
+  const g = window.__g, L = g.L(), V = g.robot.root.position.constructor;
+  const geo = g.OBJ.plato1.children[0].geometry; geo.computeBoundingBox(); const bb = geo.boundingBox;
+  const enWorld = (o, x, y, z) => { const p = new V(x, y, z).applyMatrix4(o.matrixWorld); return [p.x, p.y, p.z]; };
+  const platos = Object.fromEntries(['plato1', 'plato2'].map(k => { const p = g.OBJ[k].getWorldPosition(new V()); return [k, { w: [p.x, p.y, p.z], visible: g.OBJ[k].visible }]; }));
+  g.bandeja.updateMatrixWorld(true);
+  const puntos = [
+    ...g.OBJ.arucoE.flatMap((a, i) => { a.updateMatrixWorld(true); const pl = a.children[1], pos = pl.geometry.attributes.position.array; return [0, 1, 2, 3].map(j => ({ que: `esquina ${j + 1} del marcador ${4 + i}`, w: enWorld(pl, pos[3 * j], pos[3 * j + 1], pos[3 * j + 2]) })); }),
+    ...['plato1', 'plato2'].map(k => ({ que: `centro del ${k}`, w: platos[k].w })),
+    ...[[1, 1], [1, -1], [-1, -1], [-1, 1]].map(([sx, sy], j) => ({ que: `esquina ${j + 1} de la bandeja`, w: enWorld(g.bandeja, sx * g.BAND.d / 2, sy * g.BAND.w / 2, 0) })),
+    ...['zona_primero', 'zona_segundo'].map(k => { const p = g.zonasB[k].getWorldPosition(new V()); return { que: k, w: [p.x, p.y, p.z] }; }),
+  ];
+  const camaras = Object.fromEntries(Object.keys(g.CAMS).map(k => {
+    const cam = g.CAMS[k].cam, c = L.cams[k]; cam.updateMatrixWorld(true);
+    const [w, h] = c.modo.split('x').map(Number);
+    return [k, { w, h, puntos: [{ que: 'mira', w: [c.mira.x, c.mira.y, c.mira.z] }, ...puntos].map(p => { const n = new V(...p.w).project(cam); return { ...p, ndc: [n.x, n.y, n.z] }; }) }];
+  }));
+  return { obstaculos: g.obstaculos().map(o => ({ ...o })), plato: { radio: Math.max(bb.max.x, -bb.min.x, bb.max.y, -bb.min.y), grosor: bb.max.z }, platos, camaras };
+}
 
 // Hojas de un YAML con su texto fuente: ruta → { fuente, valor, comillas }. Las rutas de los arrays llevan [i].
 function hojas(src, nodo, ruta = '', out = new Map()) {
@@ -151,11 +178,45 @@ function leerComando(l) {
   return { flags: f, nodo: (l.match(/ -r __node:=(\S+) &$/) || [])[1] };
 }
 
+// ---------- T2.3: escena de colisión ----------
+const pDe = o => ['x', 'y', 'z'].map(k => o[k]), qDe = o => ['x', 'y', 'z', 'w'].map(k => o[k]);
+const resta = (a, b) => a.map((v, i) => v - b[i]), suma = (a, b) => a.map((v, i) => v + b[i]), norma = v => Math.hypot(...v);
+const TOL = 0.5e-3 + 1e-9; // ±0,5 mm (el redondeo a 1 mm) y el ruido de coma flotante
+const dentro = (e, tol, que) => e.forEach((v, i) => assert.ok(Math.abs(v) <= tol, `${que}: ${(v * 1000).toFixed(3)} mm en el eje ${'xyz'[i]} (±${(tol * 1000).toFixed(1)} mm)`));
+const giroZ = R => Math.atan2(R[1][0], R[0][0]);
+const modPi = (a, b) => { const d = Math.atan2(Math.sin(a - b), Math.cos(a - b)); return Math.min(Math.abs(d), Math.PI - Math.abs(d)); }; // una caja es simétrica a media vuelta
+// Objetos de escena_colision.yaml con sus formas en el mismo frame que obstaculos(): centro, giro y dimensiones de cada forma
+function formasEnBase(objetos) {
+  return objetos.map(o => {
+    const R = deQ(qDe(o.pose.orientation)), p = pDe(o.pose.position);
+    return { id: o.id, p, R, formas: o.primitives.map((f, i) => { const pp = o.primitive_poses[i]; return { i, tipo: f.type, dims: f.dimensions, c: suma(p, aplicar(R, pDe(pp.position))), R: mul(R, deQ(qDe(pp.orientation))) }; }) };
+  });
+}
+// Lo que no se exporta (decisión 2 del brief de T2.3): la persona (y sus brazos, «manos»), la fruta y el otro robot
+const NO_EXPORTADOS = [/^persona$/, /^manos$/, /^pieza:\d+$/, /^robot A$/];
+// Un fichero de texto de ROS con el origen de cada valor al final de su línea (como T2.2-C4): toda línea con valor lo lleva
+function conOrigen(src, nombre) {
+  const re = new RegExp(`  # (${[...ORIGEN.TIPOS, ORIGEN.ELEGIDO].join('|')})\\b`);
+  for (const l of src.split('\n').filter(l => l && !l.startsWith('#'))) if (!/:$/.test(l)) assert.match(l, re, `${nombre}: ${l}`);
+}
+// celda.scene ya validado: { nombre, objetos [{ id, p, q, formas [{ tipo, dims, p, q, color }] }] }
+function leerScene(src) {
+  const ls = src.split('\n'); let i = 1; const n = () => ls[i++].split(' ').map(Number), objetos = [];
+  while (ls[i] !== '.') {
+    const o = { id: ls[i++].slice(2), p: n(), q: n(), formas: [] }, k = +ls[i++];
+    for (let j = 0; j < k; j++) o.formas.push({ tipo: ls[i++], dims: n(), p: n(), q: n(), color: n() });
+    i++; objetos.push(o); // 0 subframes
+  }
+  return { nombre: ls[0], objetos };
+}
+// ---------- T2.5: cámaras ----------
+const ENTEROS_USB = { enteros: ['image_width', 'image_height', 'exposure', 'white_balance'] }; // los que usb_cam declara enteros
+
 test('T2.2 y T2.4 con nominal, el 203 y el 203 con prefijo: parametros_celda.yaml (C1–C4), las TF estáticas (C1–C5) y Común-C1 en la misma página', { timeout: 300000 }, async t => {
   const s = await abrir(srv.url);
   try {
     const res = [];
-    for (const c of CASOS_YAML) { await aplicarCaso(s.page, c); res.push({ c, ...(await s.page.evaluate(leerPagina)) }); }
+    for (const c of CASOS_YAML) { await aplicarCaso(s.page, c); res.push({ c, ...(await s.page.evaluate(leerPagina)), escena: await s.page.evaluate(leerEscenaCamaras) }); }
     comprobar(s.reg);
     for (const r of res) {
       const p = texto(r, 'parametros_celda.yaml');
@@ -305,31 +366,152 @@ test('T2.2 y T2.4 con nominal, el 203 y el 203 con prefijo: parametros_celda.yam
         assert.deepEqual(r.otra, r.ficheros);
         for (const f of r.ficheros) assert.ok(!/\b\d{4}-\d{2}-\d{2}\b/.test(f.texto), `${f.nombre}: sin fecha`);
       });
+
+      // ---------- T2.3 y T2.5 (añadido en T2.3 + T2.5): en la misma página y con los mismos casos ----------
+      const escena = texto(r, 'escena_colision.yaml'), sc = texto(r, 'celda.scene'), txt = texto(r, 'celda.scene.txt');
+      const objetos = YAML.parse(escena).objetos, E = formasEnBase(objetos);
+      await t.test(`${r.c.id} · T2.3 y T2.5 (Común-C1): los ficheros nuevos van detrás de los de T2.2 + T2.4, en orden fijo, y cada valor lleva su origen`, () => {
+        const i = r.ficheros.findIndex(f => f.nombre === 'tf_estaticas.sh');
+        assert.deepEqual(r.ficheros.slice(i + 1).map(f => f.nombre), ['escena_colision.yaml', 'celda.scene', 'celda.scene.txt', ...cams.map(k => `camera_info/camara_${k}.yaml`), ...cams.map(k => `usb_cam/camara_${k}.yaml`)]);
+        conOrigen(escena, 'escena_colision.yaml');
+        for (const k of cams) { conOrigen(texto(r, `camera_info/camara_${k}.yaml`), `camera_info/camara_${k}.yaml`); conOrigen(texto(r, `usb_cam/camara_${k}.yaml`), `usb_cam/camara_${k}.yaml`); }
+        assert.ok(!sc.includes('#'), 'celda.scene sin comentarios: el lector no los ignora');
+        const re = new RegExp(`^#   (\\S+): (${ORIGEN.TIPOS.join('|')})\\b`, 'm'), lista = txt.split('\n').filter(l => re.test(l)).map(l => l.match(re)[1]);
+        assert.deepEqual(lista, objetos.map(o => o.id), 'celda.scene.txt da el origen de cada objeto');
+      });
+      await t.test(`${r.c.id} · T2.3-C1: escena_colision.yaml pasa el validador de CollisionObject (en ${raizTF})`, () => {
+        assert.deepEqual(problemasEscena(escena, { frame: raizTF }), []);
+      });
+      await t.test(`${r.c.id} · T2.3-C2: cada obstáculo de obstaculos() tiene su primitiva (centro ±0,5 mm, medidas a 1 mm, giro ±0,002 rad) y al revés`, st => {
+        const porId = new Map(E.map(o => [o.id, o])), usadas = new Set(), fuera = new Map(), peor = { base: 0, obj: 0 };
+        const forma = (id, tipo, i) => { const o = porId.get(id); assert.ok(o, `falta el objeto ${id}`); const f = o.formas.filter(x => x.tipo === tipo)[i]; assert.ok(f, `${id}: falta su forma ${tipo} n.º ${i + 1}`); usadas.add(`${id}#${f.i}`); return { o, f }; };
+        const medida = (a, b, que) => assert.ok(Math.abs(a - b) <= TOL, `${que}: ${a} frente a ${b} (a 1 mm)`);
+        const vertical = (R, que) => assert.ok(entreEjes(col(R, 2), [0, 0, 1]) <= 0.002, `${que}: no está vertical`);
+        const caja = (id, o, f, que) => { // una caja orientada de obstaculos() (t: 3) y su BOX
+          dentro(resta(f.c, [o.x, o.y, o.z]), TOL, `${que}: centro`);
+          [o.hx, o.hy, o.hz].forEach((h, i) => medida(f.dims[i], 2 * h, `${que}: lado ${'xyz'[i]}`));
+          assert.ok(modPi(giroZ(f.R), Math.atan2(o.s, o.c)) <= 0.002, `${que}: giro ${giroZ(f.R)} frente a ${Math.atan2(o.s, o.c)}`); vertical(f.R, que);
+        };
+        const grupos = new Map(); for (const o of r.escena.obstaculos) { if (!grupos.has(o.tag)) grupos.set(o.tag, []); grupos.get(o.tag).push(o); }
+        for (const [tag, os] of grupos) {
+          let m;
+          if (NO_EXPORTADOS.some(re => re.test(tag))) { fuera.set(tag, os.length); continue; }
+          if (tag === 'mesa') { // el tablero (t: 0): cara de arriba a z del obstáculo − 1 mm, con su giro
+            const [o] = os, { f } = forma('mesa', 1, 0);
+            dentro(resta(f.c, [o.x, o.y, o.z - 0.001 - f.dims[2] / 2]), TOL, 'mesa: centro con la cara de arriba a −0,001');
+            dentro([f.c[2] + f.dims[2] / 2 - (o.z - 0.001)], TOL, 'mesa: cara de arriba a −0,001'); assert.ok(Math.abs(o.z) < 1e-9, 'el tablero está en z = 0 de base_link');
+            medida(f.dims[0], 2 * o.hx, 'mesa: ancho'); medida(f.dims[1], 2 * o.hy, 'mesa: fondo'); medida(f.dims[2], MESA_H, 'mesa: alto');
+            assert.ok(modPi(giroZ(f.R), o.giro ? Math.atan2(o.s, o.c) : 0) <= 0.002, 'mesa: giro'); vertical(f.R, 'mesa');
+          } else if ((m = tag.match(/^caja:plato(\d)$/))) { assert.equal(os.length, 1); caja(`caja_plato_${m[1]}`, os[0], forma(`caja_plato_${m[1]}`, 1, 0).f, tag); }
+          else if (tag === 'bandeja') { assert.equal(os.length, 1); caja('bandeja', os[0], forma('bandeja', 1, 0).f, tag); }
+          else if ((m = tag.match(/^plato:(plato\d)$/))) { // las esferas del plato: un CYLINDER de PLATO_R centrado en el plato
+            const id = m[1].replace('plato', 'plato_'), { f } = forma(id, 3, 0), [h, rad] = f.dims, cg = [0, 1, 2].map(i => os.reduce((s, o) => s + [o.x, o.y, o.z][i], 0) / os.length);
+            const base = aplicar(tr(J), resta(r.escena.platos[m[1]].w, [r.base.x, r.base.y, MESA_H])); // el plato dibujado, en base_link
+            medida(rad, r.escena.plato.radio, `${id}: radio (el del plato dibujado)`); medida(h, r.escena.plato.grosor, `${id}: altura (el grosor del plato dibujado)`);
+            assert.notEqual(rad, h, 'un cilindro de radio distinto de su altura');
+            dentro(resta(f.c, [cg[0], cg[1], base[2] + h / 2]).slice(0, 2), TOL, `${id}: eje en el centro de sus esferas`); dentro(resta(f.c, base).slice(0, 2), TOL, `${id}: eje en el centro del plato`);
+            dentro([f.c[2] - h / 2 - base[2]], TOL, `${id}: base del cilindro en la del plato`); vertical(f.R, id);
+            for (const o of os) { const d = resta([o.x, o.y, o.z], f.c); assert.ok(Math.hypot(d[0], d[1]) <= rad && Math.abs(d[2]) <= h / 2, `${id}: la esfera de (${o.x}, ${o.y}, ${o.z}) tiene el centro dentro del cilindro`); }
+          } else if ((m = tag.match(/^camara:(\w+)$/))) { // esferas (t: 1) como SPHERE; cada cápsula (t: 2), un CYLINDER y dos SPHERE
+            const id = `camara_${m[1]}`, o0 = porId.get(id); assert.ok(o0, `falta ${id}`);
+            const libres = t2 => o0.formas.filter(f => f.tipo === t2 && !usadas.has(`${id}#${f.i}`));
+            const cerca = (tipo, c, rr, que) => { // la forma libre más parecida (centro y radio); el error, en los ejes del objeto (donde se redondea)
+              const coste = x => norma(resta(x.c, c)) + Math.abs(x.dims.at(-1) - rr), f = libres(tipo).sort((a, b) => coste(a) - coste(b))[0]; // el codo comparte centro con dos extremos de cápsula: cuenta el radio assert.ok(f, `${id}: falta una forma ${tipo} para ${que}`);
+              usadas.add(`${id}#${f.i}`); const e = resta(f.c, c), eo = aplicar(tr(o0.R), e);
+              dentro(eo, TOL, `${id}, ${que}: centro (ejes de ${id})`); peor.obj = Math.max(peor.obj, ...eo.map(Math.abs)); peor.base = Math.max(peor.base, ...e.map(Math.abs));
+              medida(f.dims.at(-1), rr, `${id}, ${que}: radio`); return f;
+            };
+            for (const o of os) {
+              if (o.t === 1) { cerca(2, [o.x, o.y, o.z], o.r, `esfera de radio ${o.r}`); continue; }
+              assert.equal(o.t, 2, `${tag}: solo esferas y cápsulas`);
+              const a = [o.ax, o.ay, o.az], b = [o.cx, o.cy, o.cz], d = resta(b, a), l = norma(d);
+              const f = cerca(3, a.map((v, i) => (v + b[i]) / 2), o.r, 'tramo de una cápsula');
+              medida(f.dims[0], l, `${id}: altura del cilindro (la longitud de la cápsula)`);
+              const ang = entreEjes(col(f.R, 2), d); assert.ok(Math.min(ang, Math.PI - ang) <= 0.002, `${id}: eje del cilindro a ${ang} rad de la cápsula`);
+              cerca(2, a, o.r, 'extremo de una cápsula'); cerca(2, b, o.r, 'extremo de una cápsula');
+            }
+          } else assert.fail(`obstáculo «${tag}» sin primitiva en la escena ni en la lista de no exportados`);
+        }
+        // al revés: ninguna forma de la escena sin su obstáculo, y ningún objeto de más
+        for (const o of E) for (const f of o.formas) assert.ok(usadas.has(`${o.id}#${f.i}`), `${o.id}: la forma ${f.i + 1} (tipo ${f.tipo}) no sale de ningún obstáculo`);
+        const esperados = ['mesa', ...['1', '2'].filter(n => grupos.has(`caja:plato${n}`)).map(n => `caja_plato_${n}`), ...['1', '2'].filter(n => grupos.has(`plato:plato${n}`)).map(n => `plato_${n}`), 'bandeja', ...cams.map(k => `camara_${k}`)];
+        assert.deepEqual(E.map(o => o.id), esperados);
+        for (const re of NO_EXPORTADOS) assert.ok([...fuera.keys()].some(k => re.test(k)), `el caso tiene obstáculos ${re} (no exportados)`);
+        st.diagnostic(`no exportados: ${[...fuera].map(([k, n]) => `${k} (${n})`).join(', ')}; cámaras: peor error ${(peor.obj * 1000).toFixed(3)} mm en sus ejes y ${(peor.base * 1000).toFixed(3)} mm en los de ${raizTF}`);
+      });
+      await t.test(`${r.c.id} · T2.3-C3: celda.scene pasa el validador del formato .scene`, () => {
+        assert.deepEqual(problemasScene(sc), []);
+      });
+      await t.test(`${r.c.id} · T2.3-C4: celda.scene, devuelto de world a ${raizTF}, es escena_colision.yaml; cylinder radio longitud frente a [altura, radio]`, st => {
+        const S = leerScene(sc), W = WBL(r.robotId)[r.c.prefijo ? 'doble' : 'individual'], RW = R3(W.T), tW = W.xyz;
+        assert.equal(S.nombre, `gemelo_celda_${escena.match(/^# Huella de la disposición: ([0-9a-f]{8}) /m)[1]}`);
+        assert.ok(txt.includes(r.c.prefijo ? `está en el world del URDF doble ${path.basename(W.fichero)}, no en ${raizTF}` : `está en el world de sim_<id>`), 'celda.scene.txt dice en qué world está');
+        assert.deepEqual(S.objetos.map(o => o.id), objetos.map(o => o.id));
+        const TIPOS = { 1: 'box', 2: 'sphere', 3: 'cylinder' }; let peorB = 0, peorG = 0;
+        for (const [i, s] of S.objetos.entries()) {
+          const o = objetos[i], pb = aplicar(tr(RW), resta(s.p, tW)), e = resta(pb, pDe(o.pose.position));
+          // el .scene redondea a 1 mm en los ejes de world: la diferencia, en esos ejes, queda en ±0,5 mm
+          dentro(aplicar(RW, e), TOL, `${s.id}: posición (ejes de world)`); peorB = Math.max(peorB, ...e.map(Math.abs));
+          const g = angulo(mul(tr(RW), deQ(s.q)), deQ(qDe(o.pose.orientation))); assert.ok(g <= 0.002, `${s.id}: giro a ${g} rad`); peorG = Math.max(peorG, g);
+          assert.equal(s.formas.length, o.primitives.length, `${s.id}: número de formas`);
+          for (const [j, f] of s.formas.entries()) {
+            const p = o.primitives[j], pp = o.primitive_poses[j];
+            assert.equal(f.tipo, TIPOS[p.type], `${s.id}: tipo de la forma ${j + 1}`);
+            assert.deepEqual(f.dims, p.type === 3 ? [p.dimensions[1], p.dimensions[0]] : p.dimensions, `${s.id}: dimensiones de la forma ${j + 1}`);
+            assert.deepEqual([f.p, f.q], [pDe(pp.position), qDe(pp.orientation)], `${s.id}: pose de la forma ${j + 1}, la misma`);
+            assert.ok(f.color.every(c => c >= 0 && c <= 1) && f.color[3] === 1, `${s.id}: color`);
+          }
+        }
+        // el cilindro del plato: radio (el del plato dibujado) ≠ altura, primero en el .scene y segundo en el YAML
+        for (const id of ['plato_1', 'plato_2']) {
+          const s = S.objetos.find(o => o.id === id), o = objetos.find(x => x.id === id); if (!s) continue;
+          assert.ok(Math.abs(s.formas[0].dims[0] - r.escena.plato.radio) <= TOL && Math.abs(o.primitives[0].dimensions[1] - r.escena.plato.radio) <= TOL, `${id}: cylinder radio longitud y [altura, radio]`);
+          assert.notEqual(s.formas[0].dims[0], s.formas[0].dims[1]);
+        }
+        st.diagnostic(`${r.c.prefijo ? 'world del URDF doble' : 'world de sim_<id>'}: peor diferencia ${(peorB * 1000).toFixed(3)} mm en los ejes de ${raizTF} y ${peorG.toExponential(2)} rad`);
+      });
+      await t.test(`${r.c.id} · T2.5-C1: camera_info/camara_<k>.yaml pasa el validador de camera_info y su camera_name es el de usb_cam`, () => {
+        for (const k of cams) {
+          const ci = texto(r, `camera_info/camara_${k}.yaml`), u = YAML.parse(texto(r, `usb_cam/camara_${k}.yaml`))['/**'].ros__parameters;
+          assert.deepEqual(problemasCameraInfo(ci), [], k);
+          const c = YAML.parse(ci); assert.equal(c.camera_name, u.camera_name, k); assert.equal(c.camera_name, `camara_${k}`);
+          assert.deepEqual([c.image_width, c.image_height], r.L.cams[k].modo.split('x').map(Number), `${k}: el tamaño del modo`);
+        }
+      });
+      await t.test(`${r.c.id} · T2.5-C2: con la K exportada, los píxeles son los de la cámara de render del gemelo (< 0,05 px), y con las TF exportadas, dentro de su redondeo`, st => {
+        for (const k of cams) {
+          const ci = YAML.parse(texto(r, `camera_info/camara_${k}.yaml`)), K = ci.camera_matrix.data, { w, h, puntos } = r.escena.camaras[k];
+          const gem = aBase(r.opticos[k].m); // el marco óptico de la cámara de render, en base_link, sin redondear
+          const b = porHijo[`camara_${k}`], o = porHijo[`camara_${k}_optical`], Rb = deQ(b.q), exp = { R: mul(Rb, deQ(o.q)), p: suma(b.t, aplicar(Rb, o.t)) }; // la cadena TF exportada
+          const th = angulo(exp.R, gem.R), dt = norma(resta(exp.p, gem.p));
+          const px = (M, pb) => { const q = aplicar(tr(M.R), resta(pb, M.p)); return { Z: q[2], m: [q[0] / q[2], q[1] / q[2]], uv: [K[0] * q[0] / q[2] + K[2], K[4] * q[1] / q[2] + K[5]] }; };
+          let n = 0, peorK = 0, peorT = 0, cota = 0;
+          for (const p of puntos) {
+            const [nx, ny, nz] = p.ndc, pb = aplicar(tr(J), resta(p.w, base)), g = px(gem, pb);
+            if (!(g.Z > 0 && Math.abs(nx) <= 1 && Math.abs(ny) <= 1 && Math.abs(nz) <= 1)) continue; // no se ve
+            n++;
+            const uv3 = [(nx + 1) / 2 * w - 0.5, (1 - ny) / 2 * h - 0.5], eK = norma(resta(g.uv, uv3)), eT = norma(resta(px(exp, pb).uv, uv3));
+            // cota del redondeo de las TF (I7: 1 mm y 0,001 rad): el rayo gira como mucho θ + δt/ρ y, en la imagen, |Δm| ≤ (1 + |m|²)·ángulo
+            const c = Math.max(K[0], K[4]) * (th + dt / norma(resta(pb, gem.p))) * (1 + g.m[0] ** 2 + g.m[1] ** 2) * 1.05 + 0.05;
+            assert.ok(eK < 0.05, `${k}, ${p.que}: ${eK.toFixed(4)} px entre la K exportada y three.js`);
+            assert.ok(eT <= c, `${k}, ${p.que}: ${eT.toFixed(3)} px con las TF exportadas (cota del redondeo ${c.toFixed(3)} px)`);
+            peorK = Math.max(peorK, eK); peorT = Math.max(peorT, eT); cota = Math.max(cota, c);
+          }
+          assert.ok(n >= 5, `${k}: ${n} puntos visibles (al menos 5)`);
+          st.diagnostic(`${k}: ${n} puntos visibles; con la K exportada, ${peorK.toFixed(4)} px; con las TF exportadas, ${peorT.toFixed(3)} px (cota ${cota.toFixed(3)} px; TF a ${th.toExponential(2)} rad y ${(dt * 1000).toFixed(3)} mm del marco del gemelo)`);
+        }
+      });
+      await t.test(`${r.c.id} · T2.5-C3: usb_cam/camara_<k>.yaml pasa las reglas de rcl, con su TF óptica, su camera_info, mjpeg2rgb y sin camera_frame_id`, () => {
+        for (const k of cams) {
+          const src = texto(r, `usb_cam/camara_${k}.yaml`), u = YAML.parse(src)['/**'].ros__parameters, ci = YAML.parse(texto(r, `camera_info/camara_${k}.yaml`));
+          assert.deepEqual(problemasParams(src, ENTEROS_USB), [], k);
+          assert.equal(u.frame_id, porHijo[`camara_${k}_optical`].hijo, `${k}: frame_id = el child de su TF óptica`);
+          assert.equal(u.camera_info_url, `file://\${ROS_HOME}/camera_info/${ci.camera_name}.yaml`, `${k}: camera_info_url`);
+          assert.equal(u.pixel_format, 'mjpeg2rgb'); assert.ok(!src.includes('camera_frame_id:') && !('camera_frame_id' in u), `${k}: sin camera_frame_id`);
+          assert.deepEqual([u.image_width, u.image_height], [ci.image_width, ci.image_height], `${k}: el tamaño del modo`); assert.ok(u.framerate > 0, `${k}: framerate`); // double: lo exige problemasParams (no es un entero de usb_cam)
+          assert.deepEqual([u.autoexposure, u.exposure, u.auto_white_balance, u.white_balance], [false, 50, false, 4000], `${k}: exposición y balance manuales`);
+        }
+      });
     }
   } finally { await s.cerrar(); }
-});
-
-// Recargar = volver a abrir el gemelo con la misma Tu mesa guardada (localStorage). Se hace en un navegador nuevo con ese
-// almacenamiento y no con page.reload(): con SwiftShader, la página vieja vacía antes los fotogramas acumulados y la recarga
-// tarda 22–26 s más (medido; DT33). Lo que se comprueba es lo mismo: lo exportado sale de la disposición guardada y de nada
-// que quede en memoria.
-test('Común-C1: tras recargar la página (la misma Tu mesa), la misma disposición da los mismos bytes en todos los ficheros', { timeout: 300000 }, async () => {
-  let antes;
-  const s = await abrir(srv.url);
-  try {
-    await aplicarCaso(s.page, CASOS_YAML.find(c => c.id === '203-prefijo'));
-    antes = await s.page.evaluate(() => ({ L: JSON.stringify(window.__g.L()), f: window.__g.ficherosRos() }));
-    // Tu mesa se guarda a los 400 ms del último cambio: se espera a que esté escrita
-    await s.page.waitForFunction(l => localStorage.getItem('gemelo-ur3e-v4') === l, antes.L, { timeout: 30000, polling: 50 });
-    comprobar(s.reg);
-  } finally { await s.cerrar(); }
-  // el mismo almacenamiento antes de que arranque la página (una sola carga en ese contexto)
-  const s2 = await abrir(srv.url, { esperarCalculo: false, initScripts: [`localStorage.setItem('gemelo-ur3e-v4', ${JSON.stringify(antes.L)});`] });
-  try {
-    // cargado() ya ha colocado todo (ladoZonas incluido); los ficheros no dependen de las trayectorias: no se espera al cálculo
-    const despues = await s2.page.evaluate(() => ({ L: JSON.stringify(window.__g.L()), f: window.__g.ficherosRos() }));
-    assert.equal(despues.L, antes.L, 'la misma disposición tras recargar');
-    assert.deepEqual(despues.f, antes.f);
-    comprobar(s2.reg);
-  } finally { await s2.cerrar(); }
 });

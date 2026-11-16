@@ -31,12 +31,13 @@ test('toda entrada tiene clave única, tipo válido, texto, fuente y un comentar
   }
 });
 
-test('la tabla del panel son las entradas con nombre, en su orden: 25 filas, y cinco entradas solo para los ficheros', () => {
+test('la tabla del panel son las entradas con nombre, en su orden: 25 filas, y las entradas solo para los ficheros', () => {
   const filas = ORIGEN.panel(CTX);
   assert.equal(filas.length, 25);
   assert.deepEqual(filas.map(f => f.clave), ORIGEN.CLAVES.filter(k => ORIGEN.entrada(k, CTX).nombre !== null));
-  // T2.2 y T2.4 (decisión 7 de su brief) añaden tres entradas con nombre null: la tabla del panel no cambia
-  assert.deepEqual(ORIGEN.CLAVES.filter(k => ORIGEN.entrada(k, CTX).nombre === null), ['disposicion', 'pose_doble', 'nombre_frame', 'lado_marcador', 'marco_optico']);
+  // T2.2 y T2.4 (decisión 7 de su brief) añaden tres entradas con nombre null, y T2.3 y T2.5, doce: la tabla del panel no cambia
+  assert.deepEqual(ORIGEN.CLAVES.filter(k => ORIGEN.entrada(k, CTX).nombre === null), ['disposicion', 'pose_doble', 'nombre_frame', 'lado_marcador', 'marco_optico',
+    'id_escena', 'mesa_bajo_base', 'giro_caja', 'grosor_plato', 'colision_camara', 'formato_camera_info', 'distorsion_nula', 'dispositivo_video', 'formato_pixel', 'ruta_camera_info', 'exposicion', 'balance_blancos']);
   assert.equal(filas.filter(f => f.nombre === 'Agarre del plato').length, 2, 'dos filas con el mismo nombre y claves distintas');
 });
 
