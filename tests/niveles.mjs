@@ -29,6 +29,7 @@ export const NIVELES = {
     'tests/e2e/robot.test.mjs',             // I6 con el 203 y dibujo = colisión = TCP (T1.4)
     'tests/e2e/ros.test.mjs',               // I7: ficheros de ROS de T2.2–T2.5 con nominal, 203 y prefijo, en una página
     'tests/e2e/ros-referencias.test.mjs',   // I7: ficheros de ROS byte a byte (Común-C3), red de T2.3, T2.5 y T2.6
+    'tests/e2e/ros-panel.test.mjs',         // T2.6: sección «Exportar a ROS», descargas y .tar byte a byte en los dos destinos (I7)
     'tests/e2e/sensor.test.mjs',            // modelo de sensor de la ELP (T1.7, D10)
   ],
   puerta: [

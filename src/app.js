@@ -734,10 +734,13 @@ function recalcular() { actualizarPlatos(); evaluar(); pintarCalc(); vigilarEsce
 // Mover algo con la demo a medias la deja incoherente: se reinicia antes del primer movimiento
 function prepararEdicion() { if (D.activo && !D.playing) { D.activo = false; reiniciarDemo(); toast('Demo reiniciada para mover objetos'); } }
 const CALC = { activo: false };
+// Estado de la sección «Exportar a ROS» del panel «Datos» (T2.6): el modelo y los ficheros que muestra, y si sus descargas
+// están desactivadas por un cálculo o una búsqueda (vigilarRos, desde pintarCalc)
+const ROSX = { m: null, ficheros: [], lista: null, huella: '', giro: null, ver: null, ocupado: null };
 // La barra dice si las trayectorias de explorar («gemelo») están al día; debajo, la de validar (pintarVal, T1.8).
 // El texto de progreso se conserva hasta que acaba el cálculo (el repintado periódico no lo borra).
 function pintarCalc(txt) {
-  if (txt) CALC.txt = txt; pintarVal();
+  if (txt) CALC.txt = txt; pintarVal(); vigilarRos();
   const el = $('#calcBar'); const ver = !!robot && (VAL.activo || !D.activo) && (CALC.activo || !planesAlDia(PERFIL_EXPLORA)); el.hidden = !ver; if (!ver) return;
   $('#calcTxt').textContent = CALC.activo ? (CALC.txt || 'Calculando…') : 'Hay cambios sin calcular'; $('#calcSpin').hidden = !CALC.activo; $('#btnCalc').disabled = CALC.activo;
 }
@@ -1811,13 +1814,106 @@ function escenaExportacion(B, mc, bt, yawBandeja, camaras) {
   for (const k of camaras) objetos.push({ id: `camara_${k.clave}`, que: 'camara', pose: { ...k.pos, rpy: k.rpy }, formas: deTag(`camara:${k.clave}`).map(o => o.t === 1 ? { tipo: 'esfera', radio: o.r, centro: P(o) } : { tipo: 'capsula', radio: o.r, a: { x: o.ax, y: o.ay, z: o.az }, b: { x: o.cx, y: o.cy, z: o.cz } }) });
   return { objetos };
 }
-function generarYaml() { return EXPORTAR.posiciones(modeloExportacion(), ORIGEN, new Date().toISOString().slice(0, 10)); }
+function generarYaml(m = modeloExportacion()) { return EXPORTAR.posiciones(m, ORIGEN, new Date().toISOString().slice(0, 10)); }
 // Ficheros de ROS de la disposición actual: [{ nombre, texto }] en orden fijo, deterministas (sin fecha): los de T2.2 + T2.4,
-// los de la escena (T2.3) y los de las cámaras (T2.5). Los descargará el panel de T2.6; hoy los leen los tests con
-// window.__g.ficherosRos()
-function ficherosRos() { return EXPORTAR.todos(modeloExportacion(), ORIGEN); }
-function pintarDatos() { $('#yaml').value = generarYaml(); pintarFuentes(); }
+// los de la escena (T2.3) y los de las cámaras (T2.5). Los muestra y descarga la sección «Exportar a ROS» (T2.6) y los leen
+// los tests con window.__g.ficherosRos()
+function ficherosRos(m = modeloExportacion()) { return EXPORTAR.todos(m, ORIGEN); }
+// posiciones.yaml, la tabla de fuentes y la sección «Exportar a ROS», con un mismo modelo de exportación
+function pintarDatos() { const m = modeloExportacion(); $('#yaml').value = generarYaml(m); pintarFuentes(); pintarRos(m); }
 $('#btnCopy').addEventListener('click', async () => { const t = $('#yaml'); try { await navigator.clipboard.writeText(t.value); toast('Copiado'); } catch (e) { t.focus(); t.select(); toast('Selecciona y copia con Ctrl+C'); } });
+
+// ======================= Exportar a ROS (T2.6) =======================
+// Sección «Exportar a ROS» del panel «Datos» (decisiones 1, 4 y 5 del brief de T2.6): los ficheros de ficherosRos() de la
+// disposición abierta, en su orden y agrupados por carpeta (cada tramo seguido de ficheros de una misma carpeta, bajo su
+// nombre), cada uno con Ver, Copiar y Descargar, y «Descargar todo (.tar)», con todos bajo celda_ros/ (EXPORTAR.tar). Solo
+// genera texto y descargas: no habla con ROS (I4). Se repinta con pintarDatos: al abrir el panel, al cambiar el prefijo o el
+// robot (aplicarLayout) y al terminar un cálculo (evaluar). Nunca calcula planes. Lo que se ve, se copia y se descarga sale
+// de la misma llamada a modeloExportacion() que da el giro de las cajas (DT38). Mientras se calcula (CALC.activo, también al
+// validar) o se busca una disposición (D.buscando: L es un candidato), «Descargar» y «Descargar todo» están desactivados;
+// pintarCalc lo vigila (vigilarRos) y, al terminar, la sección se repinta con la disposición de ahora y los reactiva.
+const RAIZ_TAR = 'celda_ros';
+// Para qué sirve cada fichero, en una línea (las TF dicen su arista: el padre y el hijo de su propio texto)
+const aristaTF = t => { const p = /^ {4}frame_id: '([^']*)'/m.exec(t), h = /^ {4}child_frame_id: '([^']*)'/m.exec(t); return p && h ? `${p[1]} → ${h[1]}` : null; };
+const QUE_ROS = [
+  [/^parametros_celda\.yaml$/, () => 'Poses y medidas de la celda, para --params-file'],
+  [/^tf\/(.+)\.yaml$/, (m, t) => `TF estática ${aristaTF(t) || `hacia ${m[1]}`}`],
+  [/^tf_estaticas\.sh$/, () => 'Todas las TF con static_transform_publisher (bash)'],
+  [/^escena_colision\.yaml$/, () => 'CollisionObject para un nodo del grupo (no se carga en U4)'],
+  [/^celda\.scene$/, () => 'Escena de MoveIt en world: load_geometry_from_file o RViz'],
+  [/^celda\.scene\.txt$/, () => 'Explica celda.scene: su world, cómo cargarla y el origen'],
+  [/^camera_info\/(.+)\.yaml$/, () => 'Intrínseca nominal, para ~/.ros/camera_info/'],
+  [/^usb_cam\/(.+)\.yaml$/, () => 'Parámetros de usb_cam: frame_id, camera_info_url y exposición'],
+];
+function queEsRos(f) { for (const [re, t] of QUE_ROS) { const m = re.exec(f.nombre); if (m) return t(m, f.texto); } return 'Fichero de ROS de la disposición'; }
+const nombreDescarga = n => n.replace(/\//g, '_'); // un navegador no descarga carpetas: tf/mesa.yaml → tf_mesa.yaml (el .tar las conserva)
+const rosOcupado = () => CALC.activo ? 'calculo' : D.buscando ? 'busqueda' : null;
+// Giro de las cajas de la escena (DT38), del modelo que da los ficheros: 'plan', 'base', 'calculo' o 'sin-cajas'
+function giroCajas(m) { const g = new Set(m.escena.objetos.filter(o => o.que === 'caja').map(o => o.giro || 'calculo')); return !g.size ? 'sin-cajas' : g.has('calculo') ? 'calculo' : g.has('base') ? 'base' : 'plan'; }
+const TXT_GIRO = {
+  plan: ['ok', 'giro del plan', 'Las cajas de los platos llevan el giro del plan: el del agarre que eligió el gemelo al calcular las trayectorias.'],
+  base: ['warn', 'giro provisional', 'Las cajas llevan el giro provisional, hacia la base del robot, porque las trayectorias no están al día. «Calcular trayectorias» pone el del plan.'],
+  calculo: ['warn', 'giro a medias', 'Las cajas llevan el giro de un cálculo a medias, que ningún plan usa. «Calcular trayectorias» pone el del plan.'],
+  'sin-cajas': ['ok', 'sin cajas', 'Los platos van sobre la mesa: la escena no lleva cajas.'],
+};
+const TXT_OCUPADO = {
+  calculo: ['calculando', 'Hay un cálculo de trayectorias en marcha: «Descargar» y «Descargar todo» se activan cuando termine, porque las cajas llevarían un giro que ningún plan usa. «Ver» y «Copiar» enseñan lo que hay ahora.'],
+  busqueda: ['buscando', 'Hay una búsqueda de una disposición en marcha: «Descargar» y «Descargar todo» se activan cuando termine, porque los ficheros serían los de una disposición candidata. «Ver» y «Copiar» enseñan lo que hay ahora.'],
+};
+function pintarRos(m = modeloExportacion()) {
+  const F = ficherosRos(m), lista = listaRos(F); // la lista solo se vuelve a escribir si cambia (nombres o líneas de las TF)
+  Object.assign(ROSX, { m, ficheros: F, huella: EXPORTAR.huella(m.layoutJson), giro: giroCajas(m) });
+  $('#rosHuella').textContent = ROSX.huella; $('#rosFrame').textContent = m.robot.frame; $('#rosCuenta').textContent = String(F.length);
+  $('#rosTarTxt').innerHTML = `Se descarga como <code>${RAIZ_TAR}_${ROSX.huella}.tar</code>: los ${F.length} ficheros bajo <code>${RAIZ_TAR}/</code>, con sus carpetas. «Descargar» de un fichero suelto cambia «/» por «_» en su nombre (<code>tf/mesa.yaml</code> → <code>tf_mesa.yaml</code>).`;
+  if (lista !== ROSX.lista) { ROSX.lista = lista; $('#rosLista').innerHTML = lista; }
+  verRos(ROSX.ver);
+  pintarRosEstado(rosOcupado());
+}
+// La lista: un grupo por tramo seguido de ficheros de una misma carpeta, en el orden de ficherosRos()
+function listaRos(F) {
+  const grupos = [];
+  for (const f of F) { const i = f.nombre.lastIndexOf('/'), c = f.nombre.slice(0, i + 1), g = grupos[grupos.length - 1]; if (g && g.c === c) g.f.push(f); else grupos.push({ c, f: [f] }); }
+  const fila = (f, c) => { const n = esc(f.nombre); return `<li data-nombre="${n}"><code>${esc(f.nombre.slice(c.length)).replace(/_/g, '_<wbr>')}</code><div class="btns"><button class="btn" data-ros="ver" aria-label="Ver ${n}">Ver</button><button class="btn" data-ros="copiar" aria-label="Copiar ${n}">Copiar</button><button class="btn" data-ros="dl" aria-label="Descargar ${n}" title="Se descarga como ${esc(nombreDescarga(f.nombre))}">Descargar</button></div><small>${esc(queEsRos(f))}</small></li>`; };
+  return grupos.map(g => `<div class="rosGrupo" data-carpeta="${esc(g.c)}"><h3><code>${RAIZ_TAR}/${esc(g.c)}</code></h3><ul class="props rosLista">${g.f.map(f => fila(f, g.c)).join('')}</ul></div>`).join('');
+}
+// La línea del estado (el giro de las cajas o lo que está en marcha) y las descargas, activas o no
+function pintarRosEstado(oc) {
+  ROSX.ocupado = oc; const el = $('#rosEstado'), [cls, tag, txt] = oc ? ['warn', ...TXT_OCUPADO[oc]] : TXT_GIRO[ROSX.giro];
+  el.dataset.giro = ROSX.giro; el.dataset.ocupado = oc || ''; el.innerHTML = `<span class="pill ${cls}">${tag}</span> ${txt}`;
+  $$('#btnRosTar, #rosLista [data-ros="dl"]').forEach(b => { b.disabled = !!oc; });
+}
+// Desde pintarCalc (al empezar, durante y al terminar un cálculo, y cada 18 fotogramas): si cambia lo que está en marcha y
+// el panel está a la vista, desactiva las descargas o, al terminar, repinta la sección con la disposición de ahora
+function vigilarRos() {
+  const oc = rosOcupado(); if (oc === ROSX.ocupado || !ROSX.m || $('[data-panel="datos"]').hidden) return;
+  if (oc) pintarRosEstado(oc); else pintarRos();
+}
+// «Ver»: el fichero en el textarea de solo lectura de la sección (nombre null: lo cierra)
+function verRos(nombre, mostrar = false) {
+  const f = nombre ? ROSX.ficheros.find(x => x.nombre === nombre) : null; ROSX.ver = f ? f.nombre : null;
+  $('#rosVerCaja').hidden = !f; $('#rosVer').value = f ? f.texto : ''; $('#rosVerNombre').textContent = f ? `${f.nombre} · solo lectura` : '';
+  $$('#rosLista li').forEach(li => li.setAttribute('aria-current', String(li.dataset.nombre === ROSX.ver)));
+  if (f && mostrar) $('#rosVerCaja').scrollIntoView({ block: 'nearest' });
+  return f;
+}
+// «Copiar»: al portapapeles o, si no hay, el fichero seleccionado en el textarea para copiarlo a mano (como #btnCopy)
+async function copiarRos(nombre) {
+  const f = ROSX.ficheros.find(x => x.nombre === nombre); if (!f) return;
+  try { await navigator.clipboard.writeText(f.texto); toast(`Copiado: ${f.nombre}`); } catch (e) { verRos(nombre, true); const t = $('#rosVer'); t.focus(); t.select(); toast('Selecciona y copia con Ctrl+C'); }
+}
+// Las descargas vuelven a leer la disposición (pintarRos) para bajar justo lo que se ve; nunca durante un cálculo o una búsqueda
+function puedeDescargarRos() { const oc = rosOcupado(); if (oc) { pintarRosEstado(oc); toast(oc === 'calculo' ? 'Espera a que termine el cálculo para descargar' : 'Espera a que termine la búsqueda para descargar'); return false; } pintarRos(); return true; }
+$('#rosLista').addEventListener('click', e => {
+  const b = e.target.closest('button[data-ros]'), li = b && b.closest('li[data-nombre]'); if (!li) return; const n = li.dataset.nombre;
+  if (b.dataset.ros === 'ver') verRos(n, true);
+  else if (b.dataset.ros === 'copiar') copiarRos(n);
+  else if (puedeDescargarRos()) { const f = ROSX.ficheros.find(x => x.nombre === n); if (f) descargar(nombreDescarga(f.nombre), f.texto); else toast('Ese fichero ya no está en la disposición'); }
+});
+$('#btnRosTar').addEventListener('click', () => {
+  if (!puedeDescargarRos()) return; let bytes;
+  try { bytes = EXPORTAR.tar(ROSX.ficheros, RAIZ_TAR); } catch (e) { toast(`No se ha podido crear el .tar: ${e.message}`); return; }
+  descargar(`${RAIZ_TAR}_${ROSX.huella}.tar`, new Blob([bytes], { type: 'application/x-tar' }));
+});
 // @@ESCENAS@@
 let DL = null, DB = null, USER = null;
 const C = window.claude;

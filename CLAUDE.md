@@ -18,6 +18,7 @@ y no es fuente del repo del proyecto de Robótica (invariante I9).
   `origen.js` es la única fuente del origen (MEDIDO, FABRICANTE o SUPUESTO) de cada valor exportable: los exportadores lo
   leen con un contexto, sin globales (T2.1). `exportar.js` (`EXPORTAR`) es el único formateador: convierte el modelo de
   `modeloExportacion()` (`app.js`, sin redondear y en `base_link`) en el texto de cada fichero exportado (T2.2).
+  `EXPORTAR.tar` los empaqueta en el `.tar` del panel «Exportar a ROS» (T2.6); la guía de U4 es `docs/validar-en-ros.md`.
 - `tools/build.sh` → `dist/gemelo-celda.html` (artefacto de claude.ai, con el gancho `window.__g` y `?prueba`).
 - `tools/build_web.sh` → `index.html` (GitHub Pages; quita el gancho y añade `config.js`). Llama a `build.sh`.
 - `web_src/`: plantillas con `@@CLAVE@@` y `PEGA_AQUI`. `tests/`: arnés de pruebas. `tests/mocks/`: simulacros de Firestore
