@@ -82,13 +82,18 @@ const ESQ_L = { ref: layoutDefecto(), robots: Object.keys(BASES), modos: Object.
 const migrarLayout = entrada => LAYOUT.migrarLayout(entrada, ESQ_L);
 // Solo lectura: una disposición de una versión más nueva se ve, pero no se guarda en local ni en el grupo
 function soloLectura() { return LAYOUT.soloLectura(L); }
-const CLAVE = 'gemelo-ur3e-v4';
+const CLAVE = 'gemelo-ur3e-v4', CLAVE_ILEG = CLAVE + '-ilegible'; // CLAVE_ILEG: copia de una Tu mesa que no se puede abrir (revisión de F1, H2)
 function cargarLocal() { try { return localStorage.getItem(CLAVE); } catch (e) { return null; } } // texto de Tu mesa o null (sin almacenamiento)
 // Tu mesa guardada en este navegador. Si no se puede abrir, la disposición de partida con un aviso (la v8 la descartaba en silencio)
 function mesaLocal() {
   const s = cargarLocal(); if (s == null) return layoutDefecto();
   const r = migrarLayout(s);
-  if (r.error) { toast(`Tu mesa guardada no se puede abrir (${r.error}): se usa la disposición de partida`); return layoutDefecto(); }
+  // el texto original se copia antes: el primer guardado de Tu mesa lo sustituye por la disposición de partida y la v8 no
+  // perdía nada que esta versión no sepa leer (revisión de F1, H2; DT11)
+  if (r.error) {
+    let copia = false; try { localStorage.setItem(CLAVE_ILEG, s); copia = true; } catch (e) { }
+    toast(`Tu mesa guardada no se puede abrir (${r.error}): se usa la disposición de partida${copia ? ` y la original queda copiada en este navegador («${CLAVE_ILEG}»)` : ''}`); return layoutDefecto();
+  }
   if (r.soloLectura) toast(`Tu mesa es de una versión más nueva del gemelo (v${r.layout.version}): se abre en solo lectura`);
   return r.layout;
 }
@@ -1288,7 +1293,10 @@ $('#dPlay').addEventListener('click', async () => {
   if (!D.activo || D.fin) { reiniciarDemo(); D.activo = true; tctl.detach(); sel = null; pintarLista(); pintarSel(); D.playing = true; $('#dPlay').textContent = 'Pausar'; demo(pf); return; }
   D.playing = !D.playing; $('#dPlay').textContent = D.playing ? 'Pausar' : 'Continuar';
 });
-$('#dReset').addEventListener('click', () => { D.activo = false; reiniciarDemo(); actualizarCheck(); });
+// Con una validación, un cálculo o una búsqueda en marcha no se reinicia (revisión de F1, H1, y DT31): cortaría sus ensayos y
+// la validación quedaría «al día» con una demo atascada. Con la demo en marcha sí: es el uso normal del botón
+const ocupadoSinDemo = accion => VAL.activo || CALC.activo || D.buscando ? ocupado(accion) : null;
+$('#dReset').addEventListener('click', () => { const oc = ocupadoSinDemo('reiniciar la demo'); if (oc) { toast(oc); return; } D.activo = false; reiniciarDemo(); actualizarCheck(); });
 
 // ======================= Evaluación, HUD y paneles =======================
 function enBase(p) { return mundoABase(p); } // punto del mundo en base_link: la misma conversión que la planificación (marco(), T1.5)
@@ -1920,7 +1928,7 @@ let D_ready = false;
 aplicarPedido(); dibujarGrafo(); pintarPasos(-1);
 actualizarZona(); actualizarPlatos(); actualizarAruco(); for (const k in L.cams) actualizarCam(k); aplicarTema(); pintarCaja(); pintarSoloLectura(); pintarRobotId(); pintarPerfil(); pintarSensor();
 $$('#segRobot button').forEach(x => x.setAttribute('aria-pressed', x.dataset.v === L.robot));
-$('#segPedido').addEventListener('click', e => { const b = e.target.closest('button'); if (!b || D.playing) return; L.pedido = +b.dataset.v; D.activo = false; aplicarPedido(); reiniciarDemo(); actualizarPlatos(); evaluar(); guardarLocal(); toast(L.pedido === 1 ? 'Pide un solo plato: va al centro de la bandeja' : 'Pide primero y segundo'); });
+$('#segPedido').addEventListener('click', e => { const b = e.target.closest('button'); if (!b || D.playing) return; const oc = ocupadoSinDemo('cambiar el pedido'); if (oc) { toast(oc); return; } L.pedido = +b.dataset.v; D.activo = false; aplicarPedido(); reiniciarDemo(); actualizarPlatos(); evaluar(); guardarLocal(); toast(L.pedido === 1 ? 'Pide un solo plato: va al centro de la bandeja' : 'Pide primero y segundo'); });
 $('#segRate').addEventListener('click', e => { const b = e.target.closest('button'); if (!b) return; D.rate = +b.dataset.v; $$('#segRate button').forEach(x => x.setAttribute('aria-pressed', x === b)); });
 $('#segModoB').addEventListener('click', e => { const b = e.target.closest('button'); if (!b) return; D.modo = b.dataset.v; $$('#segModoB button').forEach(x => x.setAttribute('aria-pressed', x === b)); });
 $('#dVel').addEventListener('input', e => { D.vel = e.target.value / 100; $('#dVelOut').textContent = `${e.target.value} %`; });
