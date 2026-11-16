@@ -65,7 +65,14 @@ const ORIGEN = (() => {
     // Solo en los ficheros exportados (no son filas de la tabla)
     { clave: 'disposicion', nombre: null, tipo: S, valor: 'posiciones de la zona de fruta, los platos, los marcadores, la bandeja, sus zonas, la persona y las cámaras', fuente: 'la disposición propuesta en el gemelo, sin medir', yaml: t => con(t, 'disposición propuesta, sin medir') },
     { clave: 'pose_doble', nombre: null, tipo: S, valor: 'pose de <id>_base_link en el world del URDF doble', fuente: 'xacro del URDF doble del curso (doble_ur3e_<a>_<b>)', yaml: t => con(t, 'sin validar en ROS') },
+    // Valores nuevos de parametros_celda.yaml y de las TF estáticas (T2.2, T2.4), también solo en los ficheros
+    { clave: 'nombre_frame', nombre: null, tipo: S, valor: 'nombres de los frames de la celda: mesa, zona_fruta, plato_<n>_inicio, marcador_<id>, bandeja, zona_primero, zona_segundo, camara_<k> y camara_<k>_optical', fuente: 'propuestos por el gemelo (T2.4); los fija el grupo con la arquitectura (D3)', yaml: t => con(t, 'nombre propuesto') },
+    { clave: 'lado_marcador', nombre: null, tipo: S, valor: 'lado de 6 cm de los marcadores de entrega (ids 4 y 5)', fuente: 'el dibujo del gemelo, sin medir: el impreso puede ser otro', yaml: t => con(t, 'lado del dibujo del gemelo, sin medir') },
+    { clave: 'marco_optico', nombre: null, tipo: F, valor: 'camara_<k> → camara_<k>_optical: rpy (−π/2, 0, −π/2), sin traslación', fuente: 'convenio de REP-103 (marco del cuerpo y marco óptico de una cámara)', yaml: t => con(t, 'convenio de REP-103') },
   ];
+  // Lo que elige el usuario en el gemelo (robot, prefijo, pedido, focal, modo, grupo de la cámara, caja sí o no) no es un
+  // origen: los ficheros exportados lo comentan con este texto en lugar de un tipo (T2.2, decisión 7 de su brief)
+  const ELEGIDO = 'elegido en el gemelo';
   const POR_CLAVE = new Map(ENTRADAS.map(e => [e.clave, e]));
   const CLAVES = ENTRADAS.map(e => e.clave);
   const valorDe = (v, ctx) => typeof v === 'function' ? v(ctx) : v;
@@ -79,6 +86,6 @@ const ORIGEN = (() => {
   const yaml = (clave, ctx) => entrada(clave, ctx).yaml;
   // Las filas de la tabla del panel «Datos», en su orden
   const panel = ctx => ENTRADAS.filter(e => e.nombre !== null).map(e => entrada(e.clave, ctx));
-  return { TIPOS, CLASE, LEYENDA, CLAVES, entrada, tipo, yaml, panel };
+  return { TIPOS, CLASE, LEYENDA, ELEGIDO, CLAVES, entrada, tipo, yaml, panel };
 })();
 if (typeof module !== 'undefined') module.exports = ORIGEN;

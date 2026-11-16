@@ -13,9 +13,11 @@ y no es fuente del repo del proyecto de Robótica (invariante I9).
 ## Estructura
 
 - `src/`: fuentes (`part1.html`, `app.js`, `kin.js`, `colision.js`, `fallos.js`, `escenas.js`, `layout.js`, `rng.js`,
-  `perfil.js`, `sensor.js`, `origen.js` y `datos/calibracion.js`, que genera `tools/fixtures/fk_desde_xacro.py`). Se
-  concatenan con los marcadores `@@…@@`; sin módulos ES ni bundler (D4). `origen.js` es la única fuente del origen
-  (MEDIDO, FABRICANTE o SUPUESTO) de cada valor exportable: los exportadores lo leen con un contexto, sin globales (T2.1).
+  `perfil.js`, `sensor.js`, `origen.js`, `exportar.js` y `datos/calibracion.js`, que genera
+  `tools/fixtures/fk_desde_xacro.py`). Se concatenan con los marcadores `@@…@@`; sin módulos ES ni bundler (D4).
+  `origen.js` es la única fuente del origen (MEDIDO, FABRICANTE o SUPUESTO) de cada valor exportable: los exportadores lo
+  leen con un contexto, sin globales (T2.1). `exportar.js` (`EXPORTAR`) es el único formateador: convierte el modelo de
+  `modeloExportacion()` (`app.js`, sin redondear y en `base_link`) en el texto de cada fichero exportado (T2.2).
 - `tools/build.sh` → `dist/gemelo-celda.html` (artefacto de claude.ai, con el gancho `window.__g` y `?prueba`).
 - `tools/build_web.sh` → `index.html` (GitHub Pages; quita el gancho y añade `config.js`). Llama a `build.sh`.
 - `web_src/`: plantillas con `@@CLAVE@@` y `PEGA_AQUI`. `tests/`: arnés de pruebas. `tests/mocks/`: simulacros de Firestore
@@ -23,8 +25,8 @@ y no es fuente del repo del proyecto de Robótica (invariante I9).
 
 ## Construir y probar
 
-- `npm install` (solo `playwright@1.63.0` y `three@0.160.0`, versión exacta). Si falta el navegador de Playwright 1.63.0,
-  para y avisa: no ejecutes `playwright install` sin preguntar.
+- `npm install` (solo `playwright@1.63.0`, `three@0.160.0` y `yaml@2.9.1`, versión exacta; `yaml`, solo en los tests,
+  P6). Si falta el navegador de Playwright 1.63.0, para y avisa: no ejecutes `playwright install` sin preguntar.
 - `npm run build`: los dos destinos. `index.html` se versiona construido (D1).
 - `npm test`: nivel de tarea (T2.0): build + unitarios (`node:test`) + e2e de tarea (Playwright + Chromium con
   SwiftShader, sin GPU ni red), < 15 min. `npm run test:puerta`: los dos niveles, todos los tests (puertas de fase).
@@ -36,7 +38,8 @@ y no es fuente del repo del proyecto de Robótica (invariante I9).
 - `npm run caracterizar`: regenera solo `tests/fixtures/matriz-base.json` desde el gemelo actual, y solo cuando la tarea
   lo pida (p. ej. T1.2), con el diff explicado en el informe. `npm run caracterizar -- --curso` hace lo mismo con
   `tests/fixtures/matriz-curso.json` (los 8 casos con el perfil «curso»); `-- --yaml`, con `tests/fixtures/yaml/`
-  (posiciones.yaml y la tabla de fuentes del panel «Datos» con nominal, 203 y prefijo, T2.1).
+  (posiciones.yaml y la tabla de fuentes del panel «Datos» con nominal, 203 y prefijo, T2.1); `-- --ros`, con
+  `tests/fixtures/ros/<caso>/` (parametros_celda.yaml, tf/*.yaml y tf_estaticas.sh de los mismos casos, T2.2 y T2.4).
 - `escenas-v8/` no se regenera: su `codigo` es fijo (I1). `npm run caracterizar -- --escenas` recalcula solo `esperado`
   (nunca el `codigo`) y exige explicar el diff.
 - `npm run medir`: regenera la línea base (`docs/estado/linea-base-v8.md`). `npm run medir -- <fichero>` escribe la medida

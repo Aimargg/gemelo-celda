@@ -1,0 +1,123 @@
+# parametros_celda.yaml · gemelo de la celda UR3e · generado por el gemelo (IA), BORRADOR
+# Robot: nominal (sin identificar: cinemática nominal del UR3e), en la posición B de la celda (derecha en la foto cenital).
+# Frame: base_link (sin prefijo, como en sim_<id>). Metros y radianes (REP-103), redondeo a 1 mm y 0,001 rad.
+# Huella de la disposición: 4ed74ed6 (FNV-1a de 32 bits de JSON.stringify(L), en UTF-8): casa este fichero con su disposición.
+# Carga: ros2 run <paquete> <nodo> --ros-args --params-file parametros_celda.yaml (la raíz /** vale para cualquier nodo) [SIN VALIDAR en ROS: U4].
+# base_link está girado 0.000 rad (0,0°) respecto al world del gemelo (ejes de la mesa): mount_yaw − π del xacro del curso [SIN VALIDAR en ROS].
+# Poses en base_link: xyz [x, y, z] en m y rpy [roll, pitch, yaw] en rad (setRPY: R = Rz(yaw)·Ry(pitch)·Rx(roll), ejes fijos), o solo yaw si el objeto solo gira en z; tamaños en m; focal_mm en mm (DT19).
+# world_a_base_link y pose_en_world_doble: la pose de base_link en el world del gemelo y en el del URDF doble. frame_id: el frame de la TF del objeto (tf_estaticas.sh).
+# Nombres en celda: robot (posicion, id, frame, prefijo_frames, world_a_base_link, pose_en_world_doble), pinza, mesa, pedido, platos (caja_tamano_m, plato_1, plato_2),
+#   zona_fruta, marcadores (ids, marcador_<id>), bandeja (zona_primero, zona_segundo), persona (xy, yaw) y camaras (nombres, <nombre>: frame_id del marco óptico,
+#   xyz y rpy del marco camara_<nombre>, mira, orientacion_rad como en posiciones.yaml y pinza_mesa).
+# Origen de cada valor, al final de su línea: MEDIDO, FABRICANTE o SUPUESTO; lo que se elige en el gemelo, «elegido en el gemelo».
+/**:
+  ros__parameters:
+    celda:
+      robot:
+        posicion: 'B'  # elegido en el gemelo
+        id: 'nominal'  # elegido en el gemelo
+        frame: 'base_link'  # elegido en el gemelo (el prefijo; base_link es el del URDF)
+        prefijo_frames: ''  # elegido en el gemelo
+        world_a_base_link:
+          xyz: [0.000, 0.000, 0.000]  # SUPUESTO (world del gemelo: ejes de la mesa, origen en la base sobre el tablero)
+          yaw: 0.000  # SUPUESTO (sin validar en ROS): mount_yaw − π del xacro del curso
+      pinza:
+        modelo: 'OnRobot RG2'  # MEDIDO
+        tcp_z_m: 0.200  # SUPUESTO (modelo simplificado)
+        carrera_m: 0.110  # MEDIDO
+      mesa:
+        frame_id: 'mesa'  # SUPUESTO (nombre propuesto)
+        tamano_m: [1.180, 0.830, 0.760]  # MEDIDO
+        xyz: [-0.434, -0.269, 0.000]  # MEDIDO
+        yaw: 0.000  # MEDIDO
+      pedido: 'dos_platos'  # elegido en el gemelo
+      platos:
+        sobre_caja: true  # elegido en el gemelo
+        caja_tamano_m: [0.100, 0.100, 0.100]  # SUPUESTO
+        agarre: 'horizontal_por_el_borde'  # MEDIDO (decisión del grupo)
+        radio_agarre_m: 0.082  # SUPUESTO
+        plato_1:
+          frame_id: 'plato_1_inicio'  # SUPUESTO (nombre propuesto)
+          xyz: [-0.169, -0.318, 0.100]  # SUPUESTO (disposición propuesta, sin medir)
+        plato_2:
+          frame_id: 'plato_2_inicio'  # SUPUESTO (nombre propuesto)
+          xyz: [-0.312, -0.180, 0.100]  # SUPUESTO (disposición propuesta, sin medir)
+      zona_fruta:
+        frame_id: 'zona_fruta'  # SUPUESTO (nombre propuesto)
+        xyz: [-0.314, 0.001, 0.000]  # SUPUESTO (disposición propuesta, sin medir)
+        yaw: 0.000  # SUPUESTO (disposición propuesta, sin medir)
+        tamano_m: [0.220, 0.160]  # SUPUESTO (disposición propuesta, sin medir)
+      marcadores:
+        ids: [4, 5]  # SUPUESTO (ids propuestos)
+        marcador_4:
+          frame_id: 'marcador_4'  # SUPUESTO (nombre propuesto)
+          xyz: [0.046, -0.169, 0.000]  # SUPUESTO (disposición propuesta, sin medir)
+          yaw: 0.000  # SUPUESTO (disposición propuesta, sin medir)
+          lado_m: 0.060  # SUPUESTO (lado del dibujo del gemelo, sin medir)
+          diccionario: 'DICT_4X4_50'  # SUPUESTO (ids propuestos)
+        marcador_5:
+          frame_id: 'marcador_5'  # SUPUESTO (nombre propuesto)
+          xyz: [0.116, -0.319, 0.000]  # SUPUESTO (disposición propuesta, sin medir)
+          yaw: 0.000  # SUPUESTO (disposición propuesta, sin medir)
+          lado_m: 0.060  # SUPUESTO (lado del dibujo del gemelo, sin medir)
+          diccionario: 'DICT_4X4_50'  # SUPUESTO (ids propuestos)
+      bandeja:
+        frame_id: 'bandeja'  # SUPUESTO (nombre propuesto)
+        xyz: [0.446, 0.051, 0.240]  # SUPUESTO (disposición propuesta, sin medir)
+        yaw: 3.142  # SUPUESTO (disposición propuesta, sin medir)
+        zona_primero:
+          frame_id: 'zona_primero'  # SUPUESTO (nombre propuesto)
+          xyz: [0.466, -0.049, 0.240]  # SUPUESTO (disposición propuesta, sin medir)
+        zona_segundo:
+          frame_id: 'zona_segundo'  # SUPUESTO (nombre propuesto)
+          xyz: [0.466, 0.151, 0.240]  # SUPUESTO (disposición propuesta, sin medir)
+      persona:
+        xy: [0.846, 0.051]  # SUPUESTO (disposición propuesta, sin medir)
+        yaw: 3.142  # SUPUESTO (disposición propuesta, sin medir)
+      camaras:
+        nombres: ['cenital', 'entrega', 'persona']  # SUPUESTO (nombre propuesto)
+        cenital:
+          frame_id: 'camara_cenital_optical'  # SUPUESTO (nombre propuesto)
+          grupo: 'V2'  # elegido en el gemelo
+          modelo: 'ELP-USB12MP01-UFV'  # MEDIDO
+          focal_mm: 3.6  # elegido en el gemelo
+          modo: '1920x1080'  # elegido en el gemelo
+          hfov_rad: 1.382  # SUPUESTO (lente ideal, sensor elp-ficha)
+          xyz: [-0.264, -0.439, 0.410]  # SUPUESTO (disposición propuesta, sin medir)
+          rpy: [0.000, 0.988, 1.534]  # SUPUESTO (disposición propuesta, sin medir); marco camara_cenital (REP-103: x hacia donde mira, y a la izquierda, z arriba)
+          mira: [-0.254, -0.169, 0.000]  # SUPUESTO (disposición propuesta, sin medir)
+          orientacion_rad:
+            giro: 0.037  # SUPUESTO (disposición propuesta, sin medir)
+            inclinacion: 0.988  # SUPUESTO (disposición propuesta, sin medir)
+            alabeo: 0.000  # SUPUESTO (disposición propuesta, sin medir)
+          pinza_mesa: [-0.264, -0.684, 0.000]  # SUPUESTO (disposición propuesta, sin medir)
+        entrega:
+          frame_id: 'camara_entrega_optical'  # SUPUESTO (nombre propuesto)
+          grupo: 'V1'  # elegido en el gemelo
+          modelo: 'ELP-USB12MP01-UFV'  # MEDIDO
+          focal_mm: 3.6  # elegido en el gemelo
+          modo: '1920x1080'  # elegido en el gemelo
+          hfov_rad: 1.382  # SUPUESTO (lente ideal, sensor elp-ficha)
+          xyz: [0.116, -0.664, 0.490]  # SUPUESTO (disposición propuesta, sin medir)
+          rpy: [0.000, 0.600, 1.314]  # SUPUESTO (disposición propuesta, sin medir); marco camara_entrega (REP-103: x hacia donde mira, y a la izquierda, z arriba)
+          mira: [0.246, -0.169, 0.140]  # SUPUESTO (disposición propuesta, sin medir)
+          orientacion_rad:
+            giro: 0.257  # SUPUESTO (disposición propuesta, sin medir)
+            inclinacion: 0.600  # SUPUESTO (disposición propuesta, sin medir)
+            alabeo: 0.000  # SUPUESTO (disposición propuesta, sin medir)
+          pinza_mesa: [0.116, -0.684, 0.000]  # SUPUESTO (disposición propuesta, sin medir)
+        persona:
+          frame_id: 'camara_persona_optical'  # SUPUESTO (nombre propuesto)
+          grupo: 'V1'  # elegido en el gemelo
+          modelo: 'ELP-USB12MP01-UFV'  # MEDIDO
+          focal_mm: 4.5  # elegido en el gemelo
+          modo: '1920x1080'  # elegido en el gemelo
+          hfov_rad: 1.169  # SUPUESTO (lente ideal, sensor elp-ficha)
+          xyz: [-0.134, -0.634, 0.490]  # SUPUESTO (disposición propuesta, sin medir)
+          rpy: [0.000, -0.044, 0.651]  # SUPUESTO (disposición propuesta, sin medir); marco camara_persona (REP-103: x hacia donde mira, y a la izquierda, z arriba)
+          mira: [0.766, 0.051, 0.540]  # SUPUESTO (disposición propuesta, sin medir)
+          orientacion_rad:
+            giro: 0.920  # SUPUESTO (disposición propuesta, sin medir)
+            inclinacion: -0.044  # SUPUESTO (disposición propuesta, sin medir)
+            alabeo: 0.000  # SUPUESTO (disposición propuesta, sin medir)
+          pinza_mesa: [-0.134, -0.684, 0.000]  # SUPUESTO (disposición propuesta, sin medir)

@@ -46,6 +46,8 @@ Duraciones medidas en el contenedor de 2 núcleos (SwiftShader, sin GPU): «ante
 | `matriz` | tarea | 4 | 40 | 31 | I8: matriz «gemelo» en orden directo; comprobaciones de `matriz-curso.json` sin página |
 | `perfil` | tarea | 4 | 118 | 61 | I6 con «curso» (A, B, A'), perfil de movimiento (T1.6) |
 | `robot` | tarea | 2 | 90 | 46 | I6 con el 203; dibujo = colisión = TCP (T1.4) |
+| `ros` | tarea | 1 + 30, 1 | — | 66 | I7: parametros_celda.yaml (T2.2) y TF estáticas (T2.4) con nominal, 203 y prefijo en una página; los mismos bytes al volver a abrir con la misma Tu mesa (Común-C1) |
+| `ros-referencias` | tarea | 1, 1 + 3 | — | 24 | I7: parametros_celda.yaml, tf/*.yaml y tf_estaticas.sh byte a byte con nominal, 203 y prefijo (Común-C3), red de T2.3, T2.5 y T2.6 |
 | `sensor` | tarea | 2 | 59 | 34 | modelo de sensor (T1.7, D10) |
 | `cambio-robot` | puerta | 3 | 186 | 122 | T1.5-3, T1.5-4 (68,6 s antes) y correcciones 1 y 2 |
 | `determinismo-demo` | puerta | 1 | 38 | 32 | I6 a nivel de demo: matriz en orden inverso (también hay I6 en la tarea) |
@@ -70,7 +72,7 @@ Duraciones medidas en el contenedor de 2 núcleos (SwiftShader, sin GPU): «ante
 | I4 nada a ROS | sin test todavía (DT8, T3.1) | — |
 | I5 un solo HTML | `unit/i5` | — |
 | I6 determinismo | `determinismo` (A, B, A' «gemelo»), `robot` (con el 203), `perfil` (con «curso») | `determinismo-demo`, `matriz-curso` (órdenes inversos) |
-| I7 exportación | `exportar` (T1.5-1 con 203–206, T1.5-2 ida y vuelta), `datos` (YAML y tabla byte a byte), `unit/marcos`, `unit/origen` | `cambio-robot` (prefijo en el YAML) |
+| I7 exportación | `exportar` (T1.5-1 con 203–206, T1.5-2 ida y vuelta), `datos` (YAML y tabla byte a byte), `ros` (parámetros y TF estáticas de ROS: reglas de rcl, mismo texto que posiciones.yaml, ida y vuelta, árbol TF, cuaterniones, cámaras frente a su cámara de render y origen), `ros-referencias` (los ficheros de ROS byte a byte), `unit/marcos`, `unit/origen`, `unit/exportar`, `unit/rcl-params` | `cambio-robot` (prefijo en el YAML) |
 | I8 matriz | `matriz` (8 casos en orden directo) | — |
 
 ## Cierre del navegador (T2.0)
@@ -84,11 +86,13 @@ cambia: cada test cierra en su `finally`, después de sus comprobaciones. Con el
 
 ## Qué hay en tests/
 
-- `unit/`: `node:test` sobre el código puro de `src/` (cinemática, layout, semilla, perfiles, sensor, origen de cada valor, I5, niveles).
+- `unit/`: `node:test` sobre el código puro de `src/` (cinemática, layout, semilla, perfiles, sensor, origen de cada valor,
+  formateador de los ficheros exportados, I5, niveles) y el validador de parámetros de ROS con sus muestras que deben fallar.
 - `e2e/`: Playwright + Chromium con SwiftShader sobre los dos destinos; `permitidos.json`, avisos de consola permitidos.
 - `fixtures/`: referencias generadas por el gemelo (`generar.mjs`, `npm run caracterizar`): matrices, escenas v8, cinemática
-  del curso y `yaml/` (panel «Datos», T2.1).
+  del curso, `yaml/` (panel «Datos», T2.1) y `ros/<caso>/` (ficheros de ROS, T2.2 y T2.4: `npm run caracterizar -- --ros`).
 - `mocks/`: simulacros de Firestore (con las reglas) y del almacén de claude.ai. No se tocan.
 - `medidas/`: línea base y repetibilidad (`npm run medir`).
 - `navegador.mjs` (navegador y red cerrada), `servidor.mjs` (servidor local), `medir.mjs` (procedimientos compartidos por
-  tests, generador y medidas), `niveles.mjs` (los dos niveles).
+  tests, generador y medidas), `niveles.mjs` (los dos niveles), `rcl-params.mjs` (validador de ficheros `--params-file` con
+  las reglas de `rcl_yaml_param_parser`, sobre `yaml@2.9.1` en modo 1.1 y 1.2: T2.2).

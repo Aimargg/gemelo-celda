@@ -1,0 +1,82 @@
+{
+  "descripcion": "Referencias de los ficheros de ROS (T2.2 y T2.4, Común-C3): window.__g.ficherosRos() de cada caso de CASOS_YAML (tests/medir.mjs), en este orden y en una página recién cargada, en tests/fixtures/ros/<caso>/<nombre>. El test (tests/e2e/ros-referencias.test.mjs) compara cada fichero byte a byte y la lista de ficheros de cada carpeta. Son la red de T2.3, T2.5 y T2.6.",
+  "fuente_src": "0805778",
+  "comando": "npm run caracterizar -- --ros",
+  "casos": [
+    {
+      "id": "nominal",
+      "descripcion": "disposición de partida con el robot nominal, sin prefijo de frames",
+      "robot": "nominal",
+      "prefijo": "",
+      "ficheros": [
+        "parametros_celda.yaml",
+        "tf/mesa.yaml",
+        "tf/zona_fruta.yaml",
+        "tf/plato_1_inicio.yaml",
+        "tf/plato_2_inicio.yaml",
+        "tf/marcador_4.yaml",
+        "tf/marcador_5.yaml",
+        "tf/bandeja.yaml",
+        "tf/zona_primero.yaml",
+        "tf/zona_segundo.yaml",
+        "tf/camara_cenital.yaml",
+        "tf/camara_cenital_optical.yaml",
+        "tf/camara_entrega.yaml",
+        "tf/camara_entrega_optical.yaml",
+        "tf/camara_persona.yaml",
+        "tf/camara_persona_optical.yaml",
+        "tf_estaticas.sh"
+      ]
+    },
+    {
+      "id": "203",
+      "descripcion": "la misma con el 203 («Mantener la mesa»: los objetos no se mueven en world), sin prefijo",
+      "robot": "203",
+      "prefijo": "",
+      "ficheros": [
+        "parametros_celda.yaml",
+        "tf/mesa.yaml",
+        "tf/zona_fruta.yaml",
+        "tf/plato_1_inicio.yaml",
+        "tf/plato_2_inicio.yaml",
+        "tf/marcador_4.yaml",
+        "tf/marcador_5.yaml",
+        "tf/bandeja.yaml",
+        "tf/zona_primero.yaml",
+        "tf/zona_segundo.yaml",
+        "tf/camara_cenital.yaml",
+        "tf/camara_cenital_optical.yaml",
+        "tf/camara_entrega.yaml",
+        "tf/camara_entrega_optical.yaml",
+        "tf/camara_persona.yaml",
+        "tf/camara_persona_optical.yaml",
+        "tf_estaticas.sh"
+      ]
+    },
+    {
+      "id": "203-prefijo",
+      "descripcion": "la misma con el 203 y el prefijo «203_» del URDF doble (doble_ur3e_203_204)",
+      "robot": "203",
+      "prefijo": "203_",
+      "ficheros": [
+        "parametros_celda.yaml",
+        "tf/mesa.yaml",
+        "tf/zona_fruta.yaml",
+        "tf/plato_1_inicio.yaml",
+        "tf/plato_2_inicio.yaml",
+        "tf/marcador_4.yaml",
+        "tf/marcador_5.yaml",
+        "tf/bandeja.yaml",
+        "tf/zona_primero.yaml",
+        "tf/zona_segundo.yaml",
+        "tf/camara_cenital.yaml",
+        "tf/camara_cenital_optical.yaml",
+        "tf/camara_entrega.yaml",
+        "tf/camara_entrega_optical.yaml",
+        "tf/camara_persona.yaml",
+        "tf/camara_persona_optical.yaml",
+        "tf_estaticas.sh"
+      ]
+    }
+  ]
+}
