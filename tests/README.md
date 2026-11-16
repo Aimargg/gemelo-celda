@@ -46,8 +46,8 @@ Duraciones medidas en el contenedor de 2 núcleos (SwiftShader, sin GPU): «ante
 | `matriz` | tarea | 4 | 40 | 31 | I8: matriz «gemelo» en orden directo; comprobaciones de `matriz-curso.json` sin página |
 | `perfil` | tarea | 4 | 118 | 61 | I6 con «curso» (A, B, A'), perfil de movimiento (T1.6) |
 | `robot` | tarea | 2 | 90 | 46 | I6 con el 203; dibujo = colisión = TCP (T1.4) |
-| `ros` | tarea | 1 + 30, 1 | — | 66 | I7: parametros_celda.yaml (T2.2) y TF estáticas (T2.4) con nominal, 203 y prefijo en una página; los mismos bytes al volver a abrir con la misma Tu mesa (Común-C1) |
-| `ros-referencias` | tarea | 1, 1 + 3 | — | 24 | I7: parametros_celda.yaml, tf/*.yaml y tf_estaticas.sh byte a byte con nominal, 203 y prefijo (Común-C3), red de T2.3, T2.5 y T2.6 |
+| `ros` | tarea | 1 + 54, 1 | — | 75 | I7: parametros_celda.yaml (T2.2), TF estáticas (T2.4), escena de colisión (T2.3) y camera_info y usb_cam (T2.5) con nominal, 203 y prefijo en una página; los mismos bytes al volver a abrir con la misma Tu mesa (Común-C1). T2.3 y T2.5 añadieron 24 subtests a la misma página, de milisegundos cada uno |
+| `ros-referencias` | tarea | 1, 1 + 3 | — | 31 | I7: los ficheros de ROS (T2.2–T2.5) byte a byte con nominal, 203 y prefijo (Común-C3), red de T2.6 |
 | `sensor` | tarea | 2 | 59 | 34 | modelo de sensor (T1.7, D10) |
 | `cambio-robot` | puerta | 3 | 186 | 122 | T1.5-3, T1.5-4 (68,6 s antes) y correcciones 1 y 2 |
 | `determinismo-demo` | puerta | 1 | 38 | 32 | I6 a nivel de demo: matriz en orden inverso (también hay I6 en la tarea) |
@@ -57,6 +57,9 @@ Duraciones medidas en el contenedor de 2 núcleos (SwiftShader, sin GPU): «ante
 | `robot-avisos` | puerta | 3 | 123 | 66 | aviso del 204 e «IK calibrada no converge» (T1.4) |
 | `salida` | puerta | 2 | 62 | 43 | salida de la bandeja (T1.9); la recorren también las matrices |
 | `validar` | puerta | 4 | 298 | 213 | barrido de Validar (123,7 s antes), búsqueda (83,6 s antes) y porPerfil al guardar (T1.8) |
+
+`ros` y `ros-referencias`, medidos al entregar T2.3 + T2.5 (`npm test` de 14 min 25 s), en una ejecución en la que el resto de
+ficheros también tardó un 10–40 % más que en esta columna (`carga`, 38 s): antes medían 66 y 24 s.
 
 «Tests» cuenta los `test()` de cada fichero tal como los ejecuta node:test: `escenas-v8` crea uno por escena en un bucle y
 `carga` tiene una suite (`describe`) con dos tests que comparten la página de su `before`; `datos`, un test con 6 subtests
@@ -72,7 +75,7 @@ Duraciones medidas en el contenedor de 2 núcleos (SwiftShader, sin GPU): «ante
 | I4 nada a ROS | sin test todavía (DT8, T3.1) | — |
 | I5 un solo HTML | `unit/i5` | — |
 | I6 determinismo | `determinismo` (A, B, A' «gemelo»), `robot` (con el 203), `perfil` (con «curso») | `determinismo-demo`, `matriz-curso` (órdenes inversos) |
-| I7 exportación | `exportar` (T1.5-1 con 203–206, T1.5-2 ida y vuelta), `datos` (YAML y tabla byte a byte), `ros` (parámetros y TF estáticas de ROS: reglas de rcl, mismo texto que posiciones.yaml, ida y vuelta, árbol TF, cuaterniones, cámaras frente a su cámara de render y origen), `ros-referencias` (los ficheros de ROS byte a byte), `unit/marcos`, `unit/origen`, `unit/exportar`, `unit/rcl-params` | `cambio-robot` (prefijo en el YAML) |
+| I7 exportación | `exportar` (T1.5-1 con 203–206, T1.5-2 ida y vuelta), `datos` (YAML y tabla byte a byte), `ros` (parámetros y TF estáticas de ROS: reglas de rcl, mismo texto que posiciones.yaml, ida y vuelta, árbol TF, cuaterniones, cámaras frente a su cámara de render y origen; escena de colisión: validadores de CollisionObject y de .scene, escena = obstaculos(), .scene = YAML en su world; cámaras: validador de camera_info, píxeles frente a la cámara de render y usb_cam), `ros-referencias` (los ficheros de ROS byte a byte), `unit/marcos`, `unit/origen`, `unit/exportar`, `unit/exportar-escena`, `unit/rcl-params`, `unit/validadores-ros` | `cambio-robot` (prefijo en el YAML) |
 | I8 matriz | `matriz` (8 casos en orden directo) | — |
 
 ## Cierre del navegador (T2.0)
@@ -87,12 +90,14 @@ cambia: cada test cierra en su `finally`, después de sus comprobaciones. Con el
 ## Qué hay en tests/
 
 - `unit/`: `node:test` sobre el código puro de `src/` (cinemática, layout, semilla, perfiles, sensor, origen de cada valor,
-  formateador de los ficheros exportados, I5, niveles) y el validador de parámetros de ROS con sus muestras que deben fallar.
+  formateador de los ficheros exportados, I5, niveles) y los validadores de los ficheros de ROS con sus muestras que deben fallar.
 - `e2e/`: Playwright + Chromium con SwiftShader sobre los dos destinos; `permitidos.json`, avisos de consola permitidos.
 - `fixtures/`: referencias generadas por el gemelo (`generar.mjs`, `npm run caracterizar`): matrices, escenas v8, cinemática
-  del curso, `yaml/` (panel «Datos», T2.1) y `ros/<caso>/` (ficheros de ROS, T2.2 y T2.4: `npm run caracterizar -- --ros`).
+  del curso, `yaml/` (panel «Datos», T2.1) y `ros/<caso>/` (ficheros de ROS, T2.2–T2.5: `npm run caracterizar -- --ros`).
 - `mocks/`: simulacros de Firestore (con las reglas) y del almacén de claude.ai. No se tocan.
 - `medidas/`: línea base y repetibilidad (`npm run medir`).
 - `navegador.mjs` (navegador y red cerrada), `servidor.mjs` (servidor local), `medir.mjs` (procedimientos compartidos por
   tests, generador y medidas), `niveles.mjs` (los dos niveles), `rcl-params.mjs` (validador de ficheros `--params-file` con
-  las reglas de `rcl_yaml_param_parser`, sobre `yaml@2.9.1` en modo 1.1 y 1.2: T2.2).
+  las reglas de `rcl_yaml_param_parser`, sobre `yaml@2.9.1` en modo 1.1 y 1.2: T2.2), `collision-object.mjs` (lista de
+  `moveit_msgs/CollisionObject` para `set_message_fields`: T2.3), `scene-texto.mjs` (formato `.scene` de MoveIt: T2.3) y
+  `camera-info.mjs` (camera_info de `camera_calibration_parsers`: T2.5), sin el código que genera los ficheros.

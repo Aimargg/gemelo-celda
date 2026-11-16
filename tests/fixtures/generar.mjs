@@ -5,8 +5,10 @@
 //      npm run caracterizar -- --escenas           → solo recalcula `esperado` de tests/fixtures/escenas-v8/*.json
 //      npm run caracterizar -- --yaml              → solo tests/fixtures/yaml/: posiciones.yaml y la tabla de fuentes del
 //                                                    panel «Datos» con nominal, con el 203 y con prefijo (T2.1, CASOS_YAML)
-//      npm run caracterizar -- --ros               → solo tests/fixtures/ros/<caso>/: parametros_celda.yaml, tf/*.yaml y
-//                                                    tf_estaticas.sh de los mismos casos (T2.2, T2.4; CASOS_YAML)
+//      npm run caracterizar -- --ros               → solo tests/fixtures/ros/<caso>/: parametros_celda.yaml, tf/*.yaml,
+//                                                    tf_estaticas.sh (T2.2, T2.4), escena_colision.yaml, celda.scene,
+//                                                    celda.scene.txt (T2.3), camera_info/*.yaml y usb_cam/*.yaml (T2.5)
+//                                                    de los mismos casos (CASOS_YAML)
 //      npm run caracterizar -- --matriz --escenas  → varias cosas a la vez (--matriz, --curso, --escenas, --yaml y --ros se combinan)
 // escenas-v8/ es la base de I1: el `codigo` de un fichero existente no se reescribe nunca. Un fichero nuevo solo se crea
 // (con codigoEscena() de la v8 actual) si una escena de ESCENAS_V8 todavía no tiene el suyo.
@@ -70,7 +72,7 @@ try {
       casos: res.map(r => ({ ...CASOS_YAML.find(c => c.id === r.caso), yaml: `${r.caso}.yaml`, panel: r.panel })),
     });
   }
-  if (ros) { // ficheros de ROS (T2.2, T2.4): cada caso en su carpeta, tal cual los genera el gemelo, y la lista en casos.json
+  if (ros) { // ficheros de ROS (T2.2–T2.5): cada caso en su carpeta, tal cual los genera el gemelo, y la lista en casos.json
     const res = await conPagina(srv, p => rosDe(p));
     for (const r of res) {
       const dir = path.join(DIR_ROS, r.caso); fs.rmSync(dir, { recursive: true, force: true }); // sin ficheros de una exportación anterior
@@ -78,7 +80,7 @@ try {
       console.log('escritos', r.ficheros.length, 'ficheros en', path.relative(RAIZ, dir));
     }
     escribir(path.join(DIR_ROS, 'casos.json'), {
-      descripcion: 'Referencias de los ficheros de ROS (T2.2 y T2.4, Común-C3): window.__g.ficherosRos() de cada caso de CASOS_YAML (tests/medir.mjs), en este orden y en una página recién cargada, en tests/fixtures/ros/<caso>/<nombre>. El test (tests/e2e/ros-referencias.test.mjs) compara cada fichero byte a byte y la lista de ficheros de cada carpeta. Son la red de T2.3, T2.5 y T2.6.',
+      descripcion: 'Referencias de los ficheros de ROS (T2.2 y T2.4; T2.3 y T2.5 desde su entrega, Común-C3): window.__g.ficherosRos() de cada caso de CASOS_YAML (tests/medir.mjs), en este orden y en una página recién cargada (tras el primer calcularPlanes: el giro de las cajas de la escena es el del plan con nominal y el provisional con el 203), en tests/fixtures/ros/<caso>/<nombre>. El test (tests/e2e/ros-referencias.test.mjs) compara cada fichero byte a byte y la lista de ficheros de cada carpeta. Son la red de T2.6.',
       fuente_src: fuente, comando: 'npm run caracterizar -- --ros',
       casos: res.map(r => ({ ...CASOS_YAML.find(c => c.id === r.caso), ficheros: r.ficheros.map(f => f.nombre) })),
     });

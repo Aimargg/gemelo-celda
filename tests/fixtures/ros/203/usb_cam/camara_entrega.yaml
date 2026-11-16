@@ -1,0 +1,24 @@
+# usb_cam/camara_entrega.yaml · gemelo de la celda UR3e · generado por el gemelo (IA), BORRADOR
+# Robot: 203 (calibration_203.yaml del curso), en la posición B de la celda (derecha en la foto cenital).
+# Frame: base_link (sin prefijo, como en sim_<id>). Metros y radianes (REP-103), redondeo a 1 mm y 0,001 rad.
+# Huella de la disposición: 38b05d41 (FNV-1a de 32 bits de JSON.stringify(L), en UTF-8): casa este fichero con su disposición.
+# Carga: ros2 run usb_cam usb_cam_node_exe --ros-args -r __ns:=/camara_entrega --params-file usb_cam/camara_entrega.yaml (un namespace por cámara) [SIN VALIDAR en ROS: U4].
+# Cámara entrega: frame_id camara_entrega_optical, el de su TF óptica; camera_name y camera_info_url, los de camera_info/camara_entrega.yaml.
+# Sustituye al camera_frame_id del launch del curso, que usb_cam no declara: con él todas las cámaras salen con frame_id default_cam y buscan el camera_info de default_cam.
+# exposure va en unidades de V4L2 (100 µs): 50 = 5,0 ms, con autoexposure a false; white_balance en K, con auto_white_balance a false.
+# video_device: compruébalo con v4l2-ctl --list-devices; mejor un /dev/v4l/by-id/…, que no cambia al reconectar las cámaras.
+# Origen de cada valor, al final de su línea: MEDIDO, FABRICANTE o SUPUESTO; lo que se elige en el gemelo, «elegido en el gemelo».
+/**:
+  ros__parameters:
+    video_device: '/dev/video2'  # SUPUESTO (compruébalo con v4l2-ctl --list-devices; mejor un /dev/v4l/by-id/…)
+    framerate: 120.0  # elegido en el gemelo (modo 1920x1080)
+    image_width: 1920  # elegido en el gemelo (modo 1920x1080)
+    image_height: 1080  # elegido en el gemelo (modo 1920x1080)
+    pixel_format: 'mjpeg2rgb'  # SUPUESTO (MJPEG decodificado por usb_cam)
+    camera_name: 'camara_entrega'  # SUPUESTO (nombre propuesto); el de camera_info/camara_entrega.yaml
+    frame_id: 'camara_entrega_optical'  # SUPUESTO (nombre propuesto); el marco óptico de su TF (tf/camara_entrega_optical.yaml)
+    camera_info_url: 'file://${ROS_HOME}/camera_info/camara_entrega.yaml'  # FABRICANTE (ruta por defecto de camera_info_manager)
+    autoexposure: false  # SUPUESTO (5 ms: la bandeja en movimiento pide ≤ 5,6 ms; con luz de 50 Hz puede dar bandas)
+    exposure: 50  # SUPUESTO (5 ms: la bandeja en movimiento pide ≤ 5,6 ms; con luz de 50 Hz puede dar bandas)
+    auto_white_balance: false  # SUPUESTO (sin medir la luz del laboratorio)
+    white_balance: 4000  # SUPUESTO (sin medir la luz del laboratorio)
