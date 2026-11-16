@@ -52,6 +52,9 @@ test('DT11 (Firestore simulado): las ilegibles salen aparte con su motivo; papel
     assert.equal(await dosVeces(p, '#escIlegLista li[data-ileg="rota"] button'), '¿Seguro? Se pierde');
     await esperarToast(p, 'Escena ilegible borrada para siempre');
     await p.waitForFunction(() => !globalThis.__fsStore.has('grupos/clave-buena/escenas/rota'), null, { timeout: 30000, polling: 50 });
+    // y a que llegue la instantánea sin ella (el simulacro la manda 20 ms después): si el rechazo de la siguiente escena
+    // llegara antes, su aviso repintaría la lista que aún tiene «rota» y la comprobación final dependería del orden
+    await p.waitForFunction(() => !document.querySelector('#escIlegLista li[data-ileg="rota"]'), null, { timeout: 30000, polling: 50 });
     // las reglas rechazan la papelera de una escena cuya disposición no es un texto: la interfaz lo dice y no cambia nada
     const antes = await enAlmacen('numero');
     assert.equal(await dosVeces(p, '#escIlegLista li[data-ileg="numero"] button'), '¿Seguro?');
