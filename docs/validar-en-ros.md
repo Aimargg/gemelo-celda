@@ -98,7 +98,7 @@ ros2 run tf2_tools view_frames
 
 Escribe `frames_<fecha>.pdf` en la carpeta actual. Esperado: `world` → `base_link` → (eslabones del robot) y, colgando de
 `base_link`, `mesa`, `zona_fruta`, `plato_1_inicio`, `plato_2_inicio`, `marcador_4`, `marcador_5`, `bandeja` (con
-`zona_primero` y `zona_segundo` debajo) y `camara_<k>` (con `camara_<k>_optical` debajo). Fíjate también en si los frames
+`zona_primero`, `zona_segundo` y `zona_centro` debajo; `zona_centro` es el destino con un plato, desde T2.7) y `camara_<k>` (con `camara_<k>_optical` debajo). Fíjate también en si los frames
 del robot salen como `base_link` o como `<id>_base_link`: es el HUECO de frames (docs/estado/frames.md).
 
 Comprueba además un YAML de TF con el componente que lo lee (las claves `'x'`, `'y'`, `'z'` y `'w'` van entre comillas y
