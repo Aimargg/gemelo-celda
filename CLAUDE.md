@@ -31,10 +31,12 @@ y no es fuente del repo del proyecto de Robótica (invariante I9).
   commit de entrega. Sin `clave_grupo.txt` la búsqueda es heurística (patrones `#g=`, `grupo ==`, rutas `grupos/…`); la
   búsqueda exacta de la clave solo se hace en el equipo del usuario, que es quien tiene ese fichero.
 - `npm run caracterizar`: regenera solo `tests/fixtures/matriz-base.json` desde el gemelo actual, y solo cuando la tarea
-  lo pida (p. ej. T1.2), con el diff explicado en el informe.
+  lo pida (p. ej. T1.2), con el diff explicado en el informe. `npm run caracterizar -- --curso` hace lo mismo con
+  `tests/fixtures/matriz-curso.json` (los 8 casos con el perfil «curso»).
 - `escenas-v8/` no se regenera: su `codigo` es fijo (I1). `npm run caracterizar -- --escenas` recalcula solo `esperado`
   (nunca el `codigo`) y exige explicar el diff.
-- `npm run medir`: regenera la línea base (`docs/estado/linea-base-v8.md`).
+- `npm run medir`: regenera la línea base (`docs/estado/linea-base-v8.md`). `npm run medir -- <fichero>` escribe la medida
+  en otro fichero (p. ej. `docs/estado/medida-f1.md`) y no toca la línea base.
 
 ## Reglas que no se rompen
 
