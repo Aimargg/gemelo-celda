@@ -97,9 +97,10 @@ function colocar(q, w, carga, kin = CIN) {
 
 // Obstáculos en el marco base_link: mesa, cajas, platos, fruta, bandeja, persona, cámaras y el otro robot.
 // Pasan del mundo a base_link con marco() (traslación y giro de la base, T1.4); con el nominal, la misma resta que antes.
+// La clave de la caché lleva si se ve el robot del otro puesto (H4): mostrarlo u ocultarlo cambia la lista.
 let _obsCache = { key: '', lista: null }, _otroCache = { key: '', lista: null };
 function obstaculos() {
-  const key = `${VERSION_ESCENA}|${L.robot}|${ROB.id}|${simT.toFixed(4)}`; if (_obsCache.key === key) return _obsCache.lista;
+  const key = `${VERSION_ESCENA}|${L.robot}|${ROB.id}|${simT.toFixed(4)}|${otro && otro.root.visible ? 1 : 0}`; if (_obsCache.key === key) return _obsCache.lista;
   const mb = marco(), o = [];
   const esf = (x, y, z, r, tag, m, blando) => { const p = mb.aBase(x, y, z); o.push({ t: 1, x: p[0], y: p[1], z: p[2], r, tag, m, blando, R: r }); };
   const cap = (a, c, r, tag, m) => { const pa = mb.aBase(a.x, a.y, a.z), pc = mb.aBase(c.x, c.y, c.z); const ax = pa[0], ay = pa[1], az = pa[2], cx = pc[0], cy = pc[1], cz = pc[2]; o.push({ t: 2, ax, ay, az, cx, cy, cz, r, tag, m, x: (ax + cx) / 2, y: (ay + cy) / 2, z: (az + cz) / 2, R: r + Math.hypot(cx - ax, cy - ay, cz - az) / 2 }); };
