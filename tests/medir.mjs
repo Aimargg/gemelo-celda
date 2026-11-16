@@ -8,8 +8,10 @@ import { esperarPlanes } from './navegador.mjs';
 export const BASE = { vel: 0.25, fase: 0, sinRender: true, limite: 400 };
 export const CASOS_MATRIZ = [];
 for (const caja of [true, false]) for (const modo of ['M0', 'M1']) for (const amp of [0, 0.02]) CASOS_MATRIZ.push({ ...BASE, caja, modo, amp });
+// Los mismos casos con el perfil «curso» (T1.9, decisión 7): tests/fixtures/matriz-curso.json
+export const CASOS_CURSO = CASOS_MATRIZ.map(c => ({ ...c, perfil: 'curso' }));
 export const CAMPOS_MATRIZ = ['fin', 'choques', 'roces', 'pausas'];
-export const nombreCaso = c => `${c.caja ? 'caja' : 'mesa'} ${c.modo} balanceo ${c.amp * 100} cm vel ${c.vel * 100} %`;
+export const nombreCaso = c => `${c.caja ? 'caja' : 'mesa'} ${c.modo} balanceo ${c.amp * 100} cm vel ${c.vel * 100} %${c.perfil && c.perfil !== 'gemelo' ? ` perfil ${c.perfil}` : ''}`;
 
 // Ejecuta los casos en orden en la página dada; devuelve el resultado de ensayo() sin el cfg y con el fallo recortado.
 // Perfil de movimiento «gemelo» explícito (T1.6: sin perfil, ensayo() usa el de la escena, y la de partida es «curso»):

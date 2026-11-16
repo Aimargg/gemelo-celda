@@ -28,9 +28,11 @@ test('T1.8-1, T1.8-2 y T1.8-5: Validar muestra los dos veredictos y los dos tiem
     assert.equal(await visible(p, '#valBar'), true, 'la barra de validación está a la vista');
     assert.match(await texto(p, '#valTxt'), /^Perfil «curso»: sin validar\./);
     // Barrido general: la primera disposición, empezando por la de partida y acercando a la persona de 2 en 2 cm, en la que
-    // «gemelo» pasa y «curso» falla por arranque en contacto
+    // «gemelo» pasa y «curso» falla por arranque en contacto. Desde T1.9 la salida de la bandeja acaba libre y las cuatro
+    // primeras pasan con los dos perfiles: el barrido sigue alejándola de 2 en 2 cm (con 6 cm, «curso» toca la bandeja al ir
+    // al reposo; medido con el gemelo en T1.9)
     let caso = null;
-    for (const dx of [0, -0.02, -0.04, 0.02]) {
+    for (const dx of [0, -0.02, -0.04, 0.02, 0.04, 0.06]) {
       await p.evaluate(dx => { const g = window.__g; g.L().persona.x += dx; g.aplicarLayout(); }, dx);
       await p.evaluate(() => window.__g.calcularPlanes()); await esperarPlanes(p);
       const t0 = Date.now(); await validar(p); const ms = Date.now() - t0;

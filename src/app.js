@@ -27,6 +27,14 @@ const VMAX = [180, 180, 180, 360, 360, 360].map(v => v * D2R); // rad/s UR3e
 const GRUPO_COL = () => ({ V1: css('--v1'), V2: css('--v2'), ROB: css('--rob') });
 const PLATO_R = 0.08, R_AGARRE = 0.082, H_BORDE = 0.022; // el centro de la yema queda 2 mm por fuera del borde del ala // radio del plato, radio y altura del punto de agarre del borde
 const H_TR = 0.12, H_AP = 0.06; // altura de traslado sobre la mesa y de aproximación sobre la bandeja
+// Subida en recta tras «la salida de la bandeja» (T1.9, DT22): al retroceder 8 cm en horizontal, el dedo que va por debajo
+// del ala (y en el 2º plato también el cuerpo de la pinza) sigue a la altura de la bandeja. Es el menor valor de
+// {2, 3, 4, 5, 6} cm que deja la pinza libre (choqueEn null con el contexto del movimiento siguiente) en todos los casos
+// de la matriz que llegan a la salida, con «gemelo» y con «curso», y en las escenas v8. Medido con el gemelo (2026-11-16,
+// informe de T1.9): con 2 cm, las 19 salidas libres y holgura mínima de 5,5 mm; con 3 cm, una salida de «curso» toca la
+// bandeja (−1,7 mm: arranque en contacto); con 5 y 6 cm, la subida de «gemelo» caja M1 2 cm llega a la singularidad del
+// codo y la demo falla (sin trayectoria)
+const H_SALIDA = 0.02;
 const CAJA_LADO = 0.10;
 // ArUco reales del diccionario DICT_4X4_50 (ids 0–15), bits interiores por filas
 const ARUCO = ['1011010100110010', '0000111110011010', '0011001100101101', '1001100101000110', '0101010010011110', '0111100111001101', '1001111000101110', '1100010011110010', '1111111011011010', '1100111101010110', '1111100110010001', '0001000110100111', '0000111010110111', '0010101000001111', '0010010010110001', '0010011000111110'];
@@ -666,7 +674,11 @@ function planColocar(zw, qRef, flip, carga = null, pitch = 0, todos = false) {
     const qPre = ikTCP(pre, yaw, qRef, o); if (!qPre) continue;
     const q = ikTCP(tcp, yaw, qPre, { ...o, permitir: ['bandeja'] }); if (!q) continue;
     const salida = tcp.clone().addScaledVector(eje, -0.08); const qS = ikTCP(salida, yaw, q, { ...o, w: 0.03, carga: null, permitir: ['bandeja'] }); if (!qS) continue;
-    const c = { yaw, pitch, d, eje, tcp, pre, salida, q, qPre, k, flip: Math.sign(CIN.fk(q)[8]) || flip || 1 }; if (!todos) return c; lista.push(c);
+    // la subida tras la salida (T1.9, decisión 3): tiene que tener IK y acabar libre con el contexto del movimiento
+    // siguiente (sin nada permitido); si no, la entrada se descarta y el fallo sale en la comprobación previa
+    const subida = salida.clone(); subida.z += H_SALIDA; const qU = ikTCP(subida, yaw, qS, { ...o, w: 0.03, carga: null, permitir: ['bandeja'] });
+    if (!qU || choqueEn(qU, ctxDe({ w: 0.03, carga: null }))) continue;
+    const c = { yaw, pitch, d, eje, tcp, pre, salida, subida, q, qPre, qS, qU, k, flip: Math.sign(CIN.fk(q)[8]) || flip || 1 }; if (!todos) return c; lista.push(c);
   }
   return todos ? lista : null;
 }
@@ -1242,8 +1254,11 @@ async function servirPlato(pk, tipo, n, zona, num, pf) {
   $('#dError').textContent = D.errores.map(e => `${mm(e)}`).join(' · ') + ' mm';
   await pinzaA(0.03);
   publicar('/service_state', ['svc'], { estado: `colocado ${num}`, error_colocacion_mm: mm(err) });
-  const p = tcpMundo(); const atras = p.clone().addScaledVector(pc2.eje, -0.08);
-  await moveL(atras, pc2.yaw, { ...ohP, w: 0.03, carga: null, permitir: ['bandeja', 'plato:' + pk] }, 'la salida de la bandeja'); // después, movimiento articular planificado
+  const p = tcpMundo(); const atras = p.clone().addScaledVector(pc2.eje, -0.08); const ohS = { ...ohP, w: 0.03, carga: null, permitir: ['bandeja', 'plato:' + pk] };
+  await moveL(atras, pc2.yaw, ohS, 'la salida de la bandeja');
+  // y sube en recta H_SALIDA con lo mismo permitido (T1.9, DT22): acaba libre, sin tocar nada con el contexto normal del
+  // movimiento siguiente (tránsito o reposo), que se planifica desde un estado libre, como con MoveIt
+  await moveL(atras.clone().add(new THREE.Vector3(0, 0, H_SALIDA)), pc2.yaw, ohS, 'la subida tras la salida de la bandeja'); // después, movimiento articular planificado
 }
 // IK para el servo: solo vale una solución de la misma rama (cerca de la postura actual); si no, el robot no puede seguir sin cambiar de postura
 function ikCercana(p, yaw, opts) { const q = ikTCP(p, yaw, robot.q, opts); return q && Math.max(...q.map((v, i) => Math.abs(v - robot.q[i]))) < 0.35 ? q : null; }
