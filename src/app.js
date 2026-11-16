@@ -42,6 +42,7 @@ const ARUCO = ['1011010100110010', '0000111110011010', '0011001100101101', '1001
 // @@RNG@@
 // @@PERFIL@@
 // @@SENSOR@@
+// @@ORIGEN@@
 // @@CALIBRACION@@
 // Perfil con el que se explora (arrastrar, «Calcular trayectorias», el primer cálculo, la vista de cada objeto): siempre
 // «gemelo» (D6, decisión 2 del brief de T1.6). El de la escena (L.perfil) es el de la demo y el del veredicto principal.
@@ -1747,28 +1748,33 @@ function r3(v) { return (Math.round(v * 1000) / 1000).toFixed(3); }
 const rad3 = a => r3(angDiff(a, 0)); // ángulo en [−π, π], redondeado a 0,001 rad (I7)
 // posiciones.yaml (T1.5, I7): todo en el base_link del robot elegido con la conversión de la planificación (enBase), en
 // metros y radianes, con redondeo fijo de 1 mm y 0,001 rad y el origen de cada valor al final de su línea
+// El origen de cada valor (T2.1) sale de ORIGEN (src/origen.js) con este contexto: el robot cuya cinemática se usa, su giro,
+// el sensor de la escena y el TCP de la pinza cerrada
+function ctxOrigen() { const s = sensorEscena(); return { robotId: ROB.id, sospechoso: !!ROB.datos.sospechoso, yaw: ROB.yaw, sensor: { id: s, ...SENSOR.de(s) }, tcpZ: pinza.tcpZ(0) }; }
 function generarYaml() {
   const B = o => enBase({ x: o.x, y: o.y, z: o.z ?? MESA.h }), P = o => { const b = B(o); return `{x: ${r3(b.x)}, y: ${r3(b.y)}, z: ${r3(b.z)}}`; };
   const tp = poseBandeja(0); bandeja.updateMatrixWorld(true); const zw = k => zonasB[k].getWorldPosition(new THREE.Vector3());
-  const id = ROB.id, d = ROB.datos, pf = L.prefijoFrames || '', frame = `${pf}base_link`, sup = '# SUPUESTO (disposición propuesta, sin medir)';
+  const O = ctxOrigen(), og = k => ORIGEN.yaml(k, O), ot = k => ORIGEN.tipo(k, O); // comentario corto y tipo de cada valor
+  const id = ROB.id, d = ROB.datos, pf = L.prefijoFrames || '', frame = `${pf}base_link`, sup = `# ${og('disposicion')}`;
   // Una disposición de solo lectura puede traer un robot que esta versión no conoce: se dice y se usa el nominal (corrección 5)
   const desconocido = L.robotId !== id, doble = pf && d.doble ? d.doble.fichero.split('/').pop().replace('.urdf.xacro', '') : null;
-  // Lo que depende del giro world → base_link (mount_yaw − π) es SUPUESTO mientras no se valide en ROS (corrección 6)
-  const conGiro = ROB.yaw !== 0, giroSup = 'SUPUESTO (giro world→base_link sin validar en ROS)';
+  // Lo que depende del giro world → base_link (mount_yaw − π) lleva el origen de la orientación de base_link mientras no se
+  // valide en ROS (corrección 6)
+  const conGiro = ROB.yaw !== 0, giroSup = `${ot('orientacion_base_link')} (giro world→base_link sin validar en ROS)`;
   let y = `# posiciones.yaml · gemelo de la celda UR3e · BORRADOR (generado por IA)\n`;
   y += `# Robot: ${desconocido ? `«${L.robotId}» (desconocido para esta versión del gemelo: se usa la cinemática nominal)` : id === 'nominal' ? 'nominal (sin identificar: cinemática nominal del UR3e)' : `${id} (calibration_${id}.yaml del curso${d.sospechoso ? '; calibración sospechosa, SIN VALIDAR' : ''})`}, en la posición ${L.robot} de la celda (${L.robot === 'B' ? 'derecha' : 'izquierda'} en la foto cenital).\n`;
   y += `# Frame: ${frame}${doble ? ` (prefijo «${pf}» del URDF doble ${doble}.urdf.xacro)` : pf ? ` (prefijo «${pf}» de la disposición; esta versión del gemelo no conoce su URDF doble)` : ' (sin prefijo, como en sim_<id>)'}. Metros y radianes (REP-103), redondeo a 1 mm y 0,001 rad.\n`;
-  y += `# world: el world del gemelo, con los ejes de la mesa y el origen en el centro de la base sobre el tablero [SUPUESTO hasta comprobarlo en el laboratorio].\n`;
+  y += `# world: el world del gemelo, con los ejes de la mesa y el origen en el centro de la base sobre el tablero [${ot('orientacion_base_link')} hasta comprobarlo en el laboratorio].\n`;
   y += `# ${frame} está girado ${rad3(ROB.yaw)} rad (${gradosTxt(ROB.yaw)}) respecto a ese world: mount_yaw − π del xacro del curso [SIN VALIDAR en ROS; docs/estado/frames.md].\n`;
-  y += `# Origen de cada valor, al final de su línea: MEDIDO, FABRICANTE o SUPUESTO. Las cámaras dan el giro desde +y de ${frame} hacia +x.\n`;
-  y += `fecha: ${new Date().toISOString().slice(0, 10)}\nrobot: ${L.robot}  # MEDIDO (posición de la base en la celda)\nrobot_id: ${desconocido ? `${L.robotId}  # de la disposición; el gemelo no lo conoce y usa la cinemática nominal` : `${id}  # elegido en el gemelo`}\n`;
-  y += `frame: ${frame}\nprefijo_frames: '${pf}'\nworld_a_base_link: {x: 0.000, y: 0.000, z: 0.000, yaw_rad: ${rad3(ROB.yaw)}}  # world del gemelo (ejes de la mesa): SUPUESTO · giro: mount_yaw − π del xacro del curso, SUPUESTO (sin validar en ROS)\n`;
-  if (doble) y += `pose_en_world_doble: {frame: ${frame}, x: ${r3(d.doble.x)}, y: ${r3(d.doble.y)}, z: 0.000, yaw_rad: ${rad3(d.doble.yaw - PI)}}  # xacro del curso, ${doble}: SUPUESTO (sin validar en ROS)\n`;
-  y += `pinza: {modelo: OnRobot RG2, tcp_z_m: ${r3(pinza.tcpZ(0))}, carrera_m: 0.110}  # tcp_z: SUPUESTO (modelo simplificado) · carrera: MEDIDO\n`;
+  y += `# Origen de cada valor, al final de su línea: ${ORIGEN.LEYENDA}. Las cámaras dan el giro desde +y de ${frame} hacia +x.\n`;
+  y += `fecha: ${new Date().toISOString().slice(0, 10)}\nrobot: ${L.robot}  # ${og(L.robot === 'B' ? 'base_b' : 'base_a')}\nrobot_id: ${desconocido ? `${L.robotId}  # de la disposición; el gemelo no lo conoce y usa la cinemática nominal` : `${id}  # elegido en el gemelo`}\n`;
+  y += `frame: ${frame}\nprefijo_frames: '${pf}'\nworld_a_base_link: {x: 0.000, y: 0.000, z: 0.000, yaw_rad: ${rad3(ROB.yaw)}}  # world del gemelo (ejes de la mesa): ${ot('orientacion_base_link')} · giro: mount_yaw − π del xacro del curso, ${og('orientacion_base_link')}\n`;
+  if (doble) y += `pose_en_world_doble: {frame: ${frame}, x: ${r3(d.doble.x)}, y: ${r3(d.doble.y)}, z: 0.000, yaw_rad: ${rad3(d.doble.yaw - PI)}}  # xacro del curso, ${doble}: ${og('pose_doble')}\n`;
+  y += `pinza: {modelo: OnRobot RG2, tcp_z_m: ${r3(pinza.tcpZ(0))}, carrera_m: 0.110}  # tcp_z: ${og('tcp_pinza')} · carrera: ${og('pinza')}\n`;
   const mc = B({ x: 0, y: 0 });
-  y += `mesa: {ancho_m: 1.180, fondo_m: 0.830, alto_m: 0.760, centro_en_base_link: {x: ${r3(mc.x)}, y: ${r3(mc.y)}}, yaw_rad: ${rad3(yawABase(0))}}  # ${conGiro ? `medidas: MEDIDO · centro_en_base_link y yaw_rad: ${giroSup}` : 'MEDIDO'}\n`;
+  y += `mesa: {ancho_m: 1.180, fondo_m: 0.830, alto_m: 0.760, centro_en_base_link: {x: ${r3(mc.x)}, y: ${r3(mc.y)}}, yaw_rad: ${rad3(yawABase(0))}}  # ${conGiro ? `medidas: ${og('mesa')} · centro_en_base_link y yaw_rad: ${giroSup}` : og('mesa')}\n`;
   y += `pedido: ${L.pedido === 1 ? 'un_plato  # al centro de la bandeja' : 'dos_platos  # primero y segundo'} · elegido en el gemelo\n`;
-  y += `platos: {sobre_caja: ${L.caja.on}, caja_alto_m: ${r3(L.caja.h)}, caja_lado_m: ${r3(CAJA_LADO)}, agarre: horizontal_por_el_borde, radio_agarre_m: ${r3(R_AGARRE)}}  # SUPUESTO\n`;
+  y += `platos: {sobre_caja: ${L.caja.on}, caja_alto_m: ${r3(L.caja.h)}, caja_lado_m: ${r3(CAJA_LADO)}, agarre: horizontal_por_el_borde, radio_agarre_m: ${r3(R_AGARRE)}}  # agarre: ${og('agarre_plato')} · resto: ${og('caja_plato')}\n`;
   const zf = B(L.zona);
   y += `objetos:\n  zona_fruta: {x: ${r3(zf.x)}, y: ${r3(zf.y)}, z: ${r3(zf.z)}, yaw_rad: ${rad3(yawABase(L.zona.yaw))}, ancho_m: ${r3(L.zona.w)}, fondo_m: ${r3(L.zona.d)}}  ${sup}\n`;
   for (const pk of ['plato1', 'plato2']) y += `  ${pk.replace('plato', 'plato_')}: ${P({ x: L[pk].x, y: L[pk].y, z: zPlato() })}  ${sup}\n`;
@@ -1776,7 +1782,7 @@ function generarYaml() {
   const bt = B(tp); y += `  bandeja_recepcion: {x: ${r3(bt.x)}, y: ${r3(bt.y)}, z: ${r3(bt.z)}, yaw_rad: ${rad3(yawABase(tp.yaw))}}  ${sup}\n`;
   y += `  zona_primero: ${P(zw('zona_primero'))}  ${sup}\n  zona_segundo: ${P(zw('zona_segundo'))}  ${sup}\n`;
   const pe = B(L.persona); y += `  persona: {x: ${r3(pe.x)}, y: ${r3(pe.y)}, yaw_rad: ${rad3(yawABase(L.persona.yaw))}}  ${sup}\ncamaras:\n`;
-  for (const k in L.cams) { const c = L.cams[k], o = orientDe({ pos: B(c.pos), mira: B(c.mira), roll: c.roll }); y += `  camara_${k}: {grupo: ${c.grupo}, modelo: ELP-USB12MP01-UFV, focal_mm: ${c.f.toFixed(1)}, modo: ${c.modo}, hfov_rad: ${r3(hfovDe(c))}, posicion: ${P(c.pos)}, mira: ${P(c.mira)}, orientacion_rad: {giro: ${rad3(o.pan)}, inclinacion: ${rad3(o.tilt)}, alabeo: ${rad3(o.roll)}}, pinza_mesa: ${P(c.clamp)}}  # pose: SUPUESTO · modelo: MEDIDO · focal y modo: elegidos · hfov: SUPUESTO (lente ideal, sensor ${sensorEscena()})\n`; }
+  for (const k in L.cams) { const c = L.cams[k], o = orientDe({ pos: B(c.pos), mira: B(c.mira), roll: c.roll }); y += `  camara_${k}: {grupo: ${c.grupo}, modelo: ELP-USB12MP01-UFV, focal_mm: ${c.f.toFixed(1)}, modo: ${c.modo}, hfov_rad: ${r3(hfovDe(c))}, posicion: ${P(c.pos)}, mira: ${P(c.mira)}, orientacion_rad: {giro: ${rad3(o.pan)}, inclinacion: ${rad3(o.tilt)}, alabeo: ${rad3(o.roll)}}, pinza_mesa: ${P(c.clamp)}}  # pose: ${ot('disposicion')} · modelo: ${og('camaras')} · focal y modo: elegidos · hfov: ${og('campo_vision')}\n`; }
   y += `# layout-json: ${JSON.stringify(L)}\n`;
   return y;
 }
@@ -1806,41 +1812,8 @@ function aplicarLayout() {
   colocarRobots(); actualizarZona(); actualizarPlatos(); actualizarAruco(); for (const k in L.cams) actualizarCam(k); aplicarBandeja(simT);
   reiniciarDemo(); pintarCaja(); pintarPerfil(); pintarSensor(); evaluar(); calcularMapa(); pintarSoloLectura(); guardarLocal(); if (!$('[data-panel="datos"]').hidden) pintarDatos();
 }
-const FUENTES = [
-  ['Mesa', '1180 × 830 mm, superficie a 760 mm', 'm', 'Cinta + foto (regla y A4, error < 2 %)'],
-  ['Base del robot B (grupo)', '9 y 8 cm del borde de la base a los bordes de la mesa', 'm', 'Cinta; centro con radio de base de 66 mm (supuesto)'],
-  ['Base del robot A', 'centro a 151 y 115 mm de los bordes', 'm', 'Foto ±10 mm'],
-  ['UR3e', 'alcance 500 mm, carga 3 kg, 11,2 kg, 2020', 'f', 'Placa del robot'],
-  ['Cinemática del UR3e', 'DH oficiales, IK analítica de 8 soluciones', 'f', 'ur_description; verificada con 2000 posturas'],
-  ['Pinza', 'OnRobot RG2, 0–110 mm, 0,78 kg, 3–40 N', 'm', 'Apertura medida 110 mm + ficha'],
-  ['TCP de la pinza', `${mm(pinza.tcpZ(0))} mm cerrada`, 's', 'Modelo simplificado; medir en PolyScope'],
-  ['Agarre del plato', 'horizontal por el borde, un dedo encima y otro debajo del ala', 'm', 'Decisión del grupo (12-11)'],
-  ['Caja bajo el plato', '10 × 10 cm, altura regulable', 's', 'Propuesta del grupo; tamaño sin medir'],
-  ['Orientación de base_link', 'eje x paralelo al lado largo de la mesa', 's', 'Comprobar en PolyScope'],
-  ['Cámaras', 'ELP-USB12MP01-UFV, IMX577, 3,6–10 mm, USB 2.0', 'm', 'Caja de la cámara + web del fabricante'],
-  ['Campo de visión', 'lente ideal sobre el ancho del sensor', 's', 'Medir en la calibración intrínseca'], // la fila la completa fuentesRobot con el sensor de la escena (T1.7)
-  ['Marcadores', 'ArUco DICT_4X4_50: zona 0–3, entrega 4–5, bandeja 6–9 (dibujados con su patrón real)', 's', 'Ids propuestos'],
-  ['Soportes de cámara', 'Manfrotto 035 + brazo 244 de 53 cm', 'm', 'Foto + ficha'],
-  ['Fruta', 'piezas de plástico de 4,5–7 cm', 's', 'Foto de referencia del grupo'],
-  ['Plato, bandeja y persona', 'plato Ø160 mm · bandeja 450 × 330 mm a 1,00 m del suelo · persona en el lateral derecho, de frente, con la bandeja a la derecha del robot y fuera de la mesa', 's', 'Sin medir; posición elegida porque es donde el robot puede dejar los platos nivelados'],
-  ['Modelo de colisión', '162 esferas ajustadas a las mallas de colisión oficiales del UR3e y a la RG2; límites articulares de joint_limits.yaml (codo ±180°)', 'f', 'ur_description (Universal Robots)'],
-  ['Planificación', 'RRT-Connect con atajos para movimientos libres; rectas cada 4 mm sin saltos (perfil «gemelo») o cada 1 cm con el punto medio a 1 mm y 0,01 rad (perfil «curso»); plato siempre nivelado', 'm', 'Equivalente a lo que hará MoveIt 2; sin validar en el robot'],
-  ['Aceleración articular (perfil «gemelo»)', '3 rad/s² al 100 %', 's', 'El yaml del UR3e no fija aceleraciones'],
-  ['Perfil «curso»', 'escala 0,1 de velocidad y aceleración, 5 rad/s², cartesiana de MoveIt 2.11+ y arranque en contacto = fallo', 's', 'config/joint_limits.yaml y el ejemplo del profesor (repo del curso); tiempos con un trapecio por articulación, no TOTG (DT4)'],
-  ['Agarre del plato', 'muñeca inclinada hasta 45° respecto a la horizontal', 's', 'Probar con el plato real que no gira ni resbala'],
-  ['Bandeja en M0 / M1', 'pausa a 25 mm, aborto a 10 s; latencia 120 ms', 's', 'DEC-04 sin cifras'],
-  ['Velocidades', '180°/s (base, hombro, codo), 360°/s (muñecas)', 'f', 'Ficha del UR3e'],
-  ['Nodos de Robótica', 'coordinador, pedidos, movimiento, pinza, seguridad', 's', 'Propuesta; D3 sin congelar'],
-  ['Topics de Visión', '/v1/*, /v2/*, /menu, /service_state', 'm', 'Contexto de Visión del 7-11'],
-];
-// Filas que dependen del robot elegido (T1.4 y T1.5): cinemática y orientación de base_link
-function fuentesRobot() {
-  const id = ROB.id, d = ROB.datos;
-  return FUENTES.map(f => f[0] === 'Cinemática del UR3e' && id !== 'nominal' ? [f[0], `calibración del robot ${id}; IK analítica nominal refinada con Levenberg–Marquardt (1e-6 m y 1e-6 rad)`, d.sospechoso ? 's' : 'm', `calibration_${id}.yaml del repo del curso (4e4e1a7)${d.sospechoso ? ', sospechosa' : ''}; SIN VALIDAR en ROS`]
-    : f[0] === 'Campo de visión' ? [f[0], `lente ideal sobre el ancho del sensor «${SENSOR.de(sensorEscena()).nombre}» (${fmt(SENSOR.de(sensorEscena()).w, 3)} mm), completo en todos los modos`, 's', `${SENSOR.de(sensorEscena()).origen}; medir en la calibración intrínseca (F4)`]
-    : f[0] === 'Orientación de base_link' ? [f[0], `girado ${gradosTxt(ROB.yaw)} respecto a world; world con los ejes de la mesa`, 's', 'Giro: mount_yaw − π del xacro del curso. Ejes de world: comprobar en el laboratorio (docs/estado/frames.md)'] : f);
-}
-function pintarFuentes() { $('#srcTbl tbody').innerHTML = fuentesRobot().map(([a, b, t, c]) => `<tr><td>${a}<br><span class="hint">${c}</span></td><td>${b}</td><td><span class="tag ${t}">${{ m: 'MEDIDO', f: 'FABRICANTE', s: 'SUPUESTO' }[t]}</span></td></tr>`).join(''); }
+// Tabla de fuentes del panel «Datos» (T2.1): las filas de ORIGEN con el robot, el giro, el sensor y la pinza de ahora
+function pintarFuentes() { $('#srcTbl tbody').innerHTML = ORIGEN.panel(ctxOrigen()).map(e => `<tr><td>${e.nombre}<br><span class="hint">${e.fuente}</span></td><td>${e.valor}</td><td><span class="tag ${ORIGEN.CLASE[e.tipo]}">${e.tipo}</span></td></tr>`).join(''); }
 
 // ======================= Colocación y evaluación =======================
 function colocarRobots() {

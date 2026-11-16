@@ -14,7 +14,7 @@ pose_en_world_doble: {frame: 203_base_link, x: 0.000, y: 0.000, z: 0.000, yaw_ra
 pinza: {modelo: OnRobot RG2, tcp_z_m: 0.200, carrera_m: 0.110}  # tcp_z: SUPUESTO (modelo simplificado) · carrera: MEDIDO
 mesa: {ancho_m: 1.180, fondo_m: 0.830, alto_m: 0.760, centro_en_base_link: {x: 0.497, y: -0.117}, yaw_rad: 2.356}  # medidas: MEDIDO · centro_en_base_link y yaw_rad: SUPUESTO (giro world→base_link sin validar en ROS)
 pedido: dos_platos  # primero y segundo · elegido en el gemelo
-platos: {sobre_caja: true, caja_alto_m: 0.100, caja_lado_m: 0.100, agarre: horizontal_por_el_borde, radio_agarre_m: 0.082}  # SUPUESTO
+platos: {sobre_caja: true, caja_alto_m: 0.100, caja_lado_m: 0.100, agarre: horizontal_por_el_borde, radio_agarre_m: 0.082}  # agarre: MEDIDO (decisión del grupo) · resto: SUPUESTO
 objetos:
   zona_fruta: {x: 0.221, y: -0.223, z: 0.000, yaw_rad: 2.356, ancho_m: 0.220, fondo_m: 0.160}  # SUPUESTO (disposición propuesta, sin medir)
   plato_1: {x: 0.344, y: 0.105, z: 0.100}  # SUPUESTO (disposición propuesta, sin medir)

@@ -70,7 +70,7 @@ Duraciones medidas en el contenedor de 2 núcleos (SwiftShader, sin GPU): «ante
 | I4 nada a ROS | sin test todavía (DT8, T3.1) | — |
 | I5 un solo HTML | `unit/i5` | — |
 | I6 determinismo | `determinismo` (A, B, A' «gemelo»), `robot` (con el 203), `perfil` (con «curso») | `determinismo-demo`, `matriz-curso` (órdenes inversos) |
-| I7 exportación | `exportar` (T1.5-1 con 203–206, T1.5-2 ida y vuelta), `datos` (YAML y tabla byte a byte), `unit/marcos` | `cambio-robot` (prefijo en el YAML) |
+| I7 exportación | `exportar` (T1.5-1 con 203–206, T1.5-2 ida y vuelta), `datos` (YAML y tabla byte a byte), `unit/marcos`, `unit/origen` | `cambio-robot` (prefijo en el YAML) |
 | I8 matriz | `matriz` (8 casos en orden directo) | — |
 
 ## Cierre del navegador (T2.0)
@@ -84,7 +84,7 @@ cambia: cada test cierra en su `finally`, después de sus comprobaciones. Con el
 
 ## Qué hay en tests/
 
-- `unit/`: `node:test` sobre el código puro de `src/` (cinemática, layout, semilla, perfiles, sensor, I5, niveles).
+- `unit/`: `node:test` sobre el código puro de `src/` (cinemática, layout, semilla, perfiles, sensor, origen de cada valor, I5, niveles).
 - `e2e/`: Playwright + Chromium con SwiftShader sobre los dos destinos; `permitidos.json`, avisos de consola permitidos.
 - `fixtures/`: referencias generadas por el gemelo (`generar.mjs`, `npm run caracterizar`): matrices, escenas v8, cinemática
   del curso y `yaml/` (panel «Datos», T2.1).
