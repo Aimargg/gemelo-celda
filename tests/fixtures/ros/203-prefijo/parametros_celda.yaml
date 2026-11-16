@@ -7,9 +7,10 @@
 # Poses en 203_base_link: xyz [x, y, z] en m y rpy [roll, pitch, yaw] en rad (setRPY: R = Rz(yaw)·Ry(pitch)·Rx(roll), ejes fijos), o solo yaw si el objeto solo gira en z; tamaños en m; focal_mm en mm (DT19).
 # world_a_base_link y pose_en_world_doble: la pose de base_link en el world del gemelo y en el del URDF doble. frame_id: el frame de la TF del objeto (tf_estaticas.sh).
 # Nombres en celda: robot (posicion, id, frame, prefijo_frames, world_a_base_link, pose_en_world_doble), pinza, mesa, pedido, platos (caja_tamano_m, plato_1, plato_2),
-#   zona_fruta, marcadores (ids, marcador_<id>), bandeja (zona_primero, zona_segundo), persona (xy, yaw) y camaras (nombres, <nombre>: frame_id del marco óptico,
+#   zona_fruta, marcadores (ids, marcador_<id>), bandeja (zona_primero, zona_segundo, zona_centro), persona (xy, yaw) y camaras (nombres, <nombre>: frame_id del marco óptico,
 #   xyz y rpy del marco camara_<nombre>, mira, orientacion_rad como en posiciones.yaml y pinza_mesa).
-# Origen de cada valor, al final de su línea: MEDIDO, FABRICANTE o SUPUESTO; lo que se elige en el gemelo, «elegido en el gemelo».
+# zona_centro (centro de la bandeja): el destino del plato con un pedido de un plato; con dos, como en esta disposición, no se usa.
+# Origen de cada valor, al final de su línea: MEDIDO, FABRICANTE o SUPUESTO; lo que se elige en el gemelo, «elegido en el gemelo»; lo que ha decidido el grupo, «decisión del grupo».
 /**:
   ros__parameters:
     celda:
@@ -37,7 +38,7 @@
       platos:
         sobre_caja: true  # elegido en el gemelo
         caja_tamano_m: [0.100, 0.100, 0.100]  # SUPUESTO
-        agarre: 'horizontal_por_el_borde'  # MEDIDO (decisión del grupo)
+        agarre: 'horizontal_por_el_borde'  # decisión del grupo
         radio_agarre_m: 0.082  # SUPUESTO
         plato_1:
           frame_id: 'plato_1_inicio'  # SUPUESTO (nombre propuesto)
@@ -74,6 +75,9 @@
         zona_segundo:
           frame_id: 'zona_segundo'  # SUPUESTO (nombre propuesto)
           xyz: [-0.436, 0.223, 0.240]  # SUPUESTO (disposición propuesta, sin medir)
+        zona_centro:
+          frame_id: 'zona_centro'  # SUPUESTO (nombre propuesto)
+          xyz: [-0.366, 0.293, 0.240]  # SUPUESTO (disposición propuesta, sin medir)
       persona:
         xy: [-0.634, 0.562]  # SUPUESTO (disposición propuesta, sin medir)
         yaw: -0.785  # SUPUESTO (disposición propuesta, sin medir)
