@@ -142,7 +142,7 @@ Estados: pendiente · en curso · entregada · aceptada · correcciones · bloqu
 | T1.6 | 1 | Perfil de movimiento «curso» | Claude Code | T1.2 | medio | aceptada | 3fe70b7 |
 | T1.7 | 1 | Modelo de sensor de la ELP por modo | Claude Code | T1.1 | bajo | aceptada | 9bcf739 |
 | T1.8 | 1 | Flujo «explorar → validar» con los dos perfiles | Claude Code | T1.6 | medio | aceptada | b44dff3, 4b80043 |
-| T1.9 | 1 | Salida de la bandeja sin contacto (DT22, DT23) | Claude Code | T1.8 | medio | pendiente | |
+| T1.9 | 1 | Salida de la bandeja sin contacto (DT22, DT23) | Claude Code | T1.8 | medio | entregada | 07ce862 |
 | T2.1 | 2 | Origen de cada valor (MEDIDO, FABRICANTE, SUPUESTO) unificado para exportar | Claude Code | F1 | bajo | pendiente | |
 | T2.2 | 2 | YAML `ros__parameters` de poses | Claude Code | T2.1 | medio | pendiente | |
 | T2.3 | 2 | Escena: `CollisionObject` en YAML y `.scene` | Claude Code | T2.1 | medio | pendiente | |
