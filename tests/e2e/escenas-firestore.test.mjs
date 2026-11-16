@@ -1,4 +1,4 @@
-// Escenas en la versión web (index.html real) con Firestore simulado por tests/legacy/firebase-mock.js (T0.2 C6).
+// Escenas en la versión web (index.html real) con Firestore simulado por tests/mocks/firebase-mock.js (T0.2 C6).
 // La web no tiene window.__g: se maneja por la interfaz y se mira el almacén simulado (globalThis.__fsStore).
 import { test, before, after } from 'node:test';
 import assert from 'node:assert/strict';
