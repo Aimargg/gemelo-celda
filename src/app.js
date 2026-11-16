@@ -710,10 +710,12 @@ function recalcular() { actualizarPlatos(); evaluar(); pintarCalc(); vigilarEsce
 // Mover algo con la demo a medias la deja incoherente: se reinicia antes del primer movimiento
 function prepararEdicion() { if (D.activo && !D.playing) { D.activo = false; reiniciarDemo(); toast('Demo reiniciada para mover objetos'); } }
 const CALC = { activo: false };
-// La barra dice si las trayectorias de explorar («gemelo») están al día (T1.8 añade la de validar)
+// La barra dice si las trayectorias de explorar («gemelo») están al día; debajo, la de validar (pintarVal, T1.8).
+// El texto de progreso se conserva hasta que acaba el cálculo (el repintado periódico no lo borra).
 function pintarCalc(txt) {
-  const el = $('#calcBar'); const ver = !!robot && !D.activo && (CALC.activo || !planesAlDia(PERFIL_EXPLORA)); el.hidden = !ver; if (!ver) return;
-  $('#calcTxt').textContent = CALC.activo ? (txt || 'Calculando…') : 'Hay cambios sin calcular'; $('#calcSpin').hidden = !CALC.activo; $('#btnCalc').disabled = CALC.activo;
+  if (txt) CALC.txt = txt; pintarVal();
+  const el = $('#calcBar'); const ver = !!robot && (VAL.activo || !D.activo) && (CALC.activo || !planesAlDia(PERFIL_EXPLORA)); el.hidden = !ver; if (!ver) return;
+  $('#calcTxt').textContent = CALC.activo ? (CALC.txt || 'Calculando…') : 'Hay cambios sin calcular'; $('#calcSpin').hidden = !CALC.activo; $('#btnCalc').disabled = CALC.activo;
 }
 // Calcula las trayectorias de los platos con un perfil (T1.6). Sin argumento, el de explorar: la barra «Calcular»,
 // soltar un objeto y el primer cálculo al cargar usan siempre «gemelo» (decisión 2 del brief). La demo, guardar y validar
@@ -722,10 +724,76 @@ async function calcularPlanes(perfil = PERFIL_EXPLORA) {
   if (CALC.activo || !robot) return; PERFIL.de(perfil); CALC.activo = true; pintarCalc('Calculando…'); await new Promise(r => setTimeout(r, 30));
   const tp = perfil === PERFIL_EXPLORA ? '' : ` con el perfil «${perfil}»`;
   try { for (const [pk] of platosActivos()) { const n = pk === 'plato1' ? '1º' : '2º'; await planPlatoAsync(pk, perfil, p => pintarCalc(`Calculando el plato ${n}${tp}: agarre ${p.i + 1} de ${p.n}`)); } }
-  finally { CALC.activo = false; }
+  finally { CALC.activo = false; CALC.txt = ''; }
   actualizarPlatos(); evaluar(); pintarCalc(); if (planesAlDia(perfil)) toast(`Trayectorias calculadas${tp}`);
 }
 $('#btnCalc').addEventListener('click', () => calcularPlanes(PERFIL_EXPLORA));
+// ======================= Validar con los dos perfiles (T1.8, D6) =======================
+// «Validar con perfil curso»: calcula las trayectorias y la comprobación previa con «gemelo» y con «curso» y ensaya la demo
+// con los dos, con los ajustes de la demo (modo, balanceo y velocidad) y la bandeja en la fase 0, como la matriz de casos.
+// El resultado vale para la escena tal como está: su firma es la disposición (sin el perfil ni el sensor, que no mueven
+// nada), el robot calibrado y los ajustes de la demo; cualquier otro cambio la deja «sin validar».
+const VAL = { activo: false, res: null };
+const FASE_VALIDAR = 0;
+function firmaVal() { const { perfil, sensor, ...l } = L; return JSON.stringify([ROB.id, D.modo, D.amp, D.vel, l]); }
+const valAlDia = () => !!VAL.res && VAL.res.firma === firmaVal();
+// Comprobación previa resumida como la guarda la escena (txt ≤ 300) y la causa del primer problema grave
+function resumenPrevia(chk) {
+  const g = chk.filter(c => c.grave); const i = g[0];
+  return { ok: !g.length, n: g.length, txt: (i ? i.txt : 'La comprobación previa no encuentra problemas.').slice(0, 300), fallo: i ? { causa: i.info.causa || null, pct: i.info.pct, txt: i.txt } : null };
+}
+// Causa del fallo de una demo (D.falloDemo): si no llegó a empezar, la del primer problema de la comprobación previa
+function falloDeDemo(f) {
+  if (!f) return null; const info = f.info || {};
+  if (info.causa === 'previo' && info.items && info.items.length) { const i = info.items[0]; return { causa: (i.info && i.info.causa) || null, pct: i.info && i.info.pct, txt: i.txt }; }
+  return { causa: info.causa || null, pct: info.pct, txt: f.msg };
+}
+const veredictoOk = v => !!v && v.previa.ok && v.demo.fin === 'ok';
+async function validar() {
+  if (!robot) return; const oc = ocupado('validar'); if (oc) { toast(oc); return; }
+  if (soloLectura()) { toast('Disposición de solo lectura (versión más nueva): no se valida'); return; }
+  const firma = firmaVal(), fase0 = D.fase, t0 = performance.now(), cfg = { modo: D.modo, amp: D.amp, vel: D.vel, fase: FASE_VALIDAR, sinRender: true };
+  VAL.activo = true; CALC.activo = true; D.validando = true; D.mantenerFallo = true; tctl.detach(); sel = null; pintarCalc('Validando…');
+  D.activo = false; reiniciarDemo(); // la comprobación previa mira la escena de partida (fruta en su zona, platos en su sitio)
+  let res = null;
+  try {
+    await new Promise(r => setTimeout(r, 30));
+    for (const pf of ['gemelo', 'curso']) for (const [pk] of platosActivos()) { const n = pk === 'plato1' ? '1º' : '2º'; await planPlatoAsync(pk, pf, p => pintarCalc(`Validando: trayectorias del plato ${n} con «${pf}», agarre ${p.i + 1} de ${p.n}`)); }
+    const per = {};
+    for (const pf of ['gemelo', 'curso']) per[pf] = { previa: resumenPrevia(comprobarPlan({ perfil: pf })) };
+    for (const pf of ['gemelo', 'curso']) {
+      pintarCalc(`Validando: demo con «${pf}» (${cfg.modo}, balanceo ${fmt(cfg.amp * 100, 1)} cm${pf === 'gemelo' ? `, ${Math.round(cfg.vel * 100)} %` : ', escala 0,1'})`); await new Promise(r => setTimeout(r, 30));
+      const r = await ensayo({ ...cfg, perfil: pf });
+      per[pf].demo = { fin: r.fin, t_ciclo_s: r.t_mov, paso: r.paso, fallo: r.fin === 'ok' ? null : falloDeDemo(D.falloDemo), detalle: r.fin === 'ok' ? '' : (D.falloDemo ? D.falloDemo.msg : r.fallo) };
+    }
+    const t = { gemelo: per.gemelo.demo.t_ciclo_s, curso: per.curso.demo.t_ciclo_s };
+    for (const pf of ['gemelo', 'curso']) { const d = per[pf].demo; d.motivo = d.fin === 'ok' ? null : PERFIL.motivo(d.fallo, t); per[pf].previa.motivo = per[pf].previa.ok ? null : PERFIL.motivo(per[pf].previa.fallo, t); }
+    res = { firma, per, ms: Math.round(performance.now() - t0) };
+  } finally {
+    D.activo = false; reiniciarDemo(); D.fase = fase0; VAL.activo = false; CALC.activo = false; CALC.txt = ''; D.validando = false; D.mantenerFallo = false;
+  }
+  VAL.res = res; actualizarPlatos(); evaluar(); pintarCalc();
+  toast(`Validado con los dos perfiles: gemelo ${veredictoOk(res.per.gemelo) ? 'pasa' : 'falla'}, curso ${veredictoOk(res.per.curso) ? 'pasa' : 'falla'}`);
+}
+// Barra de validación, siempre a la vista (salvo con la demo en marcha): los dos veredictos (comprobación previa y demo),
+// los dos tiempos de ciclo y, si difieren, el motivo concreto
+function pintarVal() {
+  const el = $('#valBar'); if (!el) return; const ver = !!robot && (VAL.activo || !D.activo); el.hidden = !ver; if (!ver) return;
+  $('#btnValidar').disabled = VAL.activo || CALC.activo || D.buscando;
+  const r = valAlDia() ? VAL.res : null; let h;
+  if (VAL.activo) h = '<span class="spin"></span><span>Validando con «gemelo» y con «curso»…</span>';
+  else if (!r) h = `<span><b>Perfil «curso»: sin validar.</b> ${VAL.res ? 'La escena ha cambiado desde la última validación.' : 'Explorar usa «gemelo»: valida antes de guardar o de programar contra la simulación.'}</span>`;
+  else {
+    const fila = pf => { const v = r.per[pf], ok = veredictoOk(v), d = v.demo;
+      const demo = d.fin === 'ok' ? 'completa' : d.fin === 'previo' ? 'no empieza' : `${d.fin === 'abort' ? 'abortada' : 'parada'} en el paso ${d.paso}`;
+      return `<div class="valFila" data-perfil="${pf}"><span class="dot ${ok ? 'ok' : 'bad'}"></span><b>${pf === 'curso' ? 'Curso' : 'Gemelo'}</b> <span>previa: ${v.previa.ok ? 'sin problemas' : `${v.previa.n} ${v.previa.n === 1 ? 'problema' : 'problemas'}`} · demo: ${demo} · ciclo ${fmt(d.t_ciclo_s, 1)} s${d.fin === 'ok' ? '' : ' hasta el fallo'}</span></div>`; };
+    const vg = veredictoOk(r.per.gemelo), vc = veredictoOk(r.per.curso), falla = !vg ? 'gemelo' : 'curso';
+    const mot = vg === vc ? '' : (() => { const v = r.per[falla]; const m = v.previa.ok ? v.demo.motivo : v.previa.motivo; const det = v.previa.ok ? v.demo.detalle : v.previa.txt; return `<div class="valMotivo" title="${esc(det || '')}"><b>Solo pasa en ${falla === 'curso' ? '«gemelo»' : '«curso»'}. Motivo:</b> ${esc(m || '')}</div>${det && det !== m ? `<small class="valDet">${esc(det.slice(0, 300))}</small>` : ''}`; })();
+    h = `<div class="valFilas">${fila('gemelo')}${fila('curso')}${mot}<small>Tiempos aproximados (no TOTG, DT4) · ${r.per.gemelo.demo.fin === 'ok' && r.per.curso.demo.fin === 'ok' ? `curso ${fmt(r.per.curso.demo.t_ciclo_s - r.per.gemelo.demo.t_ciclo_s, 1)} s frente a gemelo` : 'validado'} · ${D.modo}, balanceo ${fmt(D.amp * 100, 1)} cm, ${Math.round(D.vel * 100)} %</small></div>`;
+  }
+  $('#valTxt').innerHTML = h; $('#btnValidar').textContent = r ? 'Validar otra vez' : 'Validar con perfil curso';
+}
+$('#btnValidar').addEventListener('click', () => validar());
 let sel = null;
 const objetivo = new THREE.Group(); scene.add(objetivo); objetivo.visible = false;
 { const r = new THREE.Mesh(new THREE.TorusGeometry(0.03, 0.004, 8, 32), new THREE.MeshBasicMaterial({ color: '#e6b422' })); objetivo.add(r); objetivo.add(new THREE.AxesHelper(0.06)); objetivo.userData.anillo = r; }
@@ -1016,13 +1084,15 @@ function verPosturaImposible() {
   if (P.c) { marcaChoque.position.copy(baseAMundo(P.c.p[0], P.c.p[1], P.c.p[2])); marcaChoque.visible = true; D.marcaHasta = simT + 1e9; }
   const pc = OBJ[P.pk].getWorldPosition(new THREE.Vector3()); animarCam(new THREE.Vector3(pc.x - 0.45, pc.y - 0.55, pc.z + 0.35), pc);
 }
-function mostrarFallo(titulo, txt, tipo = 'fallo') { if (D.buscando) return; const f = $('#dFallo'); f.hidden = false; f.className = 'card fallo' + (tipo === 'abort' ? ' abort' : ''); f.innerHTML = `<div><b>${titulo}</b>${txt}</div>`; }
+function mostrarFallo(titulo, txt, tipo = 'fallo') { if (D.buscando || D.validando) return; const f = $('#dFallo'); f.hidden = false; f.className = 'card fallo' + (tipo === 'abort' ? ' abort' : ''); f.innerHTML = `<div><b>${titulo}</b>${txt}</div>`; }
 
 // ======================= Guion de la demo =======================
 const MENU = { primeros: [{ plato: 'Manzanas', piezas: 2, alergenos: [] }, { plato: 'Frambuesas', piezas: 1, alergenos: ['frambuesa'] }], segundos: [{ plato: 'Uvas', piezas: 1, alergenos: [] }, { plato: 'Limón', piezas: 1, alergenos: [] }] };
 // pf: perfil de movimiento de toda la demo (T1.6): cada movimiento lo lleva en su petición
 async function demo(pf) {
-  PERFIL.de(pf); const run = D.run; D.t0 = simT; D.fin = null; D.ctx = {}; D.perfilDemo = pf;
+  // D.faseInicio: fase de la bandeja al arrancar (BALANCEO(simT + D.fase)), para que la búsqueda de disposiciones ensaye
+  // desde la misma (DT10). D.falloDemo: el fallo de esta demo, con su causa (la validación lo lee, T1.8).
+  PERFIL.de(pf); const run = D.run; D.t0 = simT; D.faseInicio = simT + D.fase; D.fin = null; D.ctx = {}; D.perfilDemo = pf; D.falloDemo = null;
   try {
     const chk = comprobarPlan({ perfil: pf }); pintarCheck(chk); orientarCajas(pf);
     const graves = chk.filter(c => c.grave); if (graves.length) throw new FalloDemo(graves.map(g => g.txt).join(' '), 'previo', { causa: 'previo', items: graves });
@@ -1048,9 +1118,10 @@ async function demo(pf) {
     paso(uno ? 6 : 7); D.ctx = { fase: 'reposo', accion: 'volver a la postura de reposo' }; estado('HECHO'); publicar('/service_state', ['svc'], { estado: 'hecho' });
     await irA(posReposo(), PI / 2, { perfil: pf }, 'la postura de reposo'); trayState.balanceo = false;
     if (D.ep) cerrarChoque(); D.fin = 'ok'; D.playing = false; $('#dPlay').textContent = 'Reproducir demo';
-    if (!D.buscando) toast(`Servicio completo: ${fmt(D.motion, 1)} s de movimiento ${pf === 'curso' ? 'con el perfil «curso» (escala 0,1)' : `al ${Math.round(D.vel * 100)} %`}`);
+    if (!D.buscando && !D.validando) toast(`Servicio completo: ${fmt(D.motion, 1)} s de movimiento ${pf === 'curso' ? 'con el perfil «curso» (escala 0,1)' : `al ${Math.round(D.vel * 100)} %`}`);
   } catch (e) {
     if (run !== D.run) return; // reinicio pedido por el usuario
+    if (e instanceof FalloDemo) D.falloDemo = { causa: e.info.causa, info: e.info, msg: e.message, tipo: e.tipo, paso: D.paso };
     if (D.ep) cerrarChoque();
     if (e instanceof FalloDemo && e.tipo === 'abort') { // el coordinador publica el aborto y retira el brazo antes de terminar
       estado('ABORTADO'); pintarPasos(D.paso, true); mostrarFalloInfo(e, `Servicio abortado en el paso ${D.paso + 1} (${PASOS[D.paso][0]}).`, 'abort');
@@ -1390,10 +1461,10 @@ function pintarRobotId() {
 // respecto al robot (los objetos giran alrededor de la base y conservan sus coordenadas en base_link). Si no cambia el
 // giro (nominal, 205 y 206), se cambia sin preguntar y se avisa.
 let PREG_ROBOT = null;
-// Mientras corre la demo, el cálculo o la búsqueda de una disposición no se cambia de robot (correcciones 1 y 2) ni de
-// perfil de movimiento (T1.6)
-const ocupado = que => D.playing ? `Pausa la demo para cambiar de ${que}` : CALC.activo ? `Espera a que termine el cálculo para cambiar de ${que}` : D.buscando ? `Espera a que termine la búsqueda de una disposición para cambiar de ${que}` : null;
-const ocupadoRobot = () => ocupado('robot');
+// Mientras corre la demo, la validación (T1.8), el cálculo o la búsqueda de una disposición no se cambia de robot
+// (correcciones 1 y 2) ni de perfil de movimiento (T1.6), ni se valida. accion: «cambiar de robot», «validar»…
+const ocupado = accion => D.playing ? `Pausa la demo para ${accion}` : VAL.activo ? `Espera a que termine la validación para ${accion}` : CALC.activo ? `Espera a que termine el cálculo para ${accion}` : D.buscando ? `Espera a que termine la búsqueda de una disposición para ${accion}` : null;
+const ocupadoRobot = () => ocupado('cambiar de robot');
 function pedirRobotId(id) {
   if (!robot || !LAYOUT.ROBOT_IDS.includes(id)) return;
   const oc = ocupadoRobot(); if (oc) { toast(oc); return; }
@@ -1447,7 +1518,7 @@ function pintarPerfilDemo() {
 }
 function pedirPerfil(pf) {
   if (!robot || !LAYOUT.PERFILES.includes(pf) || pf === L.perfil) return;
-  const oc = ocupado('perfil'); if (oc) { toast(oc); return; }
+  const oc = ocupado('cambiar de perfil'); if (oc) { toast(oc); return; }
   if (soloLectura()) { toast('Disposición de solo lectura (versión más nueva): no se cambia el perfil'); return; }
   L.perfil = pf; guardarLocal(); pintarPerfil(); actualizarCheck(); pintarCalc();
   toast(`Perfil de la escena: «${pf}». No se mueve nada; la demo y el veredicto que se guarda usan este perfil`);
@@ -1773,7 +1844,7 @@ $('#segModoB').addEventListener('click', e => { const b = e.target.closest('butt
 $('#dVel').addEventListener('input', e => { D.vel = e.target.value / 100; $('#dVelOut').textContent = `${e.target.value} %`; });
 $('#dAmp').addEventListener('input', e => { D.amp = e.target.value / 100; $('#dAmpOut').textContent = `${fmt(+e.target.value, 1)} cm`; actualizarCheck(); });
 requestAnimationFrame(bucle);
-if (location.search.includes('prueba')) window.__g = { aplicarPedido, actualizarZona, esferasObjeto, cargaDe, BAND, bandeja, aplicarBandeja: t => aplicarBandeja(t), ladoZonas: () => ladoZonas(), comprobarPlan, llegaVertical, puntosSoltar, FRUTAS, CACHE_PLAN, poseHoriz, ejeHoriz, mundoABase, enLimites, qValida, rutaNivelada: (...a) => rutaNivelada(...a), colocacionConTransporte: (...a) => colocacionConTransporte(...a), planColocar: (...a) => planColocar(...a), zonasB, ikTCP, planAgarrePlato, planColocar, planPlatoCache, KIN_: KIN, BASES, consts: { R_AGARRE, H_BORDE }, COL: () => COL, choqueEn: (q, c) => choqueEn(q, c), obstaculos: () => obstaculos(), textoChoque: c => textoChoque(c), D, L: () => L, cam, orbit, scene, renderer, OBJ, piezas: () => piezas, simT: () => simT, CAMS, actualizarCam, actualizarAruco, actualizarPlatos, metricasCam, estadoObjeto, alcance, comprobarPlan, ensayo, planAgarrePlato, holguraActual, get robot() { return robot; }, KIN, pinza, tcpMundo, zPlato, setL: l => { L = l; }, ESC, ALM, abrirEscena, codigoEscena, abrirCodigo, guardarEscena, escCam: cam, orbit, vista, CALC, calcularPlanes, planesAlDia, recalcular, orientDe, fijarOrient, orientarDesdeQuat, CAMS, seleccionar, tctl, generarYaml, cadenaPlato, cargaPlan, rutaCartesiana: (...a) => rutaCartesiana(...a), zonasB_: () => zonasB, zonaDe, qReposo, aplicarLayout, buscarAlternativa, candidatos, explicar, mostrarFalloInfo, diagnosticarPunto, LAYOUT, ESQ_L, migrarLayout, soloLectura, RNG, planificar: (...a) => planificar(...a), get CIN() { return CIN; }, get ROB() { return ROB; }, CALIBRACION, marco: () => marco(), baseAMundo: (x, y, z) => baseAMundo(x, y, z), tcpDeQ: (q, w) => tcpDeQ(q, w), pedirRobotId: id => pedirRobotId(id), ikNoConverge: (p, y, o) => ikNoConverge(p, y, o), posesTCP, volCol, calcularPerfil, radioA, PERFIL, prepararMoveJ: (...a) => prepararMoveJ(...a), perfilEscena: () => perfilEscena(), planesAlDiaDe: pf => planesAlDia(pf) }; // T1.4: robot activo, su cinemática y el marco de base_link (una sola línea: build_web.sh la quita entera)
+if (location.search.includes('prueba')) window.__g = { aplicarPedido, actualizarZona, esferasObjeto, cargaDe, BAND, bandeja, aplicarBandeja: t => aplicarBandeja(t), ladoZonas: () => ladoZonas(), comprobarPlan, llegaVertical, puntosSoltar, FRUTAS, CACHE_PLAN, poseHoriz, ejeHoriz, mundoABase, enLimites, qValida, rutaNivelada: (...a) => rutaNivelada(...a), colocacionConTransporte: (...a) => colocacionConTransporte(...a), planColocar: (...a) => planColocar(...a), zonasB, ikTCP, planAgarrePlato, planColocar, planPlatoCache, KIN_: KIN, BASES, consts: { R_AGARRE, H_BORDE }, COL: () => COL, choqueEn: (q, c) => choqueEn(q, c), obstaculos: () => obstaculos(), textoChoque: c => textoChoque(c), D, L: () => L, cam, orbit, scene, renderer, OBJ, piezas: () => piezas, simT: () => simT, CAMS, actualizarCam, actualizarAruco, actualizarPlatos, metricasCam, estadoObjeto, alcance, comprobarPlan, ensayo, planAgarrePlato, holguraActual, get robot() { return robot; }, KIN, pinza, tcpMundo, zPlato, setL: l => { L = l; }, ESC, ALM, abrirEscena, codigoEscena, abrirCodigo, guardarEscena, escCam: cam, orbit, vista, CALC, calcularPlanes, planesAlDia, recalcular, orientDe, fijarOrient, orientarDesdeQuat, CAMS, seleccionar, tctl, generarYaml, cadenaPlato, cargaPlan, rutaCartesiana: (...a) => rutaCartesiana(...a), zonasB_: () => zonasB, zonaDe, qReposo, aplicarLayout, buscarAlternativa, candidatos, explicar, mostrarFalloInfo, diagnosticarPunto, LAYOUT, ESQ_L, migrarLayout, soloLectura, RNG, planificar: (...a) => planificar(...a), get CIN() { return CIN; }, get ROB() { return ROB; }, CALIBRACION, marco: () => marco(), baseAMundo: (x, y, z) => baseAMundo(x, y, z), tcpDeQ: (q, w) => tcpDeQ(q, w), pedirRobotId: id => pedirRobotId(id), ikNoConverge: (p, y, o) => ikNoConverge(p, y, o), posesTCP, volCol, calcularPerfil, radioA, PERFIL, prepararMoveJ: (...a) => prepararMoveJ(...a), perfilEscena: () => perfilEscena(), planesAlDiaDe: pf => planesAlDia(pf), validar: () => validar(), VAL, firmaVal: () => firmaVal(), valAlDia: () => valAlDia(), perfilesDe: e => perfilesDe(e), estadoParaGuardar: () => estadoParaGuardar() }; // T1.4: robot activo, su cinemática y el marco de base_link (una sola línea: build_web.sh la quita entera)
 fetch('ur3e-malla.json').then(r => { if (!r.ok) throw new Error(r.status); return r.json(); }).then(j => { const bin = atob(j.glb); const u8 = new Uint8Array(bin.length); for (let i = 0; i < bin.length; i++) u8[i] = bin.charCodeAt(i); new GLTFLoader().parse(u8.buffer, '', cargado, fallo); }).catch(fallo);
 function fallo(err) { $('#loading').textContent = 'No se ha podido cargar el modelo del UR3e.'; console.error(err); }
 function cargado(g) {

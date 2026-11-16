@@ -74,6 +74,13 @@ function explicar(info) {
       o.real = 'El coordinador aborta la colocación y retira el brazo.';
       o.cambiar.push('Baja el balanceo de la bandeja o la velocidad de seguimiento.'); o.fijo = true; break;
     case 'fruta': o.porque = info.detalle || 'No hay forma de coger esa pieza con la pinza vertical sin tocar las de al lado.'; o.real = 'El nodo de agarre de Visión 2 no devolvería un agarre válido.'; break;
+    case 'arranque_contacto': // T1.6: perfil «curso»
+      o.porque = `La postura de partida ya toca ${info.choque ? (info.choque.tipo === 'auto' ? 'otra parte del brazo' : NOM_OBS(info.choque.b)) : 'algo'} (${info.choque ? textoChoque(info.choque) : 'contacto'}) y no está entre lo que ese movimiento puede tocar.`;
+      o.real = 'MoveIt rechaza la petición antes de planificar (CheckStartStateCollision: START_STATE_IN_COLLISION); en Jazzy no existe FixStartStateCollision. Con el perfil «gemelo», el gemelo se separa de lo que toca.';
+      o.cambiar.push('En el nodo de movimiento, permite ese contacto en la petición (o sepárate antes con una recta) o aleja lo que toca de la postura de partida.'); break;
+    case 'cartesiana_incompleta': // T1.6: perfil «curso»
+      o.porque = `La recta no se puede seguir: entre dos posturas seguidas, el punto medio en articulaciones se aparta de la recta más de 1 mm o 0,01 rad y subdividir no lo arregla (la ruta llega al ${info.pct ?? 0} %).`;
+      o.real = 'compute_cartesian_path de MoveIt 2.11+ devuelve fraction < 1 y el nodo no debería ejecutarla.'; break;
     case 'previo': o.porque = 'Antes de mover nada, el coordinador ensaya en seco cada paso (coger, soltar, levantar, llevar nivelado y dejar) y alguno no es posible:'; o.real = 'El coordinador rechazaría el pedido antes de mover el brazo: la demo no llega a empezar.'; break;
     default: o.porque = info.detalle || ''; o.real = '';
   }
@@ -91,8 +98,9 @@ function lineaInfo(info) {
   return `${a}${P ? `${a ? ', ' : ''}en el punto (${mm(P.x)}, ${mm(P.y)}, ${mm(P.z)}) mm de base_link` : ''}${info.pct !== undefined ? `; la recta llega al ${info.pct} %` : ''}.`;
 }
 function mostrarFalloInfo(e, titulo, tipo) {
-  if (D.buscando) return; // durante la búsqueda, las demos de prueba no tocan la tarjeta
-  const info = e.info || {}; D.ultFallo = { info, titulo, tipo, msg: e.message, paso: D.paso };
+  if (D.buscando || D.validando) return; // durante la búsqueda o la validación, las demos de prueba no tocan la tarjeta
+  // fase: la de la bandeja cuando arrancó la demo que falló (DT10)
+  const info = e.info || {}; const ult = D.ultFallo = { info, titulo, tipo, msg: e.message, paso: D.paso, fase: D.faseInicio };
   const x = explicar(info); const f = $('#dFallo'); f.hidden = false; f.className = 'card fallo' + (tipo === 'abort' ? ' abort' : '');
   const items = info.causa === 'previo' && info.items ? `<ul class="falloLista">${info.items.map(i => `<li>${i.txt}</li>`).join('')}</ul>` : '';
   const buscar = !['bandeja_movida', 'alcance_bandeja', 'tiempo'].includes(info.causa);
@@ -101,7 +109,7 @@ function mostrarFalloInfo(e, titulo, tipo) {
     <div class="btns">${info.q || (info.causa === 'previo' && D.posturaImposible) ? '<button class="btn" id="fVer">Ver dónde falla</button>' : ''}${buscar ? '<button class="btn pri" id="fBuscar">Buscar una disposición que funcione</button>' : ''}</div>
     <div id="dRecom"></div>`;
   const v = $('#fVer'); if (v) v.onclick = () => verFallo(info);
-  const bb = $('#fBuscar'); if (bb) bb.onclick = () => buscarAlternativa(info);
+  const bb = $('#fBuscar'); if (bb) bb.onclick = () => buscarAlternativa(info, ult);
 }
 function verFallo(info) {
   if (info.causa === 'previo' && D.posturaImposible) { verPosturaImposible(); return; }
@@ -168,10 +176,16 @@ function valida(c) {
 function copiaCaches() { return Object.fromEntries(Object.entries(CACHE_PLAN).map(([pf, c]) => [pf, { ...c }])); }
 function restaurarCaches(c0) { for (const pf in CACHE_PLAN) delete CACHE_PLAN[pf]; for (const pf in c0) CACHE_PLAN[pf] = { ...c0[pf] }; }
 function aplicarLayoutRapido() { aplicarPedido(); actualizarZona(); actualizarPlatos(); pintarCaja(); actualizarAruco(); aplicarBandeja(simT); VERSION_ESCENA++; }
-async function buscarAlternativa(info) {
+// Busca una disposición cercana que funcione (T1.8-3): ensayo en seco con «gemelo» (como antes) hasta 3 candidatos, demo
+// completa con «gemelo» de cada uno y confirmación con «curso» (comprobación previa y demo) de los que la completan, en el
+// mismo orden; propone el primero que pasa con los dos. Si ninguno pasa con «curso», lo dice con el motivo del mejor y deja
+// aplicar el de «gemelo» marcado «no pasa en curso».
+// ult: el fallo que se explica; sus ensayos parten de la fase de la bandeja en que arrancó esa demo (DT10).
+async function buscarAlternativa(info, ult = D.ultFallo) {
   if (D.buscando || !robot) return; D.buscando = true; const box = $('#dRecom'); const bt = $('#fBuscar'); if (bt) bt.disabled = true;
-  const L0 = JSON.parse(JSON.stringify(L)); const cache0 = copiaCaches(); const cfg = { modo: D.modo, amp: D.amp, vel: D.vel, pedido: L.pedido, fase: D.fase }; const ult = D.ultFallo;
-  const todos = candidatos(info); const cands = todos.slice(0, 24).concat(todos.slice(24).filter(c => c.ref)); let cancel = false; const t0 = performance.now(); const pasan = []; D.tBusca = { seco: 0, demo: 0, n: 0 };
+  const fase = ult && Number.isFinite(ult.fase) ? ult.fase : D.fase, fase0 = D.fase;
+  const L0 = JSON.parse(JSON.stringify(L)); const cache0 = copiaCaches(); const cfg = { modo: D.modo, amp: D.amp, vel: D.vel, pedido: L.pedido, fase };
+  const todos = candidatos(info); const cands = todos.slice(0, 24).concat(todos.slice(24).filter(c => c.ref)); let cancel = false; const t0 = performance.now(); const pasan = []; D.tBusca = { seco: 0, demo: 0, n: 0, fase, gemelo: [], curso: [] };
   const prog = (t) => { box.innerHTML = `<div class="recom busca"><span class="spin"></span><div><b>Buscando…</b> ${t}</div><button class="btn" id="fCancel">Cancelar</button></div>`; const c = $('#fCancel'); if (c) c.onclick = () => { cancel = true; }; };
   try {
     for (let i = 0; i < cands.length && !cancel && pasan.length < 3; i++) {
@@ -179,20 +193,36 @@ async function buscarAlternativa(info) {
       L = JSON.parse(JSON.stringify(cands[i].layout)); aplicarLayoutRapido(); const ts = performance.now(); const chk = comprobarPlan({ parar: true, perfil: PERFIL_EXPLORA }); D.tBusca.seco += performance.now() - ts; D.tBusca.n++; if (!chk.some(c => c.grave)) pasan.push(cands[i]);
       if (performance.now() - t0 > 90000) break;
     }
-    let mejor = null;
-    for (let i = 0; i < pasan.length && !cancel; i++) { // la buena es la que completa la demo simulada con los mismos ajustes
-      prog(`demo completa simulada con «${pasan[i].texto}» (${cfg.modo}, balanceo ${fmt(cfg.amp * 100, 1)} cm, ${Math.round(cfg.vel * 100)} %)`); await new Promise(r => setTimeout(r, 30));
+    const buenos = []; // los que completan la demo simulada con «gemelo» y los mismos ajustes
+    for (let i = 0; i < pasan.length && !cancel; i++) {
+      prog(`demo completa simulada con «gemelo» y «${pasan[i].texto}» (${cfg.modo}, balanceo ${fmt(cfg.amp * 100, 1)} cm, ${Math.round(cfg.vel * 100)} %)`); await new Promise(r => setTimeout(r, 30));
       L = JSON.parse(JSON.stringify(pasan[i].layout)); aplicarLayoutRapido(); D.mantenerFallo = true;
-      const td = performance.now(); const r = await ensayo({ ...cfg, perfil: PERFIL_EXPLORA, sinRender: true }); D.tBusca.demo += performance.now() - td; if (r.fin === 'ok') { mejor = { ...pasan[i], t: r.t_mov, err: r.errores_mm }; break; }
+      const td = performance.now(); const r = await ensayo({ ...cfg, perfil: 'gemelo', sinRender: true }); D.tBusca.demo += performance.now() - td; D.tBusca.gemelo.push({ texto: pasan[i].texto, fin: r.fin });
+      if (r.fin === 'ok') buenos.push({ ...pasan[i], t: r.t_mov, err: r.errores_mm });
     }
-    L = L0; restaurarCaches(cache0); aplicarLayoutRapido(); D.mantenerFallo = true; D.activo = false; reiniciarDemo();
+    let mejor = null;
+    for (let i = 0; i < buenos.length && !cancel && !mejor; i++) { // confirmación con «curso»: comprobación previa y demo
+      const b = buenos[i]; prog(`confirmación con «curso» de «${b.texto}»: comprobación previa y demo (escala 0,1)`); await new Promise(r => setTimeout(r, 30));
+      L = JSON.parse(JSON.stringify(b.layout)); aplicarLayoutRapido(); D.mantenerFallo = true; D.activo = false; reiniciarDemo(); // la demo anterior dejó la fruta en los platos
+      const chk = comprobarPlan({ parar: true, perfil: 'curso' }); const g = chk.find(c => c.grave);
+      if (g) { b.curso = { fin: 'previo', fallo: { causa: g.info.causa || null, pct: g.info.pct, txt: g.txt }, t: 0 }; }
+      else { const r = await ensayo({ ...cfg, perfil: 'curso', sinRender: true }); b.curso = { fin: r.fin, fallo: r.fin === 'ok' ? null : falloDeDemo(D.falloDemo), t: r.t_mov, err: r.errores_mm }; }
+      b.curso.motivo = b.curso.fin === 'ok' ? null : PERFIL.motivo(b.curso.fallo, { curso: b.curso.t, gemelo: b.t });
+      D.tBusca.curso.push({ texto: b.texto, fin: b.curso.fin, motivo: b.curso.motivo });
+      if (b.curso.fin === 'ok') mejor = b;
+    }
+    L = L0; restaurarCaches(cache0); aplicarLayoutRapido(); D.mantenerFallo = true; D.activo = false; reiniciarDemo(); D.fase = fase0;
     if (ult) { pintarPasos(ult.paso, true); estado(ult.tipo === 'abort' ? 'ABORTADO' : ult.tipo === 'previo' ? 'NO INICIADO' : 'PARADO'); }
     if (cancel) box.innerHTML = '<div class="recom">Búsqueda cancelada.</div>';
     else if (mejor) {
-      box.innerHTML = `<div class="recom ok"><div><b>Disposición recomendada.</b> ${mejor.texto}. Con este cambio la demo completa funciona en la simulación (${cfg.modo}, balanceo ${fmt(cfg.amp * 100, 1)} cm, ${Math.round(cfg.vel * 100)} %): ${fmt(mejor.t, 0)} s de movimiento, error de colocación ${mejor.err.join(' · ')} mm. <span class="hint">[SIN VALIDAR] en el robot real.</span></div><div class="btns"><button class="btn" id="fAplicar">Aplicar</button><button class="btn pri" id="fProbar">Aplicar y reproducir</button></div></div>`;
+      box.innerHTML = `<div class="recom ok"><div><b>Disposición recomendada.</b> ${mejor.texto}. Con este cambio la demo completa funciona en la simulación con los dos perfiles (${cfg.modo}, balanceo ${fmt(cfg.amp * 100, 1)} cm): con «gemelo» al ${Math.round(cfg.vel * 100)} %, ${fmt(mejor.t, 0)} s de movimiento y error de colocación ${mejor.err.join(' · ')} mm; con «curso», ${fmt(mejor.curso.t, 0)} s. <span class="hint">[SIN VALIDAR] en el robot real.</span></div><div class="btns"><button class="btn" id="fAplicar">Aplicar</button><button class="btn pri" id="fProbar">Aplicar y reproducir</button></div></div>`;
       $('#fAplicar').onclick = () => { L = JSON.parse(JSON.stringify(mejor.layout)); aplicarLayout(); toast('Disposición aplicada'); };
       $('#fProbar').onclick = () => { L = JSON.parse(JSON.stringify(mejor.layout)); aplicarLayout(); $('#dPlay').click(); };
+    } else if (buenos.length) { // completan la demo con «gemelo», pero ninguno pasa con «curso»
+      const b = buenos[0];
+      box.innerHTML = `<div class="recom"><div><b>Ninguna pasa con «curso».</b> ${buenos.length === 1 ? 'La que' : `Las ${buenos.length} que`} completa${buenos.length === 1 ? '' : 'n'} la demo con «gemelo» falla${buenos.length === 1 ? '' : 'n'} con «curso». La mejor, ${b.texto}, falla con «curso» por: ${esc(b.curso.motivo || '')}. Con «gemelo» completa la demo en ${fmt(b.t, 0)} s.</div><div class="btns"><button class="btn" id="fAplicarG">Aplicar la de «gemelo» (no pasa en curso)</button></div></div>`;
+      $('#fAplicarG').onclick = () => { L = JSON.parse(JSON.stringify(b.layout)); aplicarLayout(); toast('Disposición aplicada: no pasa en curso'); };
     } else box.innerHTML = `<div class="recom"><b>No he encontrado una disposición cercana que funcione</b> (${cands.length} probadas, ${pasan.length} pasaron el ensayo en seco pero no la demo completa). Prueba cambios mayores: ${explicar(info).cambiar.join(' ').toLowerCase() || 'mueve los platos y a la persona'}.</div>`;
-  } catch (er) { console.error(er); L = L0; aplicarLayoutRapido(); box.innerHTML = '<div class="recom">La búsqueda ha fallado por un error interno.</div>'; }
+  } catch (er) { console.error(er); L = L0; restaurarCaches(cache0); aplicarLayoutRapido(); D.fase = fase0; box.innerHTML = '<div class="recom">La búsqueda ha fallado por un error interno.</div>'; }
   D.buscando = false; D.mantenerFallo = false; if (bt) bt.disabled = false;
 }

@@ -149,3 +149,15 @@ test('T1.6-3: la entrada de la semilla de una petición «gemelo» es la de v9-d
   assert.notEqual(c, g, 'dos peticiones iguales salvo el perfil dan semillas distintas');
   assert.throws(() => PERFIL.entradaSemilla({ ...PET }), /sin perfil/);
 });
+
+test('T1.8-2: el motivo sale de la causa del fallo, no del texto', () => {
+  const t = { curso: 140.04, gemelo: 127.3 };
+  assert.equal(PERFIL.motivo({ causa: 'arranque_contacto', txt: 'cualquier texto' }, t), 'arranque en contacto');
+  assert.equal(PERFIL.motivo({ causa: 'cartesiana_incompleta', pct: 37, txt: 'otro' }, t), 'ruta cartesiana incompleta (37 %)');
+  for (const causa of ['bandeja_movida', 'alcance_bandeja', 'tiempo']) assert.equal(PERFIL.motivo({ causa, txt: 'x' }, t), 'tiempo de ciclo: 140,0 s en curso frente a 127,3 s en gemelo', causa);
+  assert.equal(PERFIL.motivo({ causa: 'choque', txt: 'chocaría el antebrazo con la caja' }, t), 'chocaría el antebrazo con la caja');
+  assert.equal(PERFIL.motivo({ causa: null, txt: 'x'.repeat(400) }, t).length, 300, 'como mucho 300 caracteres');
+  assert.equal(PERFIL.motivo(null, t), null);
+  // el texto no decide: un texto que habla de contacto con otra causa no es «arranque en contacto»
+  assert.equal(PERFIL.motivo({ causa: 'sin_trayectoria', txt: 'MoveIt rechazaría el arranque en contacto' }, t), 'MoveIt rechazaría el arranque en contacto');
+});

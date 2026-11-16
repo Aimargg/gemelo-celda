@@ -16,9 +16,21 @@ const ajustesDemo = () => ({ modo: D.modo, amp: D.amp, vel: D.vel, pedido: L.ped
 const vistaActual = () => ({ p: cam.position.toArray().map(v => +v.toFixed(3)), t: orbit.target.toArray().map(v => +v.toFixed(3)) });
 const idxActual = () => ESC.cur ? ESC.lista.findIndex(e => e.id === ESC.cur.id) : -1;
 const fechaCorta = s => s ? new Date(s).toLocaleString('es-ES', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }) : '';
+// Veredicto de una escena por perfil (T1.8): { gemelo, curso }, cada uno { ok, n, txt, demo } o null («sin validar»).
+// Una escena guardada antes de T1.8 (v8 o v9 sin estado.porPerfil) tiene solo el veredicto de su perfil (el de su layout;
+// una v8 migrada es «gemelo»); el otro queda sin validar.
+function perfilesDe(e) {
+  const out = { gemelo: null, curso: null }, st = e && e.estado; if (!st || typeof st !== 'object') return out;
+  const limpio = x => x && typeof x === 'object' && typeof x.ok === 'boolean' ? { ok: x.ok, n: +x.n || 0, txt: String(x.txt || ''), demo: x.demo && typeof x.demo === 'object' ? x.demo : null } : null;
+  if (st.porPerfil && typeof st.porPerfil === 'object') { for (const pf of PERFIL.NOMBRES) out[pf] = limpio(st.porPerfil[pf]); return out; }
+  const pf = e.layout && PERFIL.NOMBRES.includes(e.layout.perfil) ? e.layout.perfil : 'gemelo'; out[pf] = limpio(st); return out;
+}
+const okPerfil = x => !!x && x.ok && (!x.demo || x.demo.fin === 'ok');
 function pillEstado(e) {
-  if (!e || !e.estado) return '<span class="pill">sin comprobar</span>';
-  return e.estado.ok ? '<span class="pill ok">comprobación previa sin problemas</span>' : `<span class="pill bad">${e.estado.n} ${e.estado.n === 1 ? 'problema' : 'problemas'}</span>`;
+  const pp = perfilesDe(e); if (!pp.gemelo && !pp.curso) return '<span class="pill">sin comprobar</span>';
+  return ['gemelo', 'curso'].map(pf => { const x = pp[pf];
+    const txt = !x ? 'sin validar' : !x.ok ? `${x.n} ${x.n === 1 ? 'problema' : 'problemas'}` : x.demo ? (x.demo.fin === 'ok' ? `demo completa, ${fmt(+x.demo.t_ciclo_s || 0, 0)} s` : `demo: ${esc(x.demo.motivo || x.demo.fin)}`) : 'previa sin problemas';
+    return `<span class="ppf" data-perfil="${pf}"><span class="dot ${x ? (okPerfil(x) ? 'ok' : 'bad') : 'none'}"></span>${pf}: ${txt}</span>`; }).join('');
 }
 function aplicarAjustes(a) {
   if (!a) return;
@@ -109,7 +121,7 @@ function recibirLista(vivas, papelera) {
 
 // --- navegar ---
 function abrirEscena(i, opts = {}) {
-  if (D.playing || CALC.activo || D.buscando) { toast('Espera a que termine la demo o el cálculo'); return; }
+  if (D.playing || CALC.activo || D.buscando || VAL.activo) { toast('Espera a que termine la demo o el cálculo'); return; }
   const actual = idxActual(); if (i === actual && !opts.forzar) return;
   if (i === -1) { // volver a la copia de trabajo
     ESC.cur = null; ESC.base = null; L = mesaLocal(); aplicarLayout(); pintarNav(); toast('Tu mesa'); return;
@@ -134,7 +146,8 @@ function pintarNav() {
   const i = idxActual(), n = ESC.lista.length, e = ESC.lista[i]; if (e) ESC.ultima = e;
   $('#escNom').textContent = e ? e.nombre : ESC.basada ? `Tu mesa · copia de «${ESC.basada.nombre}»` : 'Tu mesa (sin guardar)';
   $('#escMeta').textContent = e ? `${ALM.quien(e)} · ${i + 2} de ${n + 1}` : `${n ? `1 de ${n + 1} · ${n} ${n === 1 ? 'escena guardada' : 'escenas guardadas'}` : ESC.cargando ? 'cargando escenas…' : 'ninguna escena guardada'}`;
-  $('#escDot').className = 'dot ' + (e && e.estado ? (e.estado.ok ? 'ok' : 'bad') : 'none');
+  { const pp = perfilesDe(e); $$('#escDot .dot').forEach(d => { const x = pp[d.dataset.perfil]; d.className = 'dot ' + (e && x ? (okPerfil(x) ? 'ok' : 'bad') : 'none'); }); // gemelo y curso (T1.8)
+    $('#escDot').title = e ? ['gemelo', 'curso'].map(pf => `${pf}: ${pp[pf] ? (okPerfil(pp[pf]) ? 'pasa' : 'falla') : 'sin validar'}`).join(' · ') : 'Tu mesa: sin guardar'; }
   $('#escPrev').disabled = i <= -1; $('#escNext').disabled = i >= n - 1;
   if (!$('#escPop').hidden) pintarPop();
 }
@@ -156,7 +169,7 @@ function pintarPop() {
     return `<li ${k === i ? 'aria-current="true"' : ''}><div class="escInfo"><b>${e ? esc(e.nombre) : 'Tu mesa'}</b>
       <small>${e ? `${esc(ALM.quien(e))} · ${fechaCorta(e.editado || e.creado)}` : 'tu copia de trabajo, guardada solo en este navegador'}</small>
       ${e ? `<div>${pillEstado(e)} <span class="hint">${esc(e.ajustes ? `${e.ajustes.pedido || e.layout.pedido || 2} platos · ${e.ajustes.modo || 'M0'} · balanceo ${fmt((e.ajustes.amp ?? 0.02) * 100, 1)} cm` : '')}</span></div>` : ''}
-      ${e && e.nota ? `<p>${esc(e.nota)}</p>` : ''}${e && e.estado && !e.estado.ok ? `<p class="hint">${esc(e.estado.txt)}</p>` : ''}</div>
+      ${e && e.nota ? `<p>${esc(e.nota)}</p>` : ''}${e ? (pp => ['gemelo', 'curso'].filter(pf => pp[pf] && !pp[pf].ok).map(pf => `<p class="hint">${pf}: ${esc(pp[pf].txt)}</p>`).join(''))(perfilesDe(e)) : ''}</div>
       <div class="btns">${k === i ? '<span class="hint">abierta</span>' : `<button class="btn" data-abrir="${k}">Abrir</button>`}${borrar ? `<button class="btn" data-borrar="${k}">${ESC.borrarId === e.id ? '¿Seguro?' : fs ? 'A la papelera' : 'Borrar'}</button>` : ''}</div></li>`;
   };
   $('#escLista').innerHTML = fila(-1, null) + ESC.lista.map((e, k) => fila(k, e)).join('')
@@ -181,6 +194,7 @@ function cerrarPop() { $('#escPop').hidden = true; $('#escCur').setAttribute('ar
 async function guardarEscena(modo) {
   const nombre = $('#escNombre').value.trim(), nota = $('#escNota').value.trim();
   if (!ALM.modo) return; if (D.playing) { toast('Pausa la demo para guardar'); return; }
+  if (VAL.activo || CALC.activo || D.buscando) { toast('Espera a que termine la validación o el cálculo para guardar'); return; }
   if (soloLectura()) { toast(`Esta disposición es de una versión más nueva del gemelo (v${L.version}): se ve en solo lectura y no se puede guardar`); return; }
   const largo = LAYOUT.noGuardable(jsonL()); if (largo) { toast(`No se guarda: ${largo}`); return; } // las reglas de Firestore la rechazarían (I2)
   if (ALM.modo === 'firestore') { const a = $('#escAutor').value.trim().slice(0, 40); if (!a) { toast('Escribe tu nombre para que el grupo sepa de quién es'); $('#escAutor').focus(); return; } ALM.yo = a; ponerLS(CLAVE_NOMBRE, a); }
@@ -188,15 +202,15 @@ async function guardarEscena(modo) {
   const prop = modo === 'cambios' ? propiaEditable() : null;
   $$('#escGuardarSec button').forEach(b => b.disabled = true);
   try {
-    const pf = perfilEscena(); // se guarda con la comprobación previa del perfil de la escena, para que el grupo vea si es viable
-    if (!planesAlDia(pf)) await calcularPlanes(pf);
-    const graves = comprobarPlan({ perfil: pf }).filter(c => c.grave);
+    // Se guarda con la comprobación previa de los dos perfiles (D6: «valida antes de guardar»), para que el grupo vea si es
+    // viable: se calcula la que falte; la demo nunca se ensaya al guardar (solo se guarda la de una validación al día)
+    for (const pf of ['gemelo', 'curso']) { if (soloLectura()) break; if (!planesAlDia(pf)) await calcularPlanes(pf); }
     // durante el cálculo, Importar o Recuperar pueden haber cambiado L: se vuelve a comprobar lo que se va a guardar
     if (soloLectura()) { toast(`Esta disposición es de una versión más nueva del gemelo (v${L.version}): se ve en solo lectura y no se puede guardar`); return; }
+    const estado = estadoParaGuardar();
     const txt = jsonL(), largo2 = LAYOUT.noGuardable(txt); if (largo2) { toast(`No se guarda: ${largo2}`); return; } // lo que se guarda es este texto
     const ahora = new Date().toISOString();
-    const item = { nombre: nombre.slice(0, 60), nota: nota.slice(0, 500), creado: ahora, editado: ahora, layout: JSON.parse(txt), ajustes: ajustesDemo(), vista: vistaActual(),
-      estado: { ok: !graves.length, n: graves.length, txt: graves.length ? graves[0].txt.slice(0, 300) : 'La comprobación previa no encuentra problemas.' } };
+    const item = { nombre: nombre.slice(0, 60), nota: nota.slice(0, 500), creado: ahora, editado: ahora, layout: JSON.parse(txt), ajustes: ajustesDemo(), vista: vistaActual(), estado };
     const g = await ALM.guardar(item, prop);
     ESC.cur = { id: g.id }; ESC.basada = null; ESC.base = jsonL(); // ahora estás en la escena guardada
     ESC.lista = [g, ...ESC.lista.filter(e => e.id !== g.id)]; pintarNav();
@@ -209,6 +223,17 @@ async function guardarEscena(modo) {
     else if (c === 'quota_exceeded' || c === 'resource-exhausted') toast('El almacén de escenas está lleno o saturado: borrad alguna o probad más tarde');
     else toast('No se ha podido guardar; inténtalo otra vez');
   } finally { $$('#escGuardarSec button').forEach(b => b.disabled = false); }
+}
+// estado de una escena (T1.8, I2: las reglas ya admiten un objeto): { ok, n, txt } del perfil de la escena (compatible con
+// la v8) y porPerfil: { gemelo: { ok, n, txt, demo }, curso: … }. demo = { fin, t_ciclo_s, motivo } si la escena está
+// validada tal como está; si no, null. Cada txt ≤ 300 caracteres. Necesita las trayectorias de los dos perfiles al día.
+function estadoParaGuardar() {
+  const v = valAlDia() ? VAL.res : null, porPerfil = {};
+  for (const pf of ['gemelo', 'curso']) {
+    const pr = v ? v.per[pf].previa : resumenPrevia(comprobarPlan({ perfil: pf })), d = v ? v.per[pf].demo : null;
+    porPerfil[pf] = { ok: pr.ok, n: pr.n, txt: pr.txt.slice(0, 300), demo: d ? { fin: d.fin, t_ciclo_s: d.t_ciclo_s, motivo: d.motivo ? d.motivo.slice(0, 300) : null } : null };
+  }
+  const p = porPerfil[perfilEscena()]; return { ok: p.ok, n: p.n, txt: p.txt, porPerfil };
 }
 let tConfirmar = 0;
 function confirmar(id) { // dos pulsaciones para lo que no se deshace fácilmente

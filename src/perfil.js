@@ -102,6 +102,21 @@ const PERFIL = (() => {
     return { qa: p.qa, qb: p.qb, w: p.w, carga: p.carga, obst: p.obst, permitir: p.permitir, conBlandos: p.conBlandos, sinEntorno: p.sinEntorno, sinAuto: p.sinAuto, perfil: p.perfil };
   }
 
-  return { TABLA, NOMBRES, de, duracion, trapecio, pasosTramo, cuat, desvioMedio, subdividir, entradaSemilla };
+  // Motivo concreto de que un perfil falle cuando el otro pasa (T1.8): sale de la causa del fallo, no de comparar textos.
+  // f: { causa, pct, txt } del fallo (el primer problema de la comprobación previa o el de la demo); t: { curso, gemelo },
+  // tiempos de ciclo (s). Las causas que dependen del tiempo son las de la bandeja, que se mueve mientras el brazo llega:
+  // con «curso» el brazo llega en otro momento (bandeja_movida: más de 10 s fuera de su sitio en M0; alcance_bandeja: la
+  // zona sale del alcance; tiempo: la colocación no acaba en su plazo).
+  const CAUSAS_TIEMPO = ['bandeja_movida', 'alcance_bandeja', 'tiempo'];
+  const s1 = v => Number(v || 0).toFixed(1).replace('.', ',');
+  function motivo(f, t = {}) {
+    if (!f) return null;
+    if (f.causa === 'arranque_contacto') return 'arranque en contacto';
+    if (f.causa === 'cartesiana_incompleta') return `ruta cartesiana incompleta (${Math.round(f.pct ?? 0)} %)`;
+    if (CAUSAS_TIEMPO.includes(f.causa)) return `tiempo de ciclo: ${s1(t.curso)} s en curso frente a ${s1(t.gemelo)} s en gemelo`;
+    return String(f.txt || '').slice(0, 300);
+  }
+
+  return { TABLA, NOMBRES, de, duracion, trapecio, pasosTramo, cuat, desvioMedio, subdividir, entradaSemilla, CAUSAS_TIEMPO, motivo };
 })();
 if (typeof module !== 'undefined') module.exports = PERFIL;
