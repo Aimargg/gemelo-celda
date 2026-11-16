@@ -14,7 +14,8 @@ let srv;
 before(async () => { srv = await arrancarServidor(); });
 after(async () => { await srv?.cerrar(); });
 
-// Cuenta, sin cambiarlas, las llamadas a RNG.semillaPlan y RNG.aleat que hace planificar() (window.__cuenta)
+// Cuenta, sin cambiarlas, las llamadas a RNG.semillaPlan y RNG.aleat que hace planificar() (window.__cuenta). También
+// cuenta los generadores que se crean con `aleat` de src/app.js, que delega en RNG.aleat en cada llamada (DT12)
 const contar = p => p.evaluate(() => {
   const R = window.__g.RNG; if (R.__contado) return; R.__contado = true; window.__cuenta = { semillas: 0, generadores: 0 };
   const s = R.semillaPlan, a = R.aleat;

@@ -102,7 +102,7 @@ function guardarLocal() { clearTimeout(saveT); savePend = !ESC.cur && !soloLectu
 function vaciarGuardado() { if (savePend) escribirMesa(); }
 
 // ======================= Texturas procedurales =======================
-const aleat = RNG.aleat; // xorshift32 sembrado (src/rng.js): texturas y modelo de colisión
+const aleat = s => RNG.aleat(s); // xorshift32 sembrado (src/rng.js): texturas y modelo de colisión. Llama a RNG.aleat en cada uso (DT12): así el test de «sin reintento» cuenta también los generadores que se creen desde aquí
 function lienzo(w, h, dibujar, { color = true, rep = null } = {}) {
   const c = document.createElement('canvas'); c.width = w; c.height = h; dibujar(c.getContext('2d'), w, h);
   const t = new THREE.CanvasTexture(c); if (color) t.colorSpace = THREE.SRGBColorSpace; t.wrapS = t.wrapT = THREE.RepeatWrapping; t.anisotropy = 8; if (rep) t.repeat.set(...rep); return t;

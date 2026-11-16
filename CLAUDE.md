@@ -12,8 +12,9 @@ y no es fuente del repo del proyecto de Robótica (invariante I9).
 
 ## Estructura
 
-- `src/`: fuentes (`part1.html`, `app.js`, `kin.js`, `colision.js`, `fallos.js`, `escenas.js`). Se concatenan con los
-  marcadores `@@…@@`; sin módulos ES ni bundler (D4).
+- `src/`: fuentes (`part1.html`, `app.js`, `kin.js`, `colision.js`, `fallos.js`, `escenas.js`, `layout.js`, `rng.js`,
+  `perfil.js`, `sensor.js` y `datos/calibracion.js`, que genera `tools/fixtures/fk_desde_xacro.py`). Se concatenan con
+  los marcadores `@@…@@`; sin módulos ES ni bundler (D4).
 - `tools/build.sh` → `dist/gemelo-celda.html` (artefacto de claude.ai, con el gancho `window.__g` y `?prueba`).
 - `tools/build_web.sh` → `index.html` (GitHub Pages; quita el gancho y añade `config.js`). Llama a `build.sh`.
 - `web_src/`: plantillas con `@@CLAVE@@` y `PEGA_AQUI`. `tests/`: arnés de pruebas. `tests/mocks/`: simulacros de Firestore
