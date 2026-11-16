@@ -174,3 +174,96 @@ test('I5: exportar.js va dentro de los dos HTML construidos, sin su línea de m�
     assert.ok(!/eemeli|yaml@|from ['"]yaml['"]/.test(h), `${f}: sin la librería yaml`);
   }
 });
+
+// ---------- T2.4: TF estáticas ----------
+// setRPY de tf2 por matrices (R = Rz(yaw)·Ry(pitch)·Rx(roll)), sin el cuaternión: así el test no repite la fórmula del módulo
+const mul = (A, B) => A.map(f => [0, 1, 2].map(j => f[0] * B[0][j] + f[1] * B[1][j] + f[2] * B[2][j]));
+const Rx = a => [[1, 0, 0], [0, Math.cos(a), -Math.sin(a)], [0, Math.sin(a), Math.cos(a)]];
+const Ry = a => [[Math.cos(a), 0, Math.sin(a)], [0, 1, 0], [-Math.sin(a), 0, Math.cos(a)]];
+const Rz = a => [[Math.cos(a), -Math.sin(a), 0], [Math.sin(a), Math.cos(a), 0], [0, 0, 1]];
+const deRPY = (r, p, y) => mul(Rz(y), mul(Ry(p), Rx(r)));
+const deQ = ([x, y, z, w]) => [[1 - 2 * (y * y + z * z), 2 * (x * y - z * w), 2 * (x * z + y * w)], [2 * (x * y + z * w), 1 - 2 * (x * x + z * z), 2 * (y * z - x * w)], [2 * (x * z - y * w), 2 * (y * z + x * w), 1 - 2 * (x * x + y * y)]];
+const angulo = (A, B) => 2 * Math.asin(Math.min(1, Math.hypot(...A.flat().map((v, i) => v - B.flat()[i])) / (2 * Math.SQRT2))); // ‖A − B‖ = 2√2·sen(θ/2)
+
+test('cuaternión: |q|² − 1 < 1e-9 con 9 decimales y el mismo giro que setRPY (< 1e-8 rad), en un barrido de 4913 giros', () => {
+  let peorN = 0, peorG = 0;
+  const vals = Array.from({ length: 17 }, (_, i) => -3.141 + i * 0.392625);
+  for (const r of vals) for (const p of vals) for (const y of vals) {
+    const n = EXPORTAR.cuaternion([r, p, y]), q = n.map(v => v / 1e9);
+    assert.ok(n.every(Number.isInteger));
+    peorN = Math.max(peorN, Math.abs(q.reduce((s, v) => s + v * v, 0) - 1));
+    peorG = Math.max(peorG, angulo(deQ(q), deRPY(+EXPORTAR.rad3(r), +EXPORTAR.rad3(p), +EXPORTAR.rad3(y))));
+  }
+  assert.ok(peorN < 1e-9, `|q|² − 1 llega a ${peorN}`); assert.ok(peorG < 1e-8, `diferencia de giro ${peorG} rad`);
+  assert.deepEqual(plano(EXPORTAR.cuaternion([0, 0, 0])), [0, 0, 0, 1e9], 'sin giro, la identidad exacta');
+});
+
+test('Común-C2 y T2.4: tf/mesa.yaml del modelo a mano (sin giro), entero', () => {
+  const t = fichero(MODELO, 'tf/mesa.yaml');
+  assert.deepEqual(problemasParams(t), []);
+  assert.equal(t, [
+    '# tf/mesa.yaml · gemelo de la celda UR3e · generado por el gemelo (IA), BORRADOR',
+    '# Robot: nominal (sin identificar: cinemática nominal del UR3e), en la posición B de la celda (derecha en la foto cenital).',
+    '# Frame: base_link (sin prefijo, como en sim_<id>). Metros y radianes (REP-103), redondeo a 1 mm y 0,001 rad.',
+    '# Huella de la disposición: 811c9dc5 (FNV-1a de 32 bits de JSON.stringify(L), en UTF-8): casa este fichero con su disposición.',
+    '# Carga: ros2 component standalone tf2_ros tf2_ros::StaticTransformBroadcasterNode --ros-args --params-file tf/mesa.yaml -r __node:=tf_mesa [SIN VALIDAR en ROS: U4].',
+    '# TF estática base_link → mesa: centro de la cara de arriba de la mesa, con su giro.',
+    '# Giro: roll 0.000, pitch 0.000, yaw 0.000 rad (setRPY: R = Rz(yaw)·Ry(pitch)·Rx(roll), ejes fijos), en cuaternión (x, y, z, w) normalizado con 9 decimales.',
+    '# Las claves x, y, z y w van entre comillas: YAML 1.1 lee una «y» suelta como true.',
+    '# En una escena doble, carga las TF de un solo robot: cada frame admite un único padre.',
+    '# Origen de cada valor, al final de su línea: MEDIDO, FABRICANTE o SUPUESTO; lo que se elige en el gemelo, «elegido en el gemelo».',
+    '/**:',
+    '  ros__parameters:',
+    "    frame_id: 'base_link'  # elegido en el gemelo (el prefijo; base_link es el del URDF)",
+    "    child_frame_id: 'mesa'  # SUPUESTO (nombre propuesto)",
+    '    translation:',
+    "      'x': -0.434  # MEDIDO",
+    "      'y': -0.269  # MEDIDO",
+    "      'z': 0.000  # MEDIDO",
+    '    rotation:',
+    "      'x': 0.000000000  # MEDIDO",
+    "      'y': 0.000000000  # MEDIDO",
+    "      'z': 0.000000000  # MEDIDO",
+    "      'w': 1.000000000  # MEDIDO",
+    '',
+  ].join('\n'));
+});
+
+test('T2.4: las aristas de la decisión 6, en orden, y el script con un comando por arista y wait al final', () => {
+  const f = EXPORTAR.ficherosRos(MODELO, ORIGEN).map(x => x.nombre);
+  assert.deepEqual(plano(f), ['parametros_celda.yaml', 'tf/mesa.yaml', 'tf/zona_fruta.yaml', 'tf/plato_1_inicio.yaml', 'tf/plato_2_inicio.yaml', 'tf/marcador_4.yaml', 'tf/marcador_5.yaml', 'tf/bandeja.yaml', 'tf/zona_primero.yaml', 'tf/zona_segundo.yaml', 'tf/camara_cenital.yaml', 'tf/camara_cenital_optical.yaml', 'tf_estaticas.sh']);
+  const s = fichero(MODELO, 'tf_estaticas.sh'), ls = s.split('\n');
+  assert.equal(ls[0], '#!/bin/bash'); assert.equal(ls.at(-2), 'wait'); assert.equal(ls.at(-1), '');
+  assert.equal(ls.filter(l => l.startsWith('ros2 run tf2_ros static_transform_publisher ')).length, 11);
+  // la zona cuelga de la bandeja con su posición en ella; el marco óptico, del cuerpo con (−π/2, 0, −π/2) redondeado
+  assert.ok(ls.includes('ros2 run tf2_ros static_transform_publisher --x -0.020 --y 0.100 --z 0.000 --roll 0.000 --pitch 0.000 --yaw 0.000 --frame-id bandeja --child-frame-id zona_primero --ros-args -r __node:=tf_zona_primero &'));
+  assert.ok(ls.includes('ros2 run tf2_ros static_transform_publisher --x 0.000 --y 0.000 --z 0.000 --roll -1.571 --pitch 0.000 --yaw -1.571 --frame-id camara_cenital --child-frame-id camara_cenital_optical --ros-args -r __node:=tf_camara_cenital_optical &'));
+  assert.ok(ls.includes('ros2 run tf2_ros static_transform_publisher --x 0.000 --y 0.000 --z 0.500 --roll -0.100 --pitch 0.785 --yaw 0.000 --frame-id base_link --child-frame-id camara_cenital --ros-args -r __node:=tf_camara_cenital &'));
+  assert.equal(ls[ls.indexOf('ros2 run tf2_ros static_transform_publisher --x 0.000 --y 0.000 --z 0.500 --roll -0.100 --pitch 0.785 --yaw 0.000 --frame-id base_link --child-frame-id camara_cenital --ros-args -r __node:=tf_camara_cenital &') - 1],
+    '# base_link → camara_cenital: SUPUESTO (disposición propuesta, sin medir) · nominal: la sustituye la calibración');
+  assert.match(fichero(MODELO, 'tf/bandeja.yaml'), /^# TF estática base_link → bandeja: .*\. nominal: la sustituye la pose que publique Visión\.$/m);
+  assert.match(fichero(MODELO, 'tf/camara_cenital_optical.yaml'), /^ {6}'x': 0\.000 {2}# FABRICANTE \(convenio de REP-103\)$/m);
+});
+
+test('Común-C2 y T2.4: con el prefijo «203_» y el giro de −135°, la raíz lleva el prefijo y los frames de la celda no', () => {
+  const s = fichero(MODELO_203, 'tf_estaticas.sh');
+  assert.ok(s.split('\n').includes('ros2 run tf2_ros static_transform_publisher --x -0.434 --y -0.269 --z 0.000 --roll 0.000 --pitch 0.000 --yaw 2.356 --frame-id 203_base_link --child-frame-id mesa --ros-args -r __node:=tf_mesa &'));
+  assert.ok(s.includes('# 203_base_link → mesa: SUPUESTO (giro world→base_link sin validar en ROS)\n'));
+  assert.ok(!/--child-frame-id 203_|__node:=tf_203/.test(s), 'sin prefijo en los hijos ni en los nodos');
+  const t = fichero(MODELO_203, 'tf/mesa.yaml');
+  assert.deepEqual(problemasParams(t), []);
+  assert.match(t, /^ {4}frame_id: '203_base_link' {2}# elegido en el gemelo/m);
+  assert.match(t, /^# Giro: roll 0\.000, pitch 0\.000, yaw 2\.356 rad/m);
+  const rot = t.slice(t.indexOf('    rotation:\n')), q = ['x', 'y', 'z', 'w'].map(k => +rot.match(new RegExp(`^ {6}'${k}': (-?[\\d.]+) `, 'm'))[1]);
+  assert.ok(angulo(deQ(q), Rz(2.356)) < 1e-8, 'el giro de 2,356 rad en z');
+  assert.match(fichero(MODELO_203, 'tf/camara_cenital_optical.yaml'), /^ {4}frame_id: 'camara_cenital' {2}# SUPUESTO \(nombre propuesto\)$/m);
+});
+
+test('texto seguro en el script: un prefijo con comillas y punto y coma va entre comillas y bash -n lo acepta', async () => {
+  const { spawnSync } = await import('node:child_process');
+  const m = plano(MODELO_203); m.robot.frame = "x'; touch ./nada; '"; m.robot.prefijo = "x'; touch ./nada; '";
+  const s = fichero(m, 'tf_estaticas.sh');
+  assert.ok(s.includes("--frame-id 'x'\\''; touch ./nada; '\\''' --child-frame-id mesa "), 'el frame es un solo argumento entre comillas');
+  assert.equal(spawnSync('bash', ['-n'], { input: s }).status, 0);
+  assert.deepEqual(problemasParams(fichero(m, 'tf/mesa.yaml')), []);
+});

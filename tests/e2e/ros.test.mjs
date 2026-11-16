@@ -1,8 +1,10 @@
-// Ficheros de ROS de una disposición (T2.2 y T2.4; D8, I7): parametros_celda.yaml con nominal, el 203 y el 203 con prefijo
-// (CASOS_YAML), en una sola página. Se comprueban con analizadores ajenos al gemelo: yaml@2.9.1 (YAML 1.1 y 1.2) y el
-// validador de rcl de tests/rcl-params.mjs; las posiciones, contra posiciones.yaml (el mismo texto) y contra la disposición
-// en world con world_base_link de tests/fixtures/cinematica/<id>.json (ida y vuelta).
+// Ficheros de ROS de una disposición (T2.2 y T2.4; D8, I7): parametros_celda.yaml, tf/<frame>.yaml y tf_estaticas.sh con
+// nominal, el 203 y el 203 con prefijo (CASOS_YAML), en una sola página. Se comprueban con analizadores ajenos al gemelo:
+// yaml@2.9.1 (YAML 1.1 y 1.2), el validador de rcl de tests/rcl-params.mjs y bash -n; las posiciones, contra posiciones.yaml
+// (el mismo texto) y contra la disposición en world con world_base_link de tests/fixtures/cinematica/<id>.json (ida y
+// vuelta); las cámaras, contra la cámara con la que el gemelo pinta lo que ve cada una, y los marcadores, contra su dibujo.
 import { test, before, after } from 'node:test';
+import { spawnSync } from 'node:child_process';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
@@ -26,9 +28,19 @@ function leerPagina() {
   const g = window.__g, L = g.L(), V = g.robot.root.position.constructor;
   g.bandeja.updateMatrixWorld(true);
   const zonas = Object.fromEntries(['zona_primero', 'zona_segundo'].map(k => { const p = g.zonasB[k].getWorldPosition(new V()); return [k, { x: p.x, y: p.y, z: p.z }]; }));
+  // Lo que dibuja el gemelo (T2.4): la cámara de render de cada cámara (su marco óptico en world, la referencia de T2.4-C3)
+  // con las etiquetas de sus marcos TF, y cada marcador de entrega con su plano texturado (supuesto 2)
+  const opticos = Object.fromEntries(Object.keys(g.CAMS).map(k => {
+    const o = g.CAMS[k].optical; o.updateMatrixWorld(true);
+    return [k, { m: [...o.matrixWorld.elements], etiquetas: o.children.filter(h => h.userData.lbl).map(h => h.userData.lbl.element.textContent) }];
+  }));
+  const marcadores = g.OBJ.arucoE.map(a => {
+    a.updateMatrixWorld(true); const pl = a.children[1], uv = pl.geometry.attributes.uv.array, pos = pl.geometry.attributes.position.array, nor = pl.geometry.attributes.normal.array;
+    return { id: a.userData.id, m: [...a.matrixWorld.elements], local: [...pl.matrix.elements], flipY: pl.material.map.flipY, uv: [...uv], pos: [...pos], nor: [...nor] };
+  });
   return {
     ficheros: g.ficherosRos(), otra: g.ficherosRos(), yaml: g.generarYaml(), L: JSON.parse(JSON.stringify(L)), base: g.BASES[L.robot], robotId: g.ROB.id,
-    bandeja: { x: g.bandeja.position.x, y: g.bandeja.position.y, z: g.bandeja.position.z, yaw: g.bandeja.rotation.z }, zonas,
+    bandeja: { x: g.bandeja.position.x, y: g.bandeja.position.y, z: g.bandeja.position.z, yaw: g.bandeja.rotation.z }, zonas, opticos, marcadores,
   };
 }
 const texto = (r, nombre) => { const f = r.ficheros.find(x => x.nombre === nombre); assert.ok(f, `falta ${nombre}`); return f.texto; };
@@ -106,7 +118,40 @@ const cerca = (a, b, que) => {
 };
 const mismoGiro = (a, b, que) => assert.ok(giro(a, b) <= 0.001 + 1e-9, `${que}: ${a} frente a ${b} (±0,001 rad)`);
 
-test('T2.2 con nominal, el 203 y el 203 con prefijo: parametros_celda.yaml (C1–C4) y Común-C1 en la misma página', { timeout: 300000 }, async t => {
+// ---------- T2.4: TF estáticas ----------
+// Aristas de la decisión 6 del brief, escritas aquí (no las da el código que exporta): [padre, hijo]
+const aristasEsperadas = (raizTF, cams) => [
+  [raizTF, 'mesa'], [raizTF, 'zona_fruta'], [raizTF, 'plato_1_inicio'], [raizTF, 'plato_2_inicio'], [raizTF, 'marcador_4'], [raizTF, 'marcador_5'],
+  [raizTF, 'bandeja'], ['bandeja', 'zona_primero'], ['bandeja', 'zona_segundo'],
+  ...cams.flatMap(k => [[raizTF, `camara_${k}`], [`camara_${k}`, `camara_${k}_optical`]]),
+];
+const NOMINALES = { bandeja: 'nominal: la sustituye la pose que publique Visión', camara: 'nominal: la sustituye la calibración' };
+// Matrices 3×3 (filas) de setRPY (R = Rz(yaw)·Ry(pitch)·Rx(roll)) y de un cuaternión (x, y, z, w), sin el código que exporta
+const mul = (A, B) => A.map(f => [0, 1, 2].map(j => f[0] * B[0][j] + f[1] * B[1][j] + f[2] * B[2][j]));
+const tr = A => [0, 1, 2].map(i => [0, 1, 2].map(j => A[j][i]));
+const Rx = a => [[1, 0, 0], [0, Math.cos(a), -Math.sin(a)], [0, Math.sin(a), Math.cos(a)]];
+const Ry = a => [[Math.cos(a), 0, Math.sin(a)], [0, 1, 0], [-Math.sin(a), 0, Math.cos(a)]];
+const Rz = a => [[Math.cos(a), -Math.sin(a), 0], [Math.sin(a), Math.cos(a), 0], [0, 0, 1]];
+const deRPY = (r, p, y) => mul(Rz(y), mul(Ry(p), Rx(r)));
+const deQ = ([x, y, z, w]) => [[1 - 2 * (y * y + z * z), 2 * (x * y - z * w), 2 * (x * z + y * w)], [2 * (x * y + z * w), 1 - 2 * (x * x + z * z), 2 * (y * z - x * w)], [2 * (x * z - y * w), 2 * (y * z + x * w), 1 - 2 * (x * x + y * y)]];
+const angulo = (A, B) => 2 * Math.asin(Math.min(1, Math.hypot(...A.flat().map((v, i) => v - B.flat()[i])) / (2 * Math.SQRT2))); // ‖A − B‖ = 2√2·sen(θ/2)
+const entreEjes = (a, b) => Math.atan2(Math.hypot(a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]), a[0] * b[0] + a[1] * b[1] + a[2] * b[2]);
+const col = (A, j) => [A[0][j], A[1][j], A[2][j]], aplicar = (A, v) => A.map(f => f[0] * v[0] + f[1] * v[1] + f[2] * v[2]);
+const R3 = T => [[T[0], T[1], T[2]], [T[4], T[5], T[6]], [T[8], T[9], T[10]]]; // rotación de world_base_link del JSON (filas)
+const de3 = e => ({ R: [[e[0], e[4], e[8]], [e[1], e[5], e[9]], [e[2], e[6], e[10]]], p: [e[12], e[13], e[14]] }); // matrixWorld de three (por columnas)
+// Una TF de su YAML: padre, hijo, traslación y cuaternión (valores) y el texto de cada número
+function leerTF(src) {
+  const v = YAML.parse(src)['/**'].ros__parameters, h = hojas(src, docDe(src).contents.items[0].value.items[0].value);
+  return { padre: v.frame_id, hijo: v.child_frame_id, t: ['x', 'y', 'z'].map(k => v.translation[k]), q: ['x', 'y', 'z', 'w'].map(k => v.rotation[k]), texto: h, claves: [...h.keys()] };
+}
+// Un comando de tf_estaticas.sh: sus flags con nombre (--x … --child-frame-id) y el nombre de nodo
+function leerComando(l) {
+  const a = l.split(' '), f = {};
+  for (let i = 0; i < a.length; i++) if (a[i].startsWith('--') && a[i] !== '--ros-args') f[a[i].slice(2)] = a[++i];
+  return { flags: f, nodo: (l.match(/ -r __node:=(\S+) &$/) || [])[1] };
+}
+
+test('T2.2 y T2.4 con nominal, el 203 y el 203 con prefijo: parametros_celda.yaml (C1–C4), las TF estáticas (C1–C5) y Común-C1 en la misma página', { timeout: 300000 }, async t => {
   const s = await abrir(srv.url);
   try {
     const res = [];
@@ -169,6 +214,93 @@ test('T2.2 con nominal, el 203 y el 203 con prefijo: parametros_celda.yaml (C1�
         const n = [...celdaDe(p).keys()].map(k => k.replace(/\[\d+\]$/, '')).filter((k, i, a) => a.indexOf(k) === i).length;
         assert.equal(conValor.length, n);
       });
+      const raizTF = `${r.c.prefijo}base_link`, cams = Object.keys(r.L.cams);
+      const tfs = r.ficheros.filter(f => f.nombre.startsWith('tf/')), sh = texto(r, 'tf_estaticas.sh');
+      const T = REF(r.robotId).T, J = R3(T), base = [r.base.x, r.base.y, MESA_H];
+      const aBase = e => { const w = de3(e); return { R: mul(tr(J), w.R), p: aplicar(tr(J), w.p.map((v, i) => v - base[i])) }; }; // matriz de world a base_link
+      const porHijo = Object.fromEntries(tfs.map(f => [f.nombre.slice(3, -5), leerTF(f.texto)]));
+      const comandos = Object.fromEntries(sh.split('\n').filter(l => l.startsWith('ros2 run ')).map(l => { const c = leerComando(l); return [c.flags['child-frame-id'], { ...c, linea: l }]; }));
+      await t.test(`${r.c.id} · T2.4-C1: un tf/<hijo>.yaml por arista de la decisión 6 con los 9 parámetros; un árbol con una sola raíz (${raizTF})`, () => {
+        const esperadas = aristasEsperadas(raizTF, cams);
+        assert.deepEqual(tfs.map(f => f.nombre), esperadas.map(([, h]) => `tf/${h}.yaml`));
+        for (const f of tfs) {
+          assert.deepEqual(problemasParams(f.texto), [], f.nombre);
+          const e = porHijo[f.nombre.slice(3, -5)];
+          assert.deepEqual(e.claves, ['frame_id', 'child_frame_id', 'translation.x', 'translation.y', 'translation.z', 'rotation.x', 'rotation.y', 'rotation.z', 'rotation.w'], f.nombre);
+          assert.equal(`tf/${e.hijo}.yaml`, f.nombre);
+        }
+        assert.deepEqual(Object.values(porHijo).map(e => [e.padre, e.hijo]), esperadas);
+        const padre = new Map(Object.values(porHijo).map(e => [e.hijo, e.padre]));
+        assert.equal(padre.size, tfs.length, 'cada frame tiene un único padre');
+        const raices = new Set([...padre.values()].filter(p => !padre.has(p)));
+        assert.deepEqual([...raices], [raizTF], 'una sola raíz');
+        for (const h of padre.keys()) { let x = h, n = 0; while (padre.has(x)) { x = padre.get(x); assert.ok(++n <= padre.size, `ciclo desde ${h}`); } assert.equal(x, raizTF); }
+      });
+      await t.test(`${r.c.id} · T2.4-C2: cuaternión normalizado, el mismo giro que el comando con setRPY y los mismos números que el YAML`, () => {
+        assert.deepEqual(Object.keys(comandos).sort(), Object.keys(porHijo).sort(), 'un comando por TF');
+        for (const [h, e] of Object.entries(porHijo)) {
+          const c = comandos[h].flags, n2 = e.q.reduce((s, v) => s + v * v, 0);
+          assert.ok(Math.abs(n2 - 1) < 1e-9, `${h}: |q|² − 1 = ${n2 - 1}`);
+          for (const k of ['x', 'y', 'z', 'roll', 'pitch', 'yaw']) assert.match(c[k], /^-?\d+\.\d{3}$/, `${h}: --${k} ${c[k]} (1 mm y 0,001 rad)`);
+          assert.ok(angulo(deQ(e.q), deRPY(+c.roll, +c.pitch, +c.yaw)) < 1e-6, `${h}: el giro del YAML y el del comando`);
+          for (const k of ['x', 'y', 'z']) assert.equal(c[k], e.texto.get(`translation.${k}`).fuente, `${h}: --${k}`);
+          assert.equal(c['frame-id'], e.padre); assert.equal(c['child-frame-id'], e.hijo);
+          assert.match(texto(r, `tf/${h}.yaml`), new RegExp(`^# Giro: roll ${c.roll}, pitch ${c.pitch}, yaw ${c.yaw} rad `, 'm'), `${h}: la cabecera dice el mismo rpy`);
+        }
+      });
+      await t.test(`${r.c.id} · T2.4-C3: ${raizTF} → camara_<k> → camara_<k>_optical coincide con la cámara de render del gemelo (±0,5 mm, ±0,002 rad por eje)`, st => {
+        for (const k of cams) {
+          const b = porHijo[`camara_${k}`], o = porHijo[`camara_${k}_optical`];
+          assert.deepEqual([b.padre, o.padre], [raizTF, `camara_${k}`]);
+          const Rb = deQ(b.q), R = mul(Rb, deQ(o.q)), p = b.t.map((v, i) => v + aplicar(Rb, o.t)[i]);
+          const ref = aBase(r.opticos[k].m);
+          for (let i = 0; i < 3; i++) assert.ok(Math.abs(p[i] - ref.p[i]) <= 0.5e-3 + 1e-9, `${k}: ${'xyz'[i]} ${p[i]} frente a ${ref.p[i]}`);
+          const ejes = [0, 1, 2].map(j => entreEjes(col(R, j), col(ref.R, j)));
+          for (const [j, e] of ejes.entries()) assert.ok(e <= 0.002, `${k}: eje ${'xyz'[j]} a ${e} rad`);
+          // supuesto 1: el marco óptico de la cámara de render es el de REP-103 (z hacia el punto de mira)
+          const cam = r.L.cams[k], f = [cam.mira.x - cam.pos.x, cam.mira.y - cam.pos.y, cam.mira.z - cam.pos.z];
+          assert.ok(entreEjes(col(de3(r.opticos[k].m).R, 2), f) < 1e-6, `${k}: z óptico hacia la mira`);
+          st.diagnostic(`${k}: ejes a ${ejes.map(e => e.toExponential(2)).join(', ')} rad`);
+        }
+      });
+      await t.test(`${r.c.id} · T2.4-C4: tf_estaticas.sh con un comando por arista, nombres de nodo válidos y únicos, bash -n y las nominales comentadas`, () => {
+        assert.equal(spawnSync('bash', ['-n'], { input: sh }).status, 0, 'bash -n');
+        const ls = sh.split('\n'); assert.equal(ls[0], '#!/bin/bash'); assert.deepEqual(ls.slice(-2), ['wait', '']);
+        const cmds = ls.map((l, i) => [l, i]).filter(([l]) => l.startsWith('ros2 run '));
+        assert.equal(cmds.length, tfs.length);
+        const nodos = cmds.map(([l]) => leerComando(l).nodo);
+        assert.equal(new Set(nodos).size, nodos.length, 'nombres de nodo únicos');
+        const re = new RegExp(`: (${[...ORIGEN.TIPOS, ORIGEN.ELEGIDO].join('|')})\\b`);
+        for (const [l, i] of cmds) {
+          assert.match(l, /^ros2 run tf2_ros static_transform_publisher --x \S+ --y \S+ --z \S+ --roll \S+ --pitch \S+ --yaw \S+ --frame-id \S+ --child-frame-id \S+ --ros-args -r __node:=[A-Za-z][A-Za-z0-9_]* &$/, l);
+          const h = leerComando(l).flags['child-frame-id'], com = ls[i - 1];
+          assert.ok(com.startsWith(`# ${porHijo[h].padre} → ${h}: `), `comentario de ${h}: ${com}`); assert.match(com, re, `origen de ${h}`);
+          const nominal = h === 'bandeja' ? NOMINALES.bandeja : /^camara_[a-z]+$/.test(h) ? NOMINALES.camara : null;
+          if (nominal) { assert.ok(com.endsWith(` · ${nominal}`), `${h}: ${com}`); assert.match(texto(r, `tf/${h}.yaml`), new RegExp(`^# TF estática .* ${nominal}\\.$`, 'm')); }
+          else assert.ok(!com.includes('nominal:'), `${h} no es nominal`);
+        }
+      });
+      await t.test(`${r.c.id} · T2.4-C5 y supuesto 2: los marcos de las cámaras se llaman camara_<k>_optical en la vista 3D; los marcadores, planos con los ejes de la mesa`, () => {
+        for (const k of cams) assert.deepEqual(r.opticos[k].etiquetas, [`camara_${k}_optical`]);
+        for (const [i, mk] of r.marcadores.entries()) {
+          const h = `marcador_${mk.id}`, w = de3(mk.m), l = de3(mk.local);
+          assert.equal(h, `marcador_${4 + i}`);
+          assert.ok(angulo(w.R, [[1, 0, 0], [0, 1, 0], [0, 0, 1]]) < 1e-9 && angulo(l.R, [[1, 0, 0], [0, 1, 0], [0, 0, 1]]) < 1e-9, `${h}: sin giro propio`);
+          // el patrón: la esquina de arriba a la izquierda del lienzo (uv 0,1 con flipY) en (−x, +y); la normal, +z
+          assert.equal(mk.flipY, true);
+          const v = j => ({ uv: mk.uv.slice(2 * j, 2 * j + 2), p: mk.pos.slice(3 * j, 3 * j + 3), n: mk.nor.slice(3 * j, 3 * j + 3) });
+          for (let j = 0; j < mk.uv.length / 2; j++) { const x = v(j); assert.deepEqual([Math.sign(x.p[0]), Math.sign(x.p[1])], [x.uv[0] ? 1 : -1, x.uv[1] ? 1 : -1], `${h}: vértice ${j}`); assert.deepEqual(x.n, [0, 0, 1]); }
+          // la TF del marcador gira como el dibujo, visto desde base_link
+          assert.ok(angulo(deQ(porHijo[h].q), aBase(mk.m).R) <= 0.002, `${h}: giro de la TF y del dibujo`);
+        }
+        // las zonas cuelgan de la bandeja: bandeja ∘ zona da la zona dibujada (dos redondeos de 1 mm y uno de 0,001 rad en
+        // 10 cm: 0,5 + 0,71 + 0,05 < 1,3 mm por eje)
+        const b = porHijo.bandeja, Rb = deQ(b.q);
+        for (const k of ['zona_primero', 'zona_segundo']) {
+          const z = porHijo[k], p = b.t.map((v, i) => v + aplicar(Rb, z.t)[i]), w = r.zonas[k], ref = aplicar(tr(J), [w.x - base[0], w.y - base[1], w.z - base[2]]);
+          for (let i = 0; i < 3; i++) assert.ok(Math.abs(p[i] - ref[i]) <= 1.3e-3, `${k}: ${'xyz'[i]} ${p[i]} frente a ${ref[i]}`);
+        }
+      });
       await t.test(`${r.c.id} · Común-C1: exportar dos veces da los mismos bytes y ningún fichero lleva fecha`, () => {
         assert.deepEqual(r.otra, r.ficheros);
         for (const f of r.ficheros) assert.ok(!/\b\d{4}-\d{2}-\d{2}\b/.test(f.texto), `${f.nombre}: sin fecha`);
@@ -177,20 +309,27 @@ test('T2.2 con nominal, el 203 y el 203 con prefijo: parametros_celda.yaml (C1�
   } finally { await s.cerrar(); }
 });
 
-test('Común-C1: tras recargar la página, la misma disposición da los mismos bytes en todos los ficheros', { timeout: 300000 }, async () => {
-  const s = await abrir(srv.url); const p = s.page;
+// Recargar = volver a abrir el gemelo con la misma Tu mesa guardada (localStorage). Se hace en un navegador nuevo con ese
+// almacenamiento y no con page.reload(): con SwiftShader, la página vieja vacía antes los fotogramas acumulados y la recarga
+// tarda 22–26 s más (medido; DT33). Lo que se comprueba es lo mismo: lo exportado sale de la disposición guardada y de nada
+// que quede en memoria.
+test('Común-C1: tras recargar la página (la misma Tu mesa), la misma disposición da los mismos bytes en todos los ficheros', { timeout: 300000 }, async () => {
+  let antes;
+  const s = await abrir(srv.url);
   try {
-    await aplicarCaso(p, CASOS_YAML.find(c => c.id === '203-prefijo'));
-    const antes = await p.evaluate(() => ({ L: JSON.stringify(window.__g.L()), f: window.__g.ficherosRos() }));
-    // Tu mesa se guarda a los 400 ms del último cambio: se espera a que esté escrita antes de recargar
-    await p.waitForFunction(l => localStorage.getItem('gemelo-ur3e-v4') === l, antes.L, { timeout: 30000, polling: 50 });
-    // condición, no el evento load (con SwiftShader tarda más que el tiempo de navegación): el documento nuevo y su #loading
-    await p.reload({ waitUntil: 'commit', timeout: 120000 });
-    // cargado() ya ha colocado todo (ladoZonas incluido); los ficheros no dependen de las trayectorias: no se espera al cálculo
-    await p.waitForFunction(() => document.readyState !== 'loading' && !!window.__g && !document.getElementById('loading'), null, { timeout: 120000, polling: 100 });
-    const despues = await p.evaluate(() => ({ L: JSON.stringify(window.__g.L()), f: window.__g.ficherosRos() }));
-    assert.equal(despues.L, antes.L, 'la misma disposición tras recargar');
-    assert.deepEqual(despues.f, antes.f);
+    await aplicarCaso(s.page, CASOS_YAML.find(c => c.id === '203-prefijo'));
+    antes = await s.page.evaluate(() => ({ L: JSON.stringify(window.__g.L()), f: window.__g.ficherosRos() }));
+    // Tu mesa se guarda a los 400 ms del último cambio: se espera a que esté escrita
+    await s.page.waitForFunction(l => localStorage.getItem('gemelo-ur3e-v4') === l, antes.L, { timeout: 30000, polling: 50 });
     comprobar(s.reg);
   } finally { await s.cerrar(); }
+  // el mismo almacenamiento antes de que arranque la página (una sola carga en ese contexto)
+  const s2 = await abrir(srv.url, { esperarCalculo: false, initScripts: [`localStorage.setItem('gemelo-ur3e-v4', ${JSON.stringify(antes.L)});`] });
+  try {
+    // cargado() ya ha colocado todo (ladoZonas incluido); los ficheros no dependen de las trayectorias: no se espera al cálculo
+    const despues = await s2.page.evaluate(() => ({ L: JSON.stringify(window.__g.L()), f: window.__g.ficherosRos() }));
+    assert.equal(despues.L, antes.L, 'la misma disposición tras recargar');
+    assert.deepEqual(despues.f, antes.f);
+    comprobar(s2.reg);
+  } finally { await s2.cerrar(); }
 });

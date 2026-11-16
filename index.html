@@ -1216,11 +1216,11 @@ const EXPORTAR = (() => {
   const raiz = nodos => `/**:\n  ros__parameters:\n${bloque(nodos, 4)}`;
 
   // Cabecera de los ficheros de ROS (decisión 8): sin fecha, con el robot, el frame, la huella y cómo se carga
-  function cabecera(m, O, nombre, carga, extra = []) {
+  function cabecera(m, O, nombre, carga, extra = [], donde = 'al final de su línea') {
     return [`# ${nombre} · gemelo de la celda UR3e · generado por el gemelo (IA), BORRADOR\n`, comentario(lineaRobot(m)), comentario(lineaFrame(m)),
       `# Huella de la disposición: ${huella(m.layoutJson)} (FNV-1a de 32 bits de JSON.stringify(L), en UTF-8): casa este fichero con su disposición.\n`,
       `# Carga: ${carga} [SIN VALIDAR en ROS: U4].\n`, ...extra.map(l => `# ${l}\n`),
-      `# Origen de cada valor, al final de su línea: ${O.LEYENDA}; lo que se elige en el gemelo, «${O.ELEGIDO}».\n`].join('');
+      `# Origen de cada valor, ${donde}: ${O.LEYENDA}; lo que se elige en el gemelo, «${O.ELEGIDO}».\n`].join('');
   }
 
   // ---------- parametros_celda.yaml (T2.2): ros__parameters para --params-file ----------
@@ -1283,12 +1283,89 @@ const EXPORTAR = (() => {
     ]) + raiz([mapa('celda', ...nodos)]);
   }
 
-  // Ficheros de ROS de una disposición, en orden fijo: [{ nombre, texto }] (T2.2; las TF llegan con T2.4)
-  function ficherosRos(m, O) {
-    return [{ nombre: 'parametros_celda.yaml', texto: parametros(m, O) }];
+  // ---------- TF estáticas (T2.4): un tf/<child_frame_id>.yaml por arista y tf_estaticas.sh ----------
+  const OPTICO = [-PI / 2, 0, -PI / 2]; // camara_<k> → camara_<k>_optical (REP-103), fijo
+  // Cuaternión (x, y, z, w) de setRPY de tf2 (R = Rz(yaw)·Ry(pitch)·Rx(roll), ejes fijos) con los ángulos tal como se escriben
+  // (3 decimales): el YAML y el comando dan el mismo giro. Normalizado y en enteros de 1e-9 (se escriben con 9 decimales).
+  // Redondear cada componente por separado aleja |q|² de 1 hasta 2e-9: de las 81 combinaciones de ±1e-9 alrededor del
+  // redondeo se queda la de |q|² más cerca de 1 (con empate, la de menos cambios); el giro cambia menos de 1e-8 rad.
+  function cuaternion(rpy) {
+    const [r, p, y] = rpy.map(a => +a3(a)), h = a => [Math.cos(a / 2), Math.sin(a / 2)];
+    const [cr, sr] = h(r), [cp, sp] = h(p), [cy, sy] = h(y);
+    const q = [sr * cp * cy - cr * sp * sy, cr * sp * cy + sr * cp * sy, cr * cp * sy - sr * sp * cy, cr * cp * cy + sr * sp * sy];
+    const n = Math.hypot(...q), base = q.map(v => Math.round(v / n * 1e9));
+    let mejor = base, e0 = Infinity, c0 = 5;
+    for (let i = 0; i < 81; i++) {
+      const d = [i % 3, (i / 3 | 0) % 3, (i / 9 | 0) % 3, (i / 27 | 0) % 3].map(k => k - 1), cand = base.map((v, j) => v + d[j]);
+      const e = Math.abs(cand.reduce((s, v) => s + (v * 1e-9) ** 2, 0) - 1), cambios = d.filter(Boolean).length;
+      if (e < e0 - 1e-15 || (Math.abs(e - e0) <= 1e-15 && cambios < c0)) { mejor = cand; e0 = e; c0 = cambios; }
+    }
+    return mejor;
+  }
+  const dec9 = n => `${n < 0 ? '-' : ''}${Math.floor(Math.abs(n) / 1e9)}.${String(Math.abs(n) % 1e9).padStart(9, '0')}`; // entero de 1e-9 → texto
+  // Un argumento de bash: tal cual si es un nombre normal; si no, entre comillas simples (nada de la disposición se ejecuta)
+  const sh = s => /^[A-Za-z0-9_./:-]+$/.test(s) ? s : `'${limpio(s).replace(/'/g, "'\\''")}'`;
+
+  // Aristas de la decisión 6, en orden fijo: { padre, hijo, p {x, y, z}, rpy, origen, que, nominal }. La raíz es
+  // <prefijo>base_link (sin arista a world: la publica el URDF); los frames de la celda no llevan prefijo.
+  function aristas(m, O) {
+    const c = m.ctx, og = k => O.yaml(k, c), ot = k => O.tipo(k, c);
+    const raizTF = m.robot.frame, sup = og('disposicion'), cero = { x: 0, y: 0, z: 0 };
+    const giro = m.robot.yaw !== 0 ? `${ot('orientacion_base_link')} (giro world→base_link sin validar en ROS)` : og('mesa'); // como posiciones.yaml
+    const A = [], a = (padre, hijo, p, rpy, origen, que, nominal = null) => A.push({ padre, hijo, p, rpy, origen, que, nominal });
+    a(raizTF, 'mesa', m.mesa, [0, 0, m.mesa.yaw], giro, 'centro de la cara de arriba de la mesa, con su giro');
+    a(raizTF, 'zona_fruta', m.zona, [0, 0, m.zona.yaw], sup, 'centro y giro de la zona de fruta');
+    for (const p of m.platos.lista) a(raizTF, `${p.clave}_inicio`, p, [0, 0, m.mesa.yaw], sup, `dónde está el ${p.clave.replace('_', ' ')} antes de cogerlo, con los ejes de la mesa (el robot lo mueve y una TF estática no lo sigue)`);
+    for (const k of m.marcadores) a(raizTF, `marcador_${ent(k.id)}`, k, [0, 0, k.yaw], sup, `marcador de entrega ${ent(k.id)} (${limpio(k.diccionario)}), plano sobre la mesa y con sus ejes; convenio de ArUco de OpenCV: z sale de la cara impresa, x a la derecha e y hacia arriba del patrón`);
+    a(raizTF, 'bandeja', m.bandeja, [0, 0, m.bandeja.yaw], sup, 'pose de plan de la bandeja (sin balanceo), en la cara de arriba', 'nominal: la sustituye la pose que publique Visión');
+    for (const z of m.bandeja.zonas) a('bandeja', z.clave, z.local, [0, 0, 0], og('plato_bandeja_persona'), `${z.clave}, donde se deja un plato en la bandeja: cuelga de la bandeja para seguirla cuando Visión publique su pose`);
+    for (const k of m.camaras) {
+      const cam = `camara_${limpio(k.clave)}`;
+      a(raizTF, cam, k.pos, k.rpy, sup, `marco del cuerpo de la cámara ${limpio(k.clave)} (REP-103): x hacia donde mira, y a la izquierda, z arriba`, 'nominal: la sustituye la calibración');
+      a(cam, `${cam}_optical`, cero, OPTICO, og('marco_optico'), `marco óptico de la cámara ${limpio(k.clave)} (REP-103): z hacia donde mira, x a la derecha e y hacia abajo de la imagen`);
+    }
+    return A;
+  }
+  const ESCENA_DOBLE = 'En una escena doble, carga las TF de un solo robot: cada frame admite un único padre.';
+  // tf/<hijo>.yaml: los 9 parámetros de tf2_ros::StaticTransformBroadcasterNode (translation.*, rotation.*, frame_id y
+  // child_frame_id). Las claves x, y, z y w van entre comillas: YAML 1.1 lee una «y» suelta como true.
+  function tfYaml(m, O, e) {
+    const EL = O.ELEGIDO, nom = O.yaml('nombre_frame', m.ctx), q = cuaternion(e.rpy), [r, p, y] = e.rpy.map(a3);
+    const nodos = [
+      hoja('frame_id', cad(e.padre), e.padre === m.robot.frame ? `${EL} (el prefijo; base_link es el del URDF)` : nom),
+      hoja('child_frame_id', cad(e.hijo), nom),
+      mapa('translation', ...['x', 'y', 'z'].map(k => hoja(`'${k}'`, d3(e.p[k]), e.origen))),
+      mapa('rotation', ...['x', 'y', 'z', 'w'].map((k, i) => hoja(`'${k}'`, dec9(q[i]), e.origen))),
+    ];
+    return cabecera(m, O, `tf/${e.hijo}.yaml`, `ros2 component standalone tf2_ros tf2_ros::StaticTransformBroadcasterNode --ros-args --params-file tf/${e.hijo}.yaml -r __node:=tf_${e.hijo}`, [
+      `TF estática ${limpio(e.padre)} → ${e.hijo}: ${e.que}.${e.nominal ? ` ${e.nominal}.` : ''}`,
+      `Giro: roll ${r}, pitch ${p}, yaw ${y} rad (setRPY: R = Rz(yaw)·Ry(pitch)·Rx(roll), ejes fijos), en cuaternión (x, y, z, w) normalizado con 9 decimales.`,
+      'Las claves x, y, z y w van entre comillas: YAML 1.1 lee una «y» suelta como true.',
+      ESCENA_DOBLE,
+    ]) + raiz(nodos);
+  }
+  // tf_estaticas.sh: un static_transform_publisher (flags con nombre, ángulos en rad) por arista, en segundo plano, y wait
+  function script(m, O, A) {
+    let t = '#!/bin/bash\n' + cabecera(m, O, 'tf_estaticas.sh', 'bash tf_estaticas.sh, con ROS 2 Jazzy en el entorno: una static_transform_publisher por TF; Ctrl+C las para todas', [
+      ESCENA_DOBLE, 'Metros y radianes; los ángulos, con setRPY (R = Rz(yaw)·Ry(pitch)·Rx(roll), ejes fijos). Los mismos números que tf/<child_frame_id>.yaml.',
+    ], 'en la línea anterior a cada comando');
+    t += "trap 'kill $(jobs -p) 2>/dev/null' INT TERM\n";
+    for (const e of A) {
+      const [r, p, y] = e.rpy.map(a3);
+      t += `# ${limpio(e.padre)} → ${e.hijo}: ${limpio(e.origen)}${e.nominal ? ` · ${e.nominal}` : ''}\n`;
+      t += `ros2 run tf2_ros static_transform_publisher --x ${d3(e.p.x)} --y ${d3(e.p.y)} --z ${d3(e.p.z)} --roll ${r} --pitch ${p} --yaw ${y} --frame-id ${sh(e.padre)} --child-frame-id ${sh(e.hijo)} --ros-args -r __node:=tf_${e.hijo} &\n`;
+    }
+    return t + 'wait\n';
   }
 
-  return { r3, rad3, huella, posiciones, parametros, ficherosRos };
+  // Ficheros de ROS de una disposición, en orden fijo: [{ nombre, texto }]: parametros_celda.yaml, tf/<child_frame_id>.yaml de cada
+  // arista y tf_estaticas.sh
+  function ficherosRos(m, O) {
+    const A = aristas(m, O);
+    return [{ nombre: 'parametros_celda.yaml', texto: parametros(m, O) }, ...A.map(e => ({ nombre: `tf/${e.hijo}.yaml`, texto: tfYaml(m, O, e) })), { nombre: 'tf_estaticas.sh', texto: script(m, O, A) }];
+  }
+
+  return { r3, rad3, huella, cuaternion, posiciones, parametros, ficherosRos };
 })();
 // GENERADO por tools/fixtures/fk_desde_xacro.py: no editar a mano (ver tools/fixtures/LEEME.md).
 // Calibración cinemática de los UR3e del laboratorio y su montaje respecto a «world».
@@ -4190,7 +4267,7 @@ function cargado(g) {
   robot.setCinematica(CIN); REF_MANIP = CIN.manip(Q_REF_MANIP); // el robot de la disposición abierta (T1.4)
   colocarRobots(); aplicarBandeja(simT); iniciarColision(); crearVolumenes(); pintarCalidad(); robot.setQ(qReposo()); sincronizarSliders();
   marcoTF('mesa', scene).position.set(0, 0, MESA.h + 0.002); marcoTF('base_link', robot.root); marcoTF('tool0', robot.tool0); marcoTF('tcp', pinza.tcp);
-  for (const k in CAMS) marcoTF('camara_' + k, CAMS[k].optical);
+  for (const k in CAMS) marcoTF(`camara_${k}_optical`, CAMS[k].optical); // el marco óptico de REP-103, con el nombre de su TF (T2.4)
   marcoTF('bandeja', bandeja); for (const k in zonasB) marcoTF(k, zonasB[k]).userData.lbl.element.textContent = '';
   ladoZonas(); calcularPerfil(); calcularMapa(); dibujarSolape(); vista('iso'); camAnim.s = 0.999;
   $('#loading').remove(); evaluar(); pintarPip(); D_ready = true; calcularPlanes(); // primer cálculo sin bloquear la página
