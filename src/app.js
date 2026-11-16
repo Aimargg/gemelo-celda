@@ -33,8 +33,14 @@ const H_TR = 0.12, H_AP = 0.06; // altura de traslado sobre la mesa y de aproxim
 // de la matriz que llegan a la salida, con «gemelo» y con «curso», y en las escenas v8. Medido con el gemelo (2026-11-16,
 // informe de T1.9): con 2 cm, las 19 salidas libres y holgura mínima de 5,5 mm; con 3 cm, una salida de «curso» toca la
 // bandeja (−1,7 mm: arranque en contacto); con 5 y 6 cm, la subida de «gemelo» caja M1 2 cm llega a la singularidad del
-// codo y la demo falla (sin trayectoria)
-const H_SALIDA = 0.02;
+// codo y la demo falla (sin trayectoria).
+// Desde T2.8 (DT30), planColocar exige además que el final de la subida y el arranque hacia el reposo no toquen la bandeja
+// en ninguna pose de su balanceo, y la altura se volvió a medir con esa comprobación en el barrido de 33 disposiciones
+// (tools/barrido-salida.mjs; docs/estado/barrido-salida-t28.md, 2026-11-16). Con 2, 3, 4 y 5 cm ninguna toca la bandeja,
+// frente a 10 antes de T2.8. Con 2 cm, 26 viables, pero Calcular en la disposición de partida pasa de 0,9 s a 1,7 s
+// (descarta sus agarres y busca otros); con 3 cm se pierde v16, viable antes (ruta cartesiana incompleta al llevar el
+// plato 2); con 4 cm, 25 viables sin perder ninguna y Calcular en 0,9 s. Es el menor valor que cumple las tres cosas
+const H_SALIDA = 0.04;
 const CAJA_LADO = 0.10;
 // ArUco reales del diccionario DICT_4X4_50 (ids 0–15), bits interiores por filas
 const ARUCO = ['1011010100110010', '0000111110011010', '0011001100101101', '1001100101000110', '0101010010011110', '0111100111001101', '1001111000101110', '1100010011110010', '1111111011011010', '1100111101010110', '1111100110010001', '0001000110100111', '0000111010110111', '0010101000001111', '0010010010110001', '0010011000111110'];

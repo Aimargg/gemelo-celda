@@ -2,9 +2,10 @@
 // toca la bandeja al salir de ella, al subir H_SALIDA y al arrancar el movimiento siguiente (tránsito o reposo), en la
 // disposición de partida y en 32 vecinas. No es un test: no compara con nada, escribe la medida.
 //
-// Uso: npm run build && node tools/barrido-salida.mjs <salida.md> [--etiqueta <texto>]
-//      [--primeras N] solo mide las N primeras disposiciones (para probar el script)
-//      escribe la tabla en <salida.md> (p. ej. docs/estado/barrido-salida-v9-dev.md) y los datos en <salida.json>.
+// Uso: npm run build && node tools/barrido-salida.mjs <salida.md> [--etiqueta <texto>] [--primeras N]
+//      escribe la tabla en <salida.md> (p. ej. docs/estado/barrido-salida-v9-dev.md) y los datos en <salida.json>;
+//      --primeras N solo mide las N primeras disposiciones (para probar el script).
+//      node tools/barrido-salida.mjs --resumen <salida.md> <base.json> <pasada.json>… → tabla que compara pasadas.
 //
 // Rejilla (2^5 + 1 = 33 disposiciones): la de partida y las 32 esquinas de un factorial de dos niveles en cinco factores,
 // todos alrededor de la de partida:
@@ -35,6 +36,21 @@ import { arrancarServidor, RAIZ } from '../tests/servidor.mjs';
 import { abrir, comprobar, esperarPlanes } from '../tests/navegador.mjs';
 
 const args = process.argv.slice(2);
+// Resumen de varias pasadas (T2.8, decisión 3): node tools/barrido-salida.mjs --resumen <salida.md> <base.json> <pasada.json>…
+// tabla con los contactos y las disposiciones viables de cada pasada frente a la base (la del código de antes)
+if (args[0] === '--resumen') {
+  const [, fOut, fBase, ...fs_] = args; if (!fOut || !fBase || !fs_.length) { console.error('uso: node tools/barrido-salida.mjs --resumen <salida.md> <base.json> <pasada.json>…'); process.exit(2); }
+  const leer = f => JSON.parse(fs.readFileSync(path.resolve(f), 'utf8')), base = leer(fBase), vb = new Set(base.filas.filter(f => f.viable).map(f => f.id));
+  const min = (d, k) => Math.min(...d.filas.flatMap(r => r.salidas.map(x => x[k]).filter(v => v !== null)));
+  const f1 = v => String(v).replace('.', ',');
+  const md = ['# Barrido de la salida de la bandeja: resumen de pasadas', '', `> Generado por \`node tools/barrido-salida.mjs --resumen ${[fOut, fBase, ...fs_].join(' ')}\` (T2.8, DT30). No editar a mano. Cada fila es una pasada de las 33 disposiciones (su tabla, en su .md); «perdidas» y «ganadas» son disposiciones viables (comprobación previa y demo «curso» completas) frente a la base.`, '',
+    '| Pasada | src/ | H_SALIDA (m) | tocan la bandeja | viables | perdidas | ganadas | holgura mínima al acabar la subida (mm) | holgura mínima en el arranque (mm) |', '|---|---|---|---|---|---|---|---|---|'];
+  for (const d of [base, ...fs_.map(leer)]) {
+    const v = new Set(d.filas.filter(f => f.viable).map(f => f.id));
+    md.push(`| ${d.etiqueta} | ${d.commit} | ${d.h_salida} | ${d.resumen.tocan}${d.resumen.tocan ? ` (${d.filas.filter(f => f.toca).map(f => f.id).join(', ')})` : ''} | ${v.size} | ${[...vb].filter(x => !v.has(x)).join(', ') || '—'} | ${[...v].filter(x => !vb.has(x)).join(', ') || '—'} | ${f1(min(d, 'inicio_mm'))} | ${f1(min(d, 'arranque_mm'))} |`);
+  }
+  fs.writeFileSync(path.resolve(fOut), md.join('\n') + '\n'); console.log('escrito', fOut); process.exit(0);
+}
 const opt = k => { const i = args.indexOf(k); return i >= 0 ? args[i + 1] : undefined; };
 const salida = args.find((a, i) => !a.startsWith('--') && !['--etiqueta', '--primeras'].includes(args[i - 1]));
 const etiqueta = opt('--etiqueta') || '', primeras = opt('--primeras') ? +opt('--primeras') : null; // --primeras N: solo las N primeras (para probar el script)
