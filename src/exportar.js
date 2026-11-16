@@ -1,15 +1,17 @@
-// Formateador de los ficheros exportados (T2.2, T2.4, D8, I7): convierte el modelo de modeloExportacion() (app.js: un objeto
+// Formateador de los ficheros exportados (T2.2–T2.4, D8, I7): convierte el modelo de modeloExportacion() (app.js: un objeto
 // plano, sin redondear y en el base_link del robot elegido) en texto. Sin DOM, three ni globales del gemelo: el origen de
 // cada valor lo da el módulo de origen que recibe cada función (src/origen.js en el gemelo) con el contexto del modelo
 // (m.ctx), y aquí no se escribe ningún tipo de origen a mano. Se prueba con node:test en un contexto vm vacío
-// (tests/unit/exportar.test.mjs) y se concatena en app.js con el marcador @@EXPORTAR@@ (D4).
+// (tests/unit/exportar.test.mjs y exportar-escena.test.mjs) y se concatena en app.js con el marcador @@EXPORTAR@@ (D4).
 // Modelo (todo en metros y radianes, en m.robot.frame salvo world_a_base_link y pose_en_world_doble):
 //   ctx (contexto de origen) · layoutJson (JSON.stringify(L)) · robot { posicion, id, idLayout, desconocido, sospechoso,
 //   yaw, prefijo, frame, worldABase {x, y, z}, doble { nombre, x, y, z, yaw } | null } · pinza { modelo, tcpZ, carrera } ·
 //   mesa { ancho, fondo, alto, x, y, z, yaw } · pedido · platos { sobreCaja, cajaAlto, cajaLado, agarre, radioAgarre,
 //   lista [{ clave, x, y, z }] } · zona { x, y, z, yaw, ancho, fondo } · marcadores [{ id, diccionario, lado, x, y, z, yaw }]
 //   · bandeja { x, y, z, yaw, zonas [{ clave, base {x, y, z}, local {x, y, z} }] } · persona { x, y, z, yaw } ·
-//   camaras [{ clave, grupo, modelo, focal, modo, hfov, pos, mira, clamp, orient { pan, tilt, roll }, rpy [r, p, y] }]
+//   camaras [{ clave, grupo, modelo, focal, modo, hfov, pos, mira, clamp, orient { pan, tilt, roll }, rpy [r, p, y] }] · escena { objetos [{ id, que, giro?, pose { x, y, z, rpy },
+//   formas [{ tipo: 'caja' (dims [x, y, z]) | 'esfera' (radio) | 'cilindro' (radio, altura; eje z del objeto) | 'capsula'
+//   (radio, a {x, y, z}, b {x, y, z}), local {x, y, z} (en el marco del objeto) o centro {x, y, z} (en base_link) }] }] }
 const EXPORTAR = (() => {
   const PI = Math.PI, R2D = 180 / PI;
   // Números (I7): metros y radianes con 3 decimales (1 mm y 0,001 rad); los ángulos, en [−π, π] antes de redondear
@@ -178,7 +180,10 @@ const EXPORTAR = (() => {
   function cuaternion(rpy) {
     const [r, p, y] = rpy.map(a => +a3(a)), h = a => [Math.cos(a / 2), Math.sin(a / 2)];
     const [cr, sr] = h(r), [cp, sp] = h(p), [cy, sy] = h(y);
-    const q = [sr * cp * cy - cr * sp * sy, cr * sp * cy + sr * cp * sy, cr * cp * sy - sr * sp * cy, cr * cp * cy + sr * sp * sy];
+    return q9([sr * cp * cy - cr * sp * sy, cr * sp * cy + sr * cp * sy, cr * cp * sy - sr * sp * cy, cr * cp * cy + sr * sp * sy]);
+  }
+  // Un cuaternión (x, y, z, w) cualquiera, normalizado y en enteros de 1e-9, con la misma búsqueda de la norma más cercana a 1
+  function q9(q) {
     const n = Math.hypot(...q), base = q.map(v => Math.round(v / n * 1e9));
     let mejor = base, e0 = Infinity, c0 = 5;
     for (let i = 0; i < 81; i++) {
@@ -251,6 +256,132 @@ const EXPORTAR = (() => {
     return [{ nombre: 'parametros_celda.yaml', texto: parametros(m, O) }, ...A.map(e => ({ nombre: `tf/${e.hijo}.yaml`, texto: tfYaml(m, O, e) })), { nombre: 'tf_estaticas.sh', texto: script(m, O, A) }];
   }
 
-  return { r3, rad3, huella, cuaternion, posiciones, parametros, ficherosRos };
+  // ---------- Escena de colisión (T2.3): escena_colision.yaml (CollisionObject en <prefijo>base_link) y celda.scene (world) ----------
+  // Cada objeto de m.escena.objetos pasa a { id, que, giro, p, q, formas }: la posición a 1 mm y el cuaternión de setRPY con
+  // los ángulos a 0,001 rad (el mismo que su TF, si la tiene), y por forma su tipo de shape_msgs/SolidPrimitive, sus
+  // dimensiones a 1 mm y su pose relativa a la del objeto (CollisionObject: primitive_poses son relativas a pose). Una forma
+  // con `local` lleva esa posición en el marco del objeto; con `centro` (en base_link), la que la deja en ese punto con la pose
+  // del objeto ya redondeada (Rᵀ·(centro − p)), para que el redondeo de la pose del objeto no se sume al de la forma. Una
+  // cápsula de obstaculos() es un CYLINDER entre sus dos extremos más una SPHERE en cada extremo.
+  const BOX = 1, SPHERE = 2, CYLINDER = 3; // shape_msgs/SolidPrimitive: dimensions BOX [x, y, z], SPHERE [radio], CYLINDER [altura, radio]
+  const ID = [0, 0, 0, 1e9];
+  const matQ = ([x, y, z, w]) => [[1 - 2 * (y * y + z * z), 2 * (x * y - z * w), 2 * (x * z + y * w)], [2 * (x * y + z * w), 1 - 2 * (x * x + z * z), 2 * (y * z - x * w)], [2 * (x * z - y * w), 2 * (y * z + x * w), 1 - 2 * (x * x + y * y)]];
+  const aObjeto = (R, v) => [0, 1, 2].map(j => R[0][j] * v[0] + R[1][j] * v[1] + R[2][j] * v[2]); // Rᵀ·v
+  const aPadre = (R, v) => R.map(f => f[0] * v[0] + f[1] * v[1] + f[2] * v[2]); // R·v
+  const qMul = (a, b) => [a[3] * b[0] + a[0] * b[3] + a[1] * b[2] - a[2] * b[1], a[3] * b[1] - a[0] * b[2] + a[1] * b[3] + a[2] * b[0], a[3] * b[2] + a[0] * b[1] - a[1] * b[0] + a[2] * b[3], a[3] * b[3] - a[0] * b[0] - a[1] * b[1] - a[2] * b[2]];
+  const mm = v => +d3(v); // el número tal como se escribe (1 mm)
+  const arco = d => d[2] < -1 + 1e-12 ? q9([1, 0, 0, 0]) : q9([-d[1], d[0], 0, 1 + d[2]]); // lleva +z a la dirección unitaria d (giro más corto)
+  function objetosEscena(m) {
+    return m.escena.objetos.map(o => {
+      const p = [o.pose.x, o.pose.y, o.pose.z].map(mm), q = cuaternion(o.pose.rpy), R = matQ(q.map(v => v / 1e9));
+      const rel = c => aObjeto(R, [c.x - p[0], c.y - p[1], c.z - p[2]]).map(mm), formas = [];
+      for (const f of o.formas) {
+        const pf = f.centro ? rel(f.centro) : f.local ? [f.local.x, f.local.y, f.local.z].map(mm) : [0, 0, 0];
+        if (f.tipo === 'caja') formas.push({ tipo: BOX, dims: f.dims.map(mm), p: pf, q: ID });
+        else if (f.tipo === 'esfera') formas.push({ tipo: SPHERE, dims: [mm(f.radio)], p: pf, q: ID });
+        else if (f.tipo === 'cilindro') formas.push({ tipo: CYLINDER, dims: [mm(f.altura), mm(f.radio)], p: pf, q: ID });
+        else if (f.tipo === 'capsula') {
+          const d = [f.b.x - f.a.x, f.b.y - f.a.y, f.b.z - f.a.z], l = Math.hypot(...d), medio = { x: (f.a.x + f.b.x) / 2, y: (f.a.y + f.b.y) / 2, z: (f.a.z + f.b.z) / 2 };
+          // un tramo que no llega a 1 mm no es un cilindro (dimensión 0): lo cubren las dos esferas de sus extremos
+          if (mm(l) > 0) formas.push({ tipo: CYLINDER, dims: [mm(l), mm(f.radio)], p: rel(medio), q: arco(aObjeto(R, d.map(v => v / l))), nota: 'tramo de una cápsula' });
+          formas.push({ tipo: SPHERE, dims: [mm(f.radio)], p: rel(f.a), q: ID, nota: 'extremo de una cápsula' }, { tipo: SPHERE, dims: [mm(f.radio)], p: rel(f.b), q: ID, nota: 'extremo de una cápsula' });
+        } else throw new Error(`exportar: forma desconocida (${f.tipo})`);
+      }
+      return { id: limpio(o.id), que: o.que, giro: o.giro || null, p, q, formas };
+    });
+  }
+  // Origen de la pose, del giro, de las formas y de sus poses, por tipo de objeto
+  const GIRO_CAJA = { plan: 'el del agarre que eligió el plan del gemelo', base: 'provisional, hacia la base del robot: las trayectorias no están al día (Calcular)', calculo: 'el de un cálculo a medias: exporta cuando termine' };
+  function origenesEscena(m, O) {
+    const c = m.ctx, og = k => O.yaml(k, c), ot = k => O.tipo(k, c), sup = og('disposicion');
+    const giro = m.robot.yaw !== 0 ? `${ot('orientacion_base_link')} (giro world→base_link sin validar en ROS)` : og('mesa'); // como su TF
+    const tf = n => `${sup}; la de su TF ${n}`;
+    return {
+      mesa: { pos: () => `${giro}; la de su TF mesa (centro de la cara de arriba)`, ori: () => giro, forma: og('mesa'), poseForma: `${og('mesa_bajo_base')}; centro a media altura de la mesa` },
+      caja: { pos: () => `${sup}: bajo su plato; z: ${og('caja_plato')}, media altura de la caja`, ori: o => `${og('giro_caja')}: ${GIRO_CAJA[o.giro] || GIRO_CAJA.calculo}`, forma: og('caja_plato'), poseForma: `${og('caja_plato')}: en la pose del objeto` },
+      plato: { pos: o => tf(`${o.id}_inicio`), ori: o => tf(`${o.id}_inicio`), forma: `${og('plato_bandeja_persona')}: radio · ${og('grosor_plato')}: altura`, poseForma: `${og('grosor_plato')}: medio grosor por encima de su TF` },
+      bandeja: { pos: () => `${tf('bandeja')} (pose de plan, sin balanceo) · nominal: la sustituye la pose que publique Visión`, ori: () => tf('bandeja'), forma: og('plato_bandeja_persona'), poseForma: og('plato_bandeja_persona') },
+      camara: { pos: o => `${tf(o.id)} · nominal: la sustituye la calibración`, ori: o => tf(o.id), forma: og('colision_camara'), poseForma: og('colision_camara') },
+    };
+  }
+  const P3 = p => `{'x': ${d3(p[0])}, 'y': ${d3(p[1])}, 'z': ${d3(p[2])}}`; // claves entre comillas: YAML 1.1 lee una «y» suelta como true
+  const Q4 = q => `{'x': ${dec9(q[0])}, 'y': ${dec9(q[1])}, 'z': ${dec9(q[2])}, 'w': ${dec9(q[3])}}`;
+  const TIPO_TXT = { [BOX]: 'BOX [x, y, z]', [SPHERE]: 'SPHERE [radio]', [CYLINDER]: 'CYLINDER [altura, radio]' };
+  const FUERA = 'Fuera de la escena: la persona y la fruta (se mueven o son lo que se coge), la zona de fruta y el otro robot (ya está en el URDF doble, DT16).';
+  const PLATOS = 'plato_1 y plato_2 son obstáculos hasta que se cogen: para cogerlos, adjúntalos a la pinza (AttachedCollisionObject) o permite el contacto en la ACM.';
+  const SUELO = 'El id suelo es el de la caja del ejemplo del profesor: aquí no se usa (un ADD con el mismo id la sustituiría).';
+  const lineaCajas = E => { const g = [...new Set(E.filter(o => o.que === 'caja').map(o => o.giro || 'calculo'))]; return g.length ? [`Giro de las cajas: ${g.map(x => GIRO_CAJA[x] || GIRO_CAJA.calculo).join('; ')}.`] : []; };
+  // escena_colision.yaml: objetos: una lista de mapas con los campos de moveit_msgs/CollisionObject que se usan (no son
+  // ros__parameters: aquí una lista de mapas sí vale). Sin operation: ADD (0) es su valor por defecto.
+  function escenaYaml(m, O, E) {
+    const EL = O.ELEGIDO, F = m.robot.frame, og = k => O.yaml(k, m.ctx), org = origenesEscena(m, O);
+    let y = cabecera(m, O, 'escena_colision.yaml', 'un nodo del grupo lo lee con yaml.safe_load, rellena cada moveit_msgs/CollisionObject con rosidl_runtime_py.set_message_fields y los envía con el servicio apply_planning_scene (is_diff: true)', [
+      `objetos: lista de moveit_msgs/CollisionObject (moveit_msgs 2.6) en ${limpio(F)}, con header.frame_id, id, pose (la del objeto), primitives y primitive_poses (relativas a pose).`,
+      'Sin operation: vale ADD (0) por defecto y ADD con un id que ya existe sustituye el objeto; un byte escrito como entero no pasa por set_message_fields.',
+      'SolidPrimitive: type 1 = BOX [x, y, z], 2 = SPHERE [radio] y 3 = CYLINDER [altura, radio], en m (celda.scene escribe el cilindro al revés: cylinder radio longitud).',
+      'Posiciones a 1 mm; cuaterniones (x, y, z, w) normalizados con 9 decimales, de setRPY con los ángulos a 0,001 rad (los mismos que las TF). Las poses de las formas salen de la pose del objeto ya redondeada.',
+      'Objetos: mesa (BOX), caja_plato_<n> (BOX, solo con los platos sobre caja), plato_<n> (CYLINDER), bandeja (BOX) y camara_<k> (SPHERE y CYLINDER: la cámara y su brazo), sin márgenes de roce.',
+      'La cara de arriba de la mesa queda 1 mm por debajo de base_link, como el suelo del ejemplo del profesor: así la base del robot no arranca en contacto con la mesa.',
+      PLATOS, FUERA, SUELO, ...lineaCajas(E),
+      'La bandeja va en su pose de plan y cada cámara en la de su TF: las dos son nominales.',
+    ]) + 'objetos:\n';
+    for (const o of E) {
+      const g = org[o.que];
+      y += `  - header: {frame_id: ${cad(F)}}  # ${EL} (el prefijo; base_link es el del URDF)\n    id: ${cad(o.id)}  # ${og('id_escena')}\n`;
+      y += `    pose:\n      position: ${P3(o.p)}  # ${limpio(g.pos(o))}\n      orientation: ${Q4(o.q)}  # ${limpio(g.ori(o))}\n    primitives:\n`;
+      for (const f of o.formas) y += `      - {type: ${f.tipo}, dimensions: ${lista(f.dims.map(d3))}}  # ${limpio(g.forma)} · ${TIPO_TXT[f.tipo]}${f.nota ? `: ${f.nota}` : ''}\n`;
+      y += '    primitive_poses:\n';
+      for (const f of o.formas) y += `      - {position: ${P3(f.p)}, orientation: ${Q4(f.q)}}  # ${limpio(g.poseForma)}\n`;
+    }
+    return y;
+  }
+  // celda.scene: el texto de PlanningScene::loadGeometryFromStream (moveit 2.12) en el world del URDF que corresponda. Sin
+  // comentarios (el lector no los ignora): lo explica celda.scene.txt. Por objeto: «* id», su pose (x y z / qx qy qz qw), el
+  // número de formas y, por forma, su tipo, sus dimensiones (cylinder: radio longitud), su pose relativa y su color; luego el
+  // número de subframes (0). Las formas y sus poses son las de escena_colision.yaml; solo la pose de cada objeto cambia de frame.
+  const TIPO_SCENE = { [BOX]: 'box', [SPHERE]: 'sphere', [CYLINDER]: 'cylinder' };
+  const COLOR = { mesa: [0.3, 0.3, 0.32, 1], caja: [0.76, 0.6, 0.42, 1], plato: [0.96, 0.95, 0.93, 1], bandeja: [0.5, 0.58, 0.65, 1], camara: [0.08, 0.08, 0.09, 1] }; // solo para verlos en RViz
+  // El world del .scene: con prefijo y URDF doble conocido, el del doble (pose_en_world_doble); si no, el de sim_<id>
+  // (world_a_base_link, giro puro)
+  const mundoDe = m => { const R = m.robot; return R.doble ? { x: R.doble.x, y: R.doble.y, z: R.doble.z, yaw: R.doble.yaw, doble: R.doble.nombre } : { ...R.worldABase, yaw: R.yaw, doble: null }; };
+  function scene(m, E) {
+    const W = mundoDe(m), qW = [0, 0, Math.sin(W.yaw / 2), Math.cos(W.yaw / 2)], RW = matQ(qW), t0 = [W.x, W.y, W.z].map(num);
+    let t = `gemelo_celda_${huella(m.layoutJson)}\n`;
+    for (const o of E) {
+      const pw = aPadre(RW, o.p).map((v, i) => v + t0[i]), qw = q9(qMul(qW, o.q.map(v => v / 1e9)));
+      t += `* ${o.id}\n${pw.map(d3).join(' ')}\n${qw.map(dec9).join(' ')}\n${o.formas.length}\n`;
+      for (const f of o.formas) t += `${TIPO_SCENE[f.tipo]}\n${(f.tipo === CYLINDER ? [f.dims[1], f.dims[0]] : f.dims).map(d3).join(' ')}\n${f.p.map(d3).join(' ')}\n${f.q.map(dec9).join(' ')}\n${COLOR[o.que].map(v => v.toFixed(3)).join(' ')}\n`;
+      t += '0\n';
+    }
+    return t + '.\n';
+  }
+  // celda.scene.txt: en qué world está la escena, cómo se carga, el aviso del «éxito» falso y el origen de cada objeto
+  function sceneTxt(m, O, E) {
+    const W = mundoDe(m), F = limpio(m.robot.frame), og = k => O.yaml(k, m.ctx), org = origenesEscena(m, O);
+    const donde = W.doble ? `el world del URDF doble ${limpio(W.doble)}.urdf.xacro` : 'el world de sim_<id> (el URDF de un solo robot)';
+    return cabecera(m, O, 'celda.scene.txt', 'acompaña a celda.scene; cómo cargarlo, abajo', [
+      `celda.scene está en ${donde}, no en ${F}: un .scene no lleva frame y MoveIt lo lee en el frame del modelo.`,
+      `En ese world, ${F} está en (${d3(W.x)}, ${d3(W.y)}, ${d3(W.z)}) m con yaw ${rad3(W.yaw)} rad (${grados(W.yaw)}): p_world = Rz(yaw)·p_${F} + (x, y, z) [${og(W.doble ? 'pose_doble' : 'orientacion_base_link')}].`,
+      'Los objetos, sus formas y las poses de las formas son los de escena_colision.yaml, con los mismos números; solo la pose de cada objeto pasa a world (a 1 mm, cuaterniones x y z w con 9 decimales).',
+      'Formato (PlanningScene::loadGeometryFromStream, moveit 2.12): el nombre de la escena; por objeto, «* id», su pose (x y z / qx qy qz qw), el número de formas y, por forma, su tipo,',
+      '  sus dimensiones (box x y z, sphere radio, cylinder radio longitud: al revés que SolidPrimitive), su pose relativa (dos líneas) y su color r g b a; luego el número de subframes (0). Al final, «.».',
+      'Carga, con la ruta de dentro del contenedor donde corre move_group: ros2 service call /load_geometry_from_file moveit_msgs/srv/LoadGeometryFromFile "{file_path_and_name: /ruta/celda.scene}"',
+      '  (capacidad de move_group desde MoveIt 2.11), o en RViz: MotionPlanning → Scene Objects → Import [SIN VALIDAR en ROS: U4].',
+      'Aviso: load_geometry_from_file responde success: true aunque el fichero esté mal formado. Comprueba en RViz o con get_planning_scene que están todos los objetos.',
+      'El .scene no admite comentarios: lo que lo explica está en este fichero. Los colores (r g b a) son solo para verlos en RViz.',
+      PLATOS, FUERA, SUELO, ...lineaCajas(E),
+      'Origen de cada objeto (pose · giro · formas · poses de las formas):',
+      ...E.map(o => { const g = org[o.que]; return `  ${o.id}: ${limpio(g.pos(o))} · ${limpio(g.ori(o))} · ${limpio(g.forma)} · ${limpio(g.poseForma)}`; }),
+    ], 'en la lista «Origen de cada objeto»');
+  }
+  function ficherosEscena(m, O) {
+    const E = objetosEscena(m);
+    return [{ nombre: 'escena_colision.yaml', texto: escenaYaml(m, O, E) }, { nombre: 'celda.scene', texto: scene(m, E) }, { nombre: 'celda.scene.txt', texto: sceneTxt(m, O, E) }];
+  }
+
+  // Todos los ficheros de ROS de la disposición, en orden fijo: los de T2.2 + T2.4 y los de la escena (T2.3)
+  const todos = (m, O) => [...ficherosRos(m, O), ...ficherosEscena(m, O)];
+
+  return { r3, rad3, huella, cuaternion, posiciones, parametros, ficherosRos, ficherosEscena, todos };
 })();
 if (typeof module !== 'undefined') module.exports = EXPORTAR;

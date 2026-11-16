@@ -1761,6 +1761,13 @@ function modeloExportacion() {
   // Una disposición de solo lectura puede traer un robot que esta versión no conoce: se dice y se usa el nominal (corrección 5)
   const doble = pf && d.doble ? { nombre: d.doble.fichero.split('/').pop().replace('.urdf.xacro', ''), x: d.doble.x, y: d.doble.y, z: 0, yaw: d.doble.yaw - PI } : null;
   const mc = B({ x: 0, y: 0 }), zf = B(L.zona), bt = B(tp), pe = B(L.persona);
+  // orient: giro (desde +y hacia +x), inclinación (positiva hacia abajo) y alabeo, en base_link (orientDe). rpy: el marco del
+  // cuerpo de la cámara (REP-103: x hacia donde mira, y a la izquierda, z arriba) con setRPY. La cámara de three mira con lookAt
+  // (y horizontal) y gira la imagen con rotateZ(alabeo) sobre su +z, que apunta hacia atrás: en el cuerpo es −alabeo en x.
+  const camaras = Object.keys(L.cams).map(k => {
+    const c = L.cams[k], o = orientDe({ pos: B(c.pos), mira: B(c.mira), roll: c.roll });
+    return { clave: k, grupo: c.grupo, modelo: 'ELP-USB12MP01-UFV', focal: c.f, modo: c.modo, hfov: hfovDe(c), pos: B(c.pos), mira: B(c.mira), clamp: B(c.clamp), orient: { pan: o.pan, tilt: o.tilt, roll: o.roll }, rpy: [-o.roll, o.tilt, PI / 2 - o.pan] };
+  });
   return {
     ctx: ctxOrigen(), layoutJson: JSON.stringify(L),
     robot: { posicion: L.robot, id, idLayout: L.robotId, desconocido: L.robotId !== id, sospechoso: !!d.sospechoso, yaw: ROB.yaw, prefijo: pf, frame: `${pf}base_link`, worldABase: { x: 0, y: 0, z: 0 }, doble },
@@ -1773,19 +1780,39 @@ function modeloExportacion() {
     marcadores: L.arucoE.map((a, i) => ({ id: 4 + i, diccionario: 'DICT_4X4_50', lado: 0.06, ...B(a), yaw: yawABase(0) })),
     bandeja: { ...bt, yaw: yawABase(tp.yaw), zonas: ['zona_primero', 'zona_segundo'].map(k => ({ clave: k, base: B(zw(k)), local: v(zonasB[k].position) })) },
     persona: { ...pe, yaw: yawABase(L.persona.yaw) },
-    // orient: giro (desde +y hacia +x), inclinación (positiva hacia abajo) y alabeo, en base_link (orientDe). rpy: el marco del
-    // cuerpo de la cámara (REP-103: x hacia donde mira, y a la izquierda, z arriba) con setRPY. La cámara de three mira con lookAt
-    // (y horizontal) y gira la imagen con rotateZ(alabeo) sobre su +z, que apunta hacia atrás: en el cuerpo es −alabeo en x.
-    camaras: Object.keys(L.cams).map(k => {
-      const c = L.cams[k], o = orientDe({ pos: B(c.pos), mira: B(c.mira), roll: c.roll });
-      return { clave: k, grupo: c.grupo, modelo: 'ELP-USB12MP01-UFV', focal: c.f, modo: c.modo, hfov: hfovDe(c), pos: B(c.pos), mira: B(c.mira), clamp: B(c.clamp), orient: { pan: o.pan, tilt: o.tilt, roll: o.roll }, rpy: [-o.roll, o.tilt, PI / 2 - o.pan] };
-    }),
+    camaras,
+    escena: escenaExportacion(B, mc, bt, yawABase(tp.yaw), camaras),
   };
 }
+// Escena de colisión (T2.3, decisión 2 de su brief): los objetos de obstaculos() que se exportan, sin márgenes de roce, en
+// base_link y sin redondear. La mesa y los platos, desde la disposición; las cajas, la bandeja y cada cámara con su brazo,
+// desde obstaculos() (el modelo de colisión del gemelo). La bandeja, en su pose de plan (poseBandeja(0), la de su TF), con la
+// caja de obstaculos() en su marco. Fuera: la persona, la fruta, la zona de fruta y el otro robot (lo dice la cabecera).
+// giro de cada caja: 'plan' (el del agarre de un plan al día), 'base' (el provisional, hacia la base) o 'calculo' (a medias)
+const HOLGURA_MESA = 0.001; // la cara de arriba de la mesa, 1 mm por debajo de base_link (como el suelo del profesor)
+function escenaExportacion(B, mc, bt, yawBandeja, camaras) {
+  const obs = obstaculos(), deTag = t => obs.filter(o => o.tag === t), P = o => ({ x: o.x, y: o.y, z: o.z });
+  const grosor = Math.max(...platoPts.map(p => p[1])); // el perfil del plato dibujado (lathe)
+  const objetos = [{ id: 'mesa', que: 'mesa', pose: { ...mc, rpy: [0, 0, yawABase(0)] }, formas: [{ tipo: 'caja', dims: [MESA.w, MESA.d, MESA.h], local: { x: 0, y: 0, z: -HOLGURA_MESA - MESA.h / 2 } }] }];
+  const giroCaja = (pk, yaw) => {
+    for (const pf of [PERFIL_EXPLORA, perfilEscena()]) { const pl = planAlDia(pk, pf) && cachePlan(pf)[pk].pl; if (pl && Math.abs(angDiff(pl.yaw, yaw)) < 1e-9) return 'plan'; }
+    const b = BASES[L.robot]; return Math.abs(angDiff(Math.atan2(L[pk].y - b.y, L[pk].x - b.x), yaw)) < 1e-9 ? 'base' : 'calculo';
+  };
+  for (const n of ['1', '2']) for (const o of deTag(`caja:plato${n}`)) objetos.push({ id: `caja_plato_${n}`, que: 'caja', giro: giroCaja(`plato${n}`, OBJ['caja' + n].rotation.z), pose: { ...P(o), rpy: [0, 0, Math.atan2(o.s, o.c)] }, formas: [{ tipo: 'caja', dims: [2 * o.hx, 2 * o.hy, 2 * o.hz] }] });
+  for (const pk of ['plato1', 'plato2']) if (pk === 'plato1' || L.pedido !== 1) objetos.push({ id: pk.replace('plato', 'plato_'), que: 'plato', pose: { ...B({ x: L[pk].x, y: L[pk].y, z: zPlato() }), rpy: [0, 0, yawABase(0)] }, formas: [{ tipo: 'cilindro', radio: PLATO_R, altura: grosor, local: { x: 0, y: 0, z: grosor / 2 } }] });
+  { // la caja de la bandeja en el marco de la bandeja de ahora (la que usa obstaculos()), llevada a la pose de plan
+    const o = deTag('bandeja')[0], cur = B(bandeja.position), yc = yawABase(bandeja.rotation.z), dx = o.x - cur.x, dy = o.y - cur.y;
+    const local = { x: Math.cos(yc) * dx + Math.sin(yc) * dy, y: -Math.sin(yc) * dx + Math.cos(yc) * dy, z: o.z - cur.z };
+    objetos.push({ id: 'bandeja', que: 'bandeja', pose: { ...bt, rpy: [0, 0, yawBandeja] }, formas: [{ tipo: 'caja', dims: [2 * o.hx, 2 * o.hy, 2 * o.hz], local }] });
+  }
+  for (const k of camaras) objetos.push({ id: `camara_${k.clave}`, que: 'camara', pose: { ...k.pos, rpy: k.rpy }, formas: deTag(`camara:${k.clave}`).map(o => o.t === 1 ? { tipo: 'esfera', radio: o.r, centro: P(o) } : { tipo: 'capsula', radio: o.r, a: { x: o.ax, y: o.ay, z: o.az }, b: { x: o.cx, y: o.cy, z: o.cz } }) });
+  return { objetos };
+}
 function generarYaml() { return EXPORTAR.posiciones(modeloExportacion(), ORIGEN, new Date().toISOString().slice(0, 10)); }
-// Ficheros de ROS de la disposición actual (T2.2, T2.4): [{ nombre, texto }] en orden fijo, deterministas (sin fecha). Los
-// descargará el panel de T2.6; hoy los leen los tests con window.__g.ficherosRos()
-function ficherosRos() { return EXPORTAR.ficherosRos(modeloExportacion(), ORIGEN); }
+// Ficheros de ROS de la disposición actual: [{ nombre, texto }] en orden fijo, deterministas (sin fecha): los de T2.2 + T2.4
+// y los de la escena (T2.3). Los descargará el panel de T2.6; hoy los leen los tests con
+// window.__g.ficherosRos()
+function ficherosRos() { return EXPORTAR.todos(modeloExportacion(), ORIGEN); }
 function pintarDatos() { $('#yaml').value = generarYaml(); pintarFuentes(); }
 $('#btnCopy').addEventListener('click', async () => { const t = $('#yaml'); try { await navigator.clipboard.writeText(t.value); toast('Copiado'); } catch (e) { t.focus(); t.select(); toast('Selecciona y copia con Ctrl+C'); } });
 // @@ESCENAS@@
