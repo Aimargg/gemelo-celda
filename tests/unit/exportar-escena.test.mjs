@@ -1,4 +1,4 @@
-// Unitario de los formateadores de T2.3 (escena de colisión) de src/exportar.js (Común-C2): cargado en un
+// Unitario de los formateadores de T2.3 (escena de colisión) y T2.5 (cámaras) de src/exportar.js (Común-C2): cargado en un
 // contexto vm vacío (sin ROB, L, CAMS, DOM ni three), con un modelo hecho a mano. Los textos esperados están escritos aquí a
 // mano a partir del modelo (las cuentas, en los comentarios), no copiados de la salida; los cuaterniones que no son la
 // identidad se comprueban con su fórmula, aparte del módulo. Los validadores de tests/ revisan además cada fichero.
@@ -13,6 +13,7 @@ import YAML from 'yaml';
 import { problemasParams } from '../rcl-params.mjs';
 import { problemasEscena } from '../collision-object.mjs';
 import { problemasScene } from '../scene-texto.mjs';
+import { problemasCameraInfo } from '../camera-info.mjs';
 const require = createRequire(import.meta.url);
 const ORIGEN = require('../../src/origen.js');
 const SENSOR = require('../../src/sensor.js');
@@ -63,11 +64,11 @@ const ID = "{'x': 0.000000000, 'y': 0.000000000, 'z': 0.000000000, 'w': 1.000000
 // Cuaternión (x, y, z, w) de un texto «x y z w» o de un flujo YAML, frente a uno esperado: ±1e-9 por componente (9 decimales)
 const cercaQ = (q, esperado, que) => { assert.equal(q.length, 4); q.forEach((v, i) => assert.ok(Math.abs(v - esperado[i]) <= 1.5e-9, `${que}: ${q} frente a ${esperado}`)); assert.ok(Math.abs(q.reduce((s, v) => s + v * v, 0) - 1) < 1e-9, `${que}: normalizado`); };
 
-test('Común-C2: todos() da los ficheros de T2.2 + T2.4 (sin cambiar) y después los de la escena, en orden fijo', () => {
+test('Común-C2: todos() da los ficheros de T2.2 + T2.4 (sin cambiar), después los de la escena y después los de las cámaras, en orden fijo', () => {
   const todos = plano(EXPORTAR.todos(MODELO_DOBLE, ORIGEN)), antes = plano(EXPORTAR.ficherosRos(MODELO_DOBLE, ORIGEN));
   assert.deepEqual(todos.slice(0, antes.length), antes);
-  assert.deepEqual(todos.slice(antes.length).map(f => f.nombre), ['escena_colision.yaml', 'celda.scene', 'celda.scene.txt']);
-  assert.deepEqual(todos.slice(antes.length), plano(EXPORTAR.ficherosEscena(MODELO_DOBLE, ORIGEN)));
+  assert.deepEqual(todos.slice(antes.length).map(f => f.nombre), ['escena_colision.yaml', 'celda.scene', 'celda.scene.txt', 'camera_info/camara_cenital.yaml', 'usb_cam/camara_cenital.yaml']);
+  assert.deepEqual(todos.slice(antes.length), plano([...EXPORTAR.ficherosEscena(MODELO_DOBLE, ORIGEN), ...EXPORTAR.ficherosCamaras(MODELO_DOBLE, ORIGEN)]));
   assert.deepEqual(plano(EXPORTAR.todos(MODELO_DOBLE, ORIGEN)), todos, 'dos exportaciones, los mismos bytes');
   for (const f of todos) assert.ok(!/\b\d{4}-\d{2}-\d{2}\b/.test(f.texto), `${f.nombre}: sin fecha`);
 });
@@ -165,6 +166,69 @@ test('Común-C2 y T2.3: con prefijo y URDF doble, el .scene está en el world de
   cercaQ(ls[i + 2].split(' ').map(Number), [0, 0, Math.sin(a / 2), Math.cos(a / 2)], 'giro de la mesa en el world del doble');
   assert.match(t, /^# celda\.scene está en el world del URDF doble doble_ur3e_203_204\.urdf\.xacro, no en 203_base_link: /m);
   assert.match(t, /^# En ese world, 203_base_link está en \(0\.005, -0\.900, 0\.000\) m con yaw -0\.639 rad \(−36,6°\): .*\[SUPUESTO \(sin validar en ROS\)\]\.$/m);
+});
+
+test('Común-C2 y T2.5: camera_info/camara_cenital.yaml del modelo a mano, entero', () => {
+  const c = fichero(MODELO, 'camera_info/camara_cenital.yaml');
+  assert.deepEqual(problemasCameraInfo(c), []);
+  // fx = 960/tan(hfov/2) = 960·7,2/5,952 = 1161,290; fy = 540·7,2/3,348 = 1161,290; cx = 1919/2 = 959,5; cy = 1079/2 = 539,5
+  assert.equal(c, [
+    '# camera_info/camara_cenital.yaml · gemelo de la celda UR3e · generado por el gemelo (IA), BORRADOR',
+    '# Robot: nominal (sin identificar: cinemática nominal del UR3e), en la posición B de la celda (derecha en la foto cenital).',
+    '# Frame: base_link (sin prefijo, como en sim_<id>). Metros y radianes (REP-103), redondeo a 1 mm y 0,001 rad.',
+    '# Huella de la disposición: 811c9dc5 (FNV-1a de 32 bits de JSON.stringify(L), en UTF-8): casa este fichero con su disposición.',
+    '# Carga: el camera_info_url de usb_cam/camara_cenital.yaml: cópialo a ${ROS_HOME}/camera_info/camara_cenital.yaml (por defecto ~/.ros/camera_info/) [SIN VALIDAR en ROS: U4].',
+    '# Cámara cenital: ELP-USB12MP01-UFV, focal 3.6 mm (focal_mm, DT19), modo 1920x1080 (1920 × 1080 a 120.0 fps), sensor «ELP ficha» de 5,952 mm de ancho útil.',
+    '# K en píxeles, de lente ideal y con el modelo de la cámara con la que el gemelo pinta lo que ve: fx = (w/2)/tan(hfov/2) y fy = (h/2)/tan(vfov/2), con hfov 1.382 rad y vfov 0.871 rad;',
+    '#   cx = (w − 1)/2 y cy = (h − 1)/2: el píxel (0, 0) tiene su centro en 0, como en OpenCV y ROS. Números de las matrices con 3 decimales.',
+    '# D = 0 (plumb_bob), R = I y P = [K | 0]. Nominal: lo sustituye la calibración intrínseca (F4) guardada con el mismo camera_name (camara_cenital) en la misma ruta.',
+    '# Origen de cada valor, al final de su línea: MEDIDO, FABRICANTE o SUPUESTO; lo que se elige en el gemelo, «elegido en el gemelo».',
+    'image_width: 1920  # elegido en el gemelo (modo 1920x1080)',
+    'image_height: 1080  # elegido en el gemelo (modo 1920x1080)',
+    "camera_name: 'camara_cenital'  # SUPUESTO (nombre propuesto); el de usb_cam/camara_cenital.yaml",
+    'camera_matrix:',
+    '  rows: 3  # FABRICANTE (formato de camera_info)',
+    '  cols: 3  # FABRICANTE (formato de camera_info)',
+    '  data: [1161.290, 0.000, 959.500, 0.000, 1161.290, 539.500, 0.000, 0.000, 1.000]  # SUPUESTO (lente ideal, sensor elp-ficha); focal y modo: elegido en el gemelo',
+    "distortion_model: 'plumb_bob'  # SUPUESTO (lente ideal, sin distorsión)",
+    'distortion_coefficients:',
+    '  rows: 1  # FABRICANTE (formato de camera_info)',
+    '  cols: 5  # FABRICANTE (formato de camera_info)',
+    '  data: [0.000, 0.000, 0.000, 0.000, 0.000]  # SUPUESTO (lente ideal, sin distorsión)',
+    'rectification_matrix:',
+    '  rows: 3  # FABRICANTE (formato de camera_info)',
+    '  cols: 3  # FABRICANTE (formato de camera_info)',
+    '  data: [1.000, 0.000, 0.000, 0.000, 1.000, 0.000, 0.000, 0.000, 1.000]  # FABRICANTE (formato de camera_info)',
+    'projection_matrix:',
+    '  rows: 3  # FABRICANTE (formato de camera_info)',
+    '  cols: 4  # FABRICANTE (formato de camera_info)',
+    '  data: [1161.290, 0.000, 959.500, 0.000, 0.000, 1161.290, 539.500, 0.000, 0.000, 0.000, 1.000, 0.000]  # SUPUESTO (lente ideal, sensor elp-ficha); focal y modo: elegido en el gemelo: P = [K | 0]',
+    '',
+  ].join('\n'));
+});
+
+test('Común-C2 y T2.5: usb_cam/camara_cenital.yaml del modelo a mano: rcl, enteros de usb_cam y sin camera_frame_id', () => {
+  const u = fichero(MODELO, 'usb_cam/camara_cenital.yaml');
+  assert.deepEqual(problemasParams(u, { enteros: ['image_width', 'image_height', 'exposure', 'white_balance'] }), []);
+  assert.match(u, /^# Carga: ros2 run usb_cam usb_cam_node_exe --ros-args -r __ns:=\/camara_cenital --params-file usb_cam\/camara_cenital\.yaml /m);
+  assert.match(u, /^# Sustituye al camera_frame_id del launch del curso, que usb_cam no declara/m);
+  assert.equal(bloque(u, '/**:', 14), [
+    '/**:',
+    '  ros__parameters:',
+    "    video_device: '/dev/video0'  # SUPUESTO (compruébalo con v4l2-ctl --list-devices; mejor un /dev/v4l/by-id/…)",
+    '    framerate: 120.0  # elegido en el gemelo (modo 1920x1080)',
+    '    image_width: 1920  # elegido en el gemelo (modo 1920x1080)',
+    '    image_height: 1080  # elegido en el gemelo (modo 1920x1080)',
+    "    pixel_format: 'mjpeg2rgb'  # SUPUESTO (MJPEG decodificado por usb_cam)",
+    "    camera_name: 'camara_cenital'  # SUPUESTO (nombre propuesto); el de camera_info/camara_cenital.yaml",
+    "    frame_id: 'camara_cenital_optical'  # SUPUESTO (nombre propuesto); el marco óptico de su TF (tf/camara_cenital_optical.yaml)",
+    "    camera_info_url: 'file://${ROS_HOME}/camera_info/camara_cenital.yaml'  # FABRICANTE (ruta por defecto de camera_info_manager)",
+    '    autoexposure: false  # SUPUESTO (5 ms: la bandeja en movimiento pide ≤ 5,6 ms; con luz de 50 Hz puede dar bandas)',
+    '    exposure: 50  # SUPUESTO (5 ms: la bandeja en movimiento pide ≤ 5,6 ms; con luz de 50 Hz puede dar bandas)',
+    '    auto_white_balance: false  # SUPUESTO (sin medir la luz del laboratorio)',
+    '    white_balance: 4000  # SUPUESTO (sin medir la luz del laboratorio)',
+  ].join('\n'));
+  assert.ok(!u.includes('camera_frame_id:'));
 });
 
 test('T2.3: un tramo de cápsula de menos de 1 mm no da un cilindro de altura 0 (lo cubren sus dos esferas); una forma desconocida falla', () => {

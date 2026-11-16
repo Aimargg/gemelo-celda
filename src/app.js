@@ -1764,9 +1764,12 @@ function modeloExportacion() {
   // orient: giro (desde +y hacia +x), inclinación (positiva hacia abajo) y alabeo, en base_link (orientDe). rpy: el marco del
   // cuerpo de la cámara (REP-103: x hacia donde mira, y a la izquierda, z arriba) con setRPY. La cámara de three mira con lookAt
   // (y horizontal) y gira la imagen con rotateZ(alabeo) sobre su +z, que apunta hacia atrás: en el cuerpo es −alabeo en x.
-  const camaras = Object.keys(L.cams).map(k => {
-    const c = L.cams[k], o = orientDe({ pos: B(c.pos), mira: B(c.mira), roll: c.roll });
-    return { clave: k, grupo: c.grupo, modelo: 'ELP-USB12MP01-UFV', focal: c.f, modo: c.modo, hfov: hfovDe(c), pos: B(c.pos), mira: B(c.mira), clamp: B(c.clamp), orient: { pan: o.pan, tilt: o.tilt, roll: o.roll }, rpy: [-o.roll, o.tilt, PI / 2 - o.pan] };
+  // px y vfov: el modo y el campo vertical de la cámara de render (camera_info, T2.5); usb: dispositivo, exposición (en
+  // unidades de 100 µs de V4L2) y balance de blancos (K) de usb_cam, supuestos (ORIGEN: dispositivo_video, exposicion y
+  // balance_blancos).
+  const camaras = Object.keys(L.cams).map((k, i) => {
+    const c = L.cams[k], o = orientDe({ pos: B(c.pos), mira: B(c.mira), roll: c.roll }), md = MODOS[c.modo];
+    return { clave: k, grupo: c.grupo, modelo: 'ELP-USB12MP01-UFV', focal: c.f, modo: c.modo, hfov: hfovDe(c), vfov: vfovDe(c), px: { w: md.w, h: md.h, fps: md.fps }, pos: B(c.pos), mira: B(c.mira), clamp: B(c.clamp), orient: { pan: o.pan, tilt: o.tilt, roll: o.roll }, rpy: [-o.roll, o.tilt, PI / 2 - o.pan], usb: { dispositivo: `/dev/video${2 * i}`, exposicion: 50, balance: 4000 } };
   });
   return {
     ctx: ctxOrigen(), layoutJson: JSON.stringify(L),
@@ -1809,8 +1812,8 @@ function escenaExportacion(B, mc, bt, yawBandeja, camaras) {
   return { objetos };
 }
 function generarYaml() { return EXPORTAR.posiciones(modeloExportacion(), ORIGEN, new Date().toISOString().slice(0, 10)); }
-// Ficheros de ROS de la disposición actual: [{ nombre, texto }] en orden fijo, deterministas (sin fecha): los de T2.2 + T2.4
-// y los de la escena (T2.3). Los descargará el panel de T2.6; hoy los leen los tests con
+// Ficheros de ROS de la disposición actual: [{ nombre, texto }] en orden fijo, deterministas (sin fecha): los de T2.2 + T2.4,
+// los de la escena (T2.3) y los de las cámaras (T2.5). Los descargará el panel de T2.6; hoy los leen los tests con
 // window.__g.ficherosRos()
 function ficherosRos() { return EXPORTAR.todos(modeloExportacion(), ORIGEN); }
 function pintarDatos() { $('#yaml').value = generarYaml(); pintarFuentes(); }

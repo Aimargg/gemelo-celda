@@ -1099,6 +1099,14 @@ const ORIGEN = (() => {
     { clave: 'giro_caja', nombre: null, tipo: S, valor: 'giro de cada caja bajo el plato: una cara hacia la pinza, la del agarre que elige el plan del gemelo; sin plan al día, hacia la base del robot', fuente: 'planificador del gemelo (agarre del plato), sin validar en ROS', yaml: t => con(t, 'giro del plan del gemelo, sin validar') },
     { clave: 'grosor_plato', nombre: null, tipo: S, valor: '25 mm de grosor: el perfil del plato dibujado en el gemelo', fuente: 'el dibujo del gemelo, sin medir', yaml: t => con(t, 'perfil del plato del gemelo, sin medir') },
     { clave: 'colision_camara', nombre: null, tipo: S, valor: 'cada cámara y su brazo, como las esferas y cápsulas del modelo de colisión del gemelo (cuerpo, dos tramos de brazo, codo y pinza de mesa)', fuente: 'obstaculos() del gemelo, sin medir', yaml: t => con(t, 'modelo de colisión del gemelo, sin medir') },
+    // Valores nuevos de camera_info y de usb_cam (T2.5), también solo en los ficheros
+    { clave: 'formato_camera_info', nombre: null, tipo: F, valor: 'camera_info de camera_calibration_parsers: matrices con rows, cols y data; R = I y P = [K | 0] en una cámara monocular', fuente: 'image_common 5.1 y sensor_msgs/CameraInfo', yaml: t => con(t, 'formato de camera_info') },
+    { clave: 'distorsion_nula', nombre: null, tipo: S, valor: 'D = 0 (plumb_bob): lente ideal', fuente: 'sin medir; la sustituye la calibración intrínseca (F4)', yaml: t => con(t, 'lente ideal, sin distorsión') },
+    { clave: 'dispositivo_video', nombre: null, tipo: S, valor: '/dev/video0, /dev/video2 y /dev/video4, en el orden de las cámaras (cada cámara UVC suele crear dos nodos de vídeo)', fuente: 'sin comprobar en los PCs del laboratorio', yaml: t => con(t, 'compruébalo con v4l2-ctl --list-devices; mejor un /dev/v4l/by-id/…') },
+    { clave: 'formato_pixel', nombre: null, tipo: S, valor: 'pixel_format mjpeg2rgb: usb_cam decodifica el MJPEG de la cámara', fuente: 'README de usb_cam 0.8; los modos rápidos de la ELP van en MJPEG según la ficha, SIN VALIDAR', yaml: t => con(t, 'MJPEG decodificado por usb_cam') },
+    { clave: 'ruta_camera_info', nombre: null, tipo: F, valor: 'file://${ROS_HOME}/camera_info/<camera_name>.yaml', fuente: 'ruta por defecto de camera_info_manager (image_common 5.1)', yaml: t => con(t, 'ruta por defecto de camera_info_manager') },
+    { clave: 'exposicion', nombre: null, tipo: S, valor: 'exposición manual de 5 ms (exposure 50, en unidades de 100 µs de V4L2)', fuente: 'la bandeja en movimiento pide ≤ 5,6 ms; con luz de 50 Hz puede dar bandas', yaml: t => con(t, '5 ms: la bandeja en movimiento pide ≤ 5,6 ms; con luz de 50 Hz puede dar bandas') },
+    { clave: 'balance_blancos', nombre: null, tipo: S, valor: 'balance de blancos manual a 4000 K', fuente: 'sin medir la luz del laboratorio', yaml: t => con(t, 'sin medir la luz del laboratorio') },
   ];
   // Lo que elige el usuario en el gemelo (robot, prefijo, pedido, focal, modo, grupo de la cámara, caja sí o no) no es un
   // origen: los ficheros exportados lo comentan con este texto en lugar de un tipo (T2.2, decisión 7 de su brief)
@@ -1118,7 +1126,7 @@ const ORIGEN = (() => {
   const panel = ctx => ENTRADAS.filter(e => e.nombre !== null).map(e => entrada(e.clave, ctx));
   return { TIPOS, CLASE, LEYENDA, ELEGIDO, CLAVES, entrada, tipo, yaml, panel };
 })();
-// Formateador de los ficheros exportados (T2.2–T2.4, D8, I7): convierte el modelo de modeloExportacion() (app.js: un objeto
+// Formateador de los ficheros exportados (T2.2–T2.5, D8, I7): convierte el modelo de modeloExportacion() (app.js: un objeto
 // plano, sin redondear y en el base_link del robot elegido) en texto. Sin DOM, three ni globales del gemelo: el origen de
 // cada valor lo da el módulo de origen que recibe cada función (src/origen.js en el gemelo) con el contexto del modelo
 // (m.ctx), y aquí no se escribe ningún tipo de origen a mano. Se prueba con node:test en un contexto vm vacío
@@ -1129,7 +1137,8 @@ const ORIGEN = (() => {
 //   mesa { ancho, fondo, alto, x, y, z, yaw } · pedido · platos { sobreCaja, cajaAlto, cajaLado, agarre, radioAgarre,
 //   lista [{ clave, x, y, z }] } · zona { x, y, z, yaw, ancho, fondo } · marcadores [{ id, diccionario, lado, x, y, z, yaw }]
 //   · bandeja { x, y, z, yaw, zonas [{ clave, base {x, y, z}, local {x, y, z} }] } · persona { x, y, z, yaw } ·
-//   camaras [{ clave, grupo, modelo, focal, modo, hfov, pos, mira, clamp, orient { pan, tilt, roll }, rpy [r, p, y] }] · escena { objetos [{ id, que, giro?, pose { x, y, z, rpy },
+//   camaras [{ clave, grupo, modelo, focal, modo, hfov, vfov, px { w, h, fps }, pos, mira, clamp, orient { pan, tilt, roll },
+//   rpy [r, p, y], usb { dispositivo, exposicion, balance } }] · escena { objetos [{ id, que, giro?, pose { x, y, z, rpy },
 //   formas [{ tipo: 'caja' (dims [x, y, z]) | 'esfera' (radio) | 'cilindro' (radio, altura; eje z del objeto) | 'capsula'
 //   (radio, a {x, y, z}, b {x, y, z}), local {x, y, z} (en el marco del objeto) o centro {x, y, z} (en base_link) }] }] }
 const EXPORTAR = (() => {
@@ -1499,10 +1508,61 @@ const EXPORTAR = (() => {
     return [{ nombre: 'escena_colision.yaml', texto: escenaYaml(m, O, E) }, { nombre: 'celda.scene', texto: scene(m, E) }, { nombre: 'celda.scene.txt', texto: sceneTxt(m, O, E) }];
   }
 
-  // Todos los ficheros de ROS de la disposición, en orden fijo: los de T2.2 + T2.4 y los de la escena (T2.3)
-  const todos = (m, O) => [...ficherosRos(m, O), ...ficherosEscena(m, O)];
+  // ---------- Cámaras (T2.5): camera_info/camara_<k>.yaml (nominal) y usb_cam/camara_<k>.yaml ----------
+  // K de lente ideal con el modelo de la cámara de render del gemelo (su campo vertical y el aspecto del modo, que salen del
+  // modelo de sensor): fx = (w/2)/tan(hfov/2), fy = (h/2)/tan(vfov/2), cx = (w − 1)/2 y cy = (h − 1)/2 (convenio de OpenCV y
+  // ROS: el centro del píxel (0, 0) está en 0). D = 0 (plumb_bob), R = I y P = [K | 0]. En píxeles, con 3 decimales.
+  function intrinseca(k) {
+    const w = num(k.px.w), h = num(k.px.h), fx = w / 2 / Math.tan(num(k.hfov) / 2), fy = h / 2 / Math.tan(num(k.vfov) / 2), cx = (w - 1) / 2, cy = (h - 1) / 2;
+    return { K: [fx, 0, cx, 0, fy, cy, 0, 0, 1], D: [0, 0, 0, 0, 0], R: [1, 0, 0, 0, 1, 0, 0, 0, 1], P: [fx, 0, cx, 0, 0, fy, cy, 0, 0, 0, 1, 0] };
+  }
+  const nombreCam = k => `camara_${limpio(k.clave)}`;
+  const RUTA_CI = n => `file://\${ROS_HOME}/camera_info/${n}.yaml`; // la de camera_info_manager por defecto
+  function cameraInfo(m, O, k) {
+    const og = x => O.yaml(x, m.ctx), EL = O.ELEGIDO, n = nombreCam(k), I = intrinseca(k), fmtCI = og('formato_camera_info'), modo = `${EL} (modo ${limpio(k.modo)})`;
+    const kO = `${og('campo_vision')}; focal y modo: ${EL}`, s = m.ctx.sensor;
+    const mat = (clave, rows, cols, data, o) => `${clave}:\n  rows: ${ent(rows)}  # ${fmtCI}\n  cols: ${ent(cols)}  # ${fmtCI}\n  data: ${lista(data.map(d3))}  # ${limpio(o)}\n`;
+    return cabecera(m, O, `camera_info/${n}.yaml`, `el camera_info_url de usb_cam/${n}.yaml: cópialo a \${ROS_HOME}/camera_info/${n}.yaml (por defecto ~/.ros/camera_info/)`, [
+      `Cámara ${limpio(k.clave)}: ${limpio(k.modelo)}, focal ${num(k.focal).toFixed(1)} mm (focal_mm, DT19), modo ${limpio(k.modo)} (${ent(k.px.w)} × ${ent(k.px.h)} a ${num(k.px.fps).toFixed(1)} fps), sensor «${limpio(s.nombre)}» de ${fmt(num(s.w), 3)} mm de ancho útil.`,
+      `K en píxeles, de lente ideal y con el modelo de la cámara con la que el gemelo pinta lo que ve: fx = (w/2)/tan(hfov/2) y fy = (h/2)/tan(vfov/2), con hfov ${d3(k.hfov)} rad y vfov ${d3(k.vfov)} rad;`,
+      '  cx = (w − 1)/2 y cy = (h − 1)/2: el píxel (0, 0) tiene su centro en 0, como en OpenCV y ROS. Números de las matrices con 3 decimales.',
+      `D = 0 (plumb_bob), R = I y P = [K | 0]. Nominal: lo sustituye la calibración intrínseca (F4) guardada con el mismo camera_name (${n}) en la misma ruta.`,
+    ]) + `image_width: ${ent(k.px.w)}  # ${modo}\nimage_height: ${ent(k.px.h)}  # ${modo}\ncamera_name: ${cad(n)}  # ${og('nombre_frame')}; el de usb_cam/${n}.yaml\n`
+      + mat('camera_matrix', 3, 3, I.K, kO) + `distortion_model: 'plumb_bob'  # ${og('distorsion_nula')}\n` + mat('distortion_coefficients', 1, 5, I.D, og('distorsion_nula'))
+      + mat('rectification_matrix', 3, 3, I.R, fmtCI) + mat('projection_matrix', 3, 4, I.P, `${kO}: P = [K | 0]`);
+  }
+  // usb_cam/camara_<k>.yaml: ros__parameters de usb_cam 0.8 para --params-file, con los enteros donde usb_cam los declara
+  // (image_width, image_height, exposure y white_balance)
+  function usbCam(m, O, k) {
+    const og = x => O.yaml(x, m.ctx), EL = O.ELEGIDO, n = nombreCam(k), u = k.usb, modo = `${EL} (modo ${limpio(k.modo)})`;
+    const nodos = [
+      hoja('video_device', cad(u.dispositivo), og('dispositivo_video')),
+      hoja('framerate', num(k.px.fps).toFixed(1), modo),
+      hoja('image_width', ent(k.px.w), modo),
+      hoja('image_height', ent(k.px.h), modo),
+      hoja('pixel_format', cad('mjpeg2rgb'), og('formato_pixel')),
+      hoja('camera_name', cad(n), `${og('nombre_frame')}; el de camera_info/${n}.yaml`),
+      hoja('frame_id', cad(`${n}_optical`), `${og('nombre_frame')}; el marco óptico de su TF (tf/${n}_optical.yaml)`),
+      hoja('camera_info_url', cad(RUTA_CI(n)), og('ruta_camera_info')),
+      hoja('autoexposure', 'false', og('exposicion')),
+      hoja('exposure', ent(u.exposicion), og('exposicion')),
+      hoja('auto_white_balance', 'false', og('balance_blancos')),
+      hoja('white_balance', ent(u.balance), og('balance_blancos')),
+    ];
+    return cabecera(m, O, `usb_cam/${n}.yaml`, `ros2 run usb_cam usb_cam_node_exe --ros-args -r __ns:=/${n} --params-file usb_cam/${n}.yaml (un namespace por cámara)`, [
+      `Cámara ${limpio(k.clave)}: frame_id ${n}_optical, el de su TF óptica; camera_name y camera_info_url, los de camera_info/${n}.yaml.`,
+      'Sustituye al camera_frame_id del launch del curso, que usb_cam no declara: con él todas las cámaras salen con frame_id default_cam y buscan el camera_info de default_cam.',
+      `exposure va en unidades de V4L2 (100 µs): ${ent(u.exposicion)} = ${fmt(u.exposicion / 10, 1)} ms, con autoexposure a false; white_balance en K, con auto_white_balance a false.`,
+      'video_device: compruébalo con v4l2-ctl --list-devices; mejor un /dev/v4l/by-id/…, que no cambia al reconectar las cámaras.',
+    ]) + raiz(nodos);
+  }
+  function ficherosCamaras(m, O) {
+    return [...m.camaras.map(k => ({ nombre: `camera_info/${nombreCam(k)}.yaml`, texto: cameraInfo(m, O, k) })), ...m.camaras.map(k => ({ nombre: `usb_cam/${nombreCam(k)}.yaml`, texto: usbCam(m, O, k) }))];
+  }
+  // Todos los ficheros de ROS de la disposición, en orden fijo: los de T2.2 + T2.4, los de la escena (T2.3) y los de las cámaras (T2.5)
+  const todos = (m, O) => [...ficherosRos(m, O), ...ficherosEscena(m, O), ...ficherosCamaras(m, O)];
 
-  return { r3, rad3, huella, cuaternion, posiciones, parametros, ficherosRos, ficherosEscena, todos };
+  return { r3, rad3, huella, cuaternion, posiciones, parametros, ficherosRos, ficherosEscena, ficherosCamaras, todos };
 })();
 // GENERADO por tools/fixtures/fk_desde_xacro.py: no editar a mano (ver tools/fixtures/LEEME.md).
 // Calibración cinemática de los UR3e del laboratorio y su montaje respecto a «world».
@@ -3888,9 +3948,12 @@ function modeloExportacion() {
   // orient: giro (desde +y hacia +x), inclinación (positiva hacia abajo) y alabeo, en base_link (orientDe). rpy: el marco del
   // cuerpo de la cámara (REP-103: x hacia donde mira, y a la izquierda, z arriba) con setRPY. La cámara de three mira con lookAt
   // (y horizontal) y gira la imagen con rotateZ(alabeo) sobre su +z, que apunta hacia atrás: en el cuerpo es −alabeo en x.
-  const camaras = Object.keys(L.cams).map(k => {
-    const c = L.cams[k], o = orientDe({ pos: B(c.pos), mira: B(c.mira), roll: c.roll });
-    return { clave: k, grupo: c.grupo, modelo: 'ELP-USB12MP01-UFV', focal: c.f, modo: c.modo, hfov: hfovDe(c), pos: B(c.pos), mira: B(c.mira), clamp: B(c.clamp), orient: { pan: o.pan, tilt: o.tilt, roll: o.roll }, rpy: [-o.roll, o.tilt, PI / 2 - o.pan] };
+  // px y vfov: el modo y el campo vertical de la cámara de render (camera_info, T2.5); usb: dispositivo, exposición (en
+  // unidades de 100 µs de V4L2) y balance de blancos (K) de usb_cam, supuestos (ORIGEN: dispositivo_video, exposicion y
+  // balance_blancos).
+  const camaras = Object.keys(L.cams).map((k, i) => {
+    const c = L.cams[k], o = orientDe({ pos: B(c.pos), mira: B(c.mira), roll: c.roll }), md = MODOS[c.modo];
+    return { clave: k, grupo: c.grupo, modelo: 'ELP-USB12MP01-UFV', focal: c.f, modo: c.modo, hfov: hfovDe(c), vfov: vfovDe(c), px: { w: md.w, h: md.h, fps: md.fps }, pos: B(c.pos), mira: B(c.mira), clamp: B(c.clamp), orient: { pan: o.pan, tilt: o.tilt, roll: o.roll }, rpy: [-o.roll, o.tilt, PI / 2 - o.pan], usb: { dispositivo: `/dev/video${2 * i}`, exposicion: 50, balance: 4000 } };
   });
   return {
     ctx: ctxOrigen(), layoutJson: JSON.stringify(L),
@@ -3933,8 +3996,8 @@ function escenaExportacion(B, mc, bt, yawBandeja, camaras) {
   return { objetos };
 }
 function generarYaml() { return EXPORTAR.posiciones(modeloExportacion(), ORIGEN, new Date().toISOString().slice(0, 10)); }
-// Ficheros de ROS de la disposición actual: [{ nombre, texto }] en orden fijo, deterministas (sin fecha): los de T2.2 + T2.4
-// y los de la escena (T2.3). Los descargará el panel de T2.6; hoy los leen los tests con
+// Ficheros de ROS de la disposición actual: [{ nombre, texto }] en orden fijo, deterministas (sin fecha): los de T2.2 + T2.4,
+// los de la escena (T2.3) y los de las cámaras (T2.5). Los descargará el panel de T2.6; hoy los leen los tests con
 // window.__g.ficherosRos()
 function ficherosRos() { return EXPORTAR.todos(modeloExportacion(), ORIGEN); }
 function pintarDatos() { $('#yaml').value = generarYaml(); pintarFuentes(); }

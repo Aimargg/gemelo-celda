@@ -1,10 +1,11 @@
-// Validadores de los ficheros de T2.3 (tests/collision-object.mjs y tests/scene-texto.mjs):
-// aceptan una muestra válida escrita a mano y rechazan las muestras fijas de los criterios (T2.3-C1 y T2.3-C3), cada
+// Validadores de los ficheros de T2.3 y T2.5 (tests/collision-object.mjs, tests/scene-texto.mjs y tests/camera-info.mjs):
+// aceptan una muestra válida escrita a mano y rechazan las muestras fijas de los criterios (T2.3-C1, T2.3-C3, T2.5-C1), cada
 // una con su motivo. Un validador que no rechaza nada no vale: cada muestra cambia una sola cosa de la válida.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { problemasEscena } from '../collision-object.mjs';
 import { problemasScene } from '../scene-texto.mjs';
+import { problemasCameraInfo } from '../camera-info.mjs';
 
 // ---------- CollisionObject (T2.3-C1) ----------
 const ESCENA = `objetos:
@@ -81,4 +82,48 @@ test('T2.3-C3: también rechaza un color fuera de [0, 1], un cuaternión sin nor
   rechaza(problemasScene(SCENE + '* otra\n'), /texto después del «\.» final/, 'texto tras el punto');
   rechaza(problemasScene('\n' + SCENE.split('\n').slice(1).join('\n')), /falta el nombre de la escena/, 'sin nombre');
   rechaza(problemasScene(cambia(SCENE, '\n0.032\n', '\n0.032 0.010\n')), /sphere de «esfera» \(1 números\)/, 'sphere con 2 dimensiones');
+});
+
+// ---------- camera_info (T2.5-C1) ----------
+const CAMINFO = `image_width: 1920
+image_height: 1080
+camera_name: 'camara_cenital'
+camera_matrix:
+  rows: 3
+  cols: 3
+  data: [1161.290, 0.000, 959.500, 0.000, 1161.290, 539.500, 0.000, 0.000, 1.000]
+distortion_model: 'plumb_bob'
+distortion_coefficients:
+  rows: 1
+  cols: 5
+  data: [0.000, 0.000, 0.000, 0.000, 0.000]
+rectification_matrix:
+  rows: 3
+  cols: 3
+  data: [1.000, 0.000, 0.000, 0.000, 1.000, 0.000, 0.000, 0.000, 1.000]
+projection_matrix:
+  rows: 3
+  cols: 4
+  data: [1161.290, 0.000, 959.500, 0.000, 0.000, 1161.290, 539.500, 0.000, 0.000, 0.000, 1.000, 0.000]
+`;
+
+test('T2.5-C1: el validador de camera_info acepta la muestra válida', () => {
+  assert.deepEqual(problemasCameraInfo(CAMINFO), []);
+});
+
+test('T2.5-C1: rechaza una matriz con rows × cols distinto de su longitud y un image_width con decimales', t => {
+  const casos = [
+    ['rows × cols distinto de la longitud', cambia(CAMINFO, 'projection_matrix:\n  rows: 3\n  cols: 4', 'projection_matrix:\n  rows: 3\n  cols: 3'), /projection_matrix: rows × cols = 3 × 3 = 9 y data tiene 12 valores/],
+    ['un image_width con decimales', cambia(CAMINFO, 'image_width: 1920', 'image_width: 1920.0'), /image_width: debe ser un entero sin punto decimal \(es «1920\.0»\)/],
+  ];
+  for (const [que, texto, re] of casos) t.diagnostic(`${que} → ${rechaza(problemasCameraInfo(texto), re, que).join(' | ')}`);
+});
+
+test('T2.5-C1: también rechaza D ≠ 0, R ≠ I, P ≠ [K | 0], una clave de más, un dato entero y una K con sesgo', () => {
+  rechaza(problemasCameraInfo(cambia(CAMINFO, '[0.000, 0.000, 0.000, 0.000, 0.000]', '[-0.100, 0.000, 0.000, 0.000, 0.000]')), /el nominal es D = 0/, 'D');
+  rechaza(problemasCameraInfo(cambia(CAMINFO, '[1.000, 0.000, 0.000, 0.000, 1.000, 0.000, 0.000, 0.000, 1.000]', '[1.000, 0.000, 0.000, 0.000, -1.000, 0.000, 0.000, 0.000, 1.000]')), /R = I/, 'R');
+  rechaza(problemasCameraInfo(cambia(CAMINFO, '539.500, 0.000, 0.000, 0.000, 1.000, 0.000]', '539.500, 0.000, 0.000, 0.000, 1.000, 0.500]')), /P = \[K \| 0\]/, 'P');
+  rechaza(problemasCameraInfo(CAMINFO + 'camera_frame_id: \'x\'\n'), /clave «camera_frame_id» que camera_info no tiene/, 'clave de más');
+  rechaza(problemasCameraInfo(cambia(CAMINFO, '[1161.290, 0.000, 959.500, 0.000, 1161.290', '[1161, 0.000, 959.500, 0.000, 1161.290')), /camera_matrix\.data\[0\]: debe ser un double con punto decimal/, 'dato entero');
+  rechaza(problemasCameraInfo(cambia(CAMINFO, '[1161.290, 0.000, 959.500, 0.000, 1161.290', '[1161.290, 0.500, 959.500, 0.000, 1161.290')), /\[fx, 0, cx, 0, fy, cy, 0, 0, 1\]/, 'sesgo');
 });

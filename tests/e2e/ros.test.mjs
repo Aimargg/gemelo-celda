@@ -16,6 +16,7 @@ import { CASOS_YAML, aplicarCaso } from '../medir.mjs';
 import { problemasParams } from '../rcl-params.mjs';
 import { problemasEscena } from '../collision-object.mjs';
 import { problemasScene } from '../scene-texto.mjs';
+import { problemasCameraInfo } from '../camera-info.mjs';
 const ORIGEN = createRequire(import.meta.url)('../../src/origen.js');
 
 const MESA_H = 0.76, ENTEROS = { enteros: ['celda.marcadores.ids'] };
@@ -47,13 +48,28 @@ function leerPagina() {
   };
 }
 const texto = (r, nombre) => { const f = r.ficheros.find(x => x.nombre === nombre); assert.ok(f, `falta ${nombre}`); return f.texto; };
-// Lo que hace falta de la página para T2.3, en la misma página: los obstáculos del modelo de colisión del gemelo
-// (obstaculos(), en base_link), el plato tal como se dibuja (radio y grosor de su malla) y dónde está cada plato
+// Lo que hace falta de la página para T2.3 y T2.5, en la misma página: los obstáculos del modelo de colisión del gemelo
+// (obstaculos(), en base_link), el plato tal como se dibuja (radio y grosor de su malla), dónde está cada plato y, por cámara,
+// puntos de la escena con su proyección de three.js en la cámara de render (NDC): la mira, las esquinas de los marcadores de
+// entrega, el centro de los platos y, para que la cámara de la persona tenga al menos 5, las esquinas de la bandeja y sus zonas
 function leerEscenaCamaras() {
   const g = window.__g, L = g.L(), V = g.robot.root.position.constructor;
   const geo = g.OBJ.plato1.children[0].geometry; geo.computeBoundingBox(); const bb = geo.boundingBox;
+  const enWorld = (o, x, y, z) => { const p = new V(x, y, z).applyMatrix4(o.matrixWorld); return [p.x, p.y, p.z]; };
   const platos = Object.fromEntries(['plato1', 'plato2'].map(k => { const p = g.OBJ[k].getWorldPosition(new V()); return [k, { w: [p.x, p.y, p.z], visible: g.OBJ[k].visible }]; }));
-  return { obstaculos: g.obstaculos().map(o => ({ ...o })), plato: { radio: Math.max(bb.max.x, -bb.min.x, bb.max.y, -bb.min.y), grosor: bb.max.z }, platos };
+  g.bandeja.updateMatrixWorld(true);
+  const puntos = [
+    ...g.OBJ.arucoE.flatMap((a, i) => { a.updateMatrixWorld(true); const pl = a.children[1], pos = pl.geometry.attributes.position.array; return [0, 1, 2, 3].map(j => ({ que: `esquina ${j + 1} del marcador ${4 + i}`, w: enWorld(pl, pos[3 * j], pos[3 * j + 1], pos[3 * j + 2]) })); }),
+    ...['plato1', 'plato2'].map(k => ({ que: `centro del ${k}`, w: platos[k].w })),
+    ...[[1, 1], [1, -1], [-1, -1], [-1, 1]].map(([sx, sy], j) => ({ que: `esquina ${j + 1} de la bandeja`, w: enWorld(g.bandeja, sx * g.BAND.d / 2, sy * g.BAND.w / 2, 0) })),
+    ...['zona_primero', 'zona_segundo'].map(k => { const p = g.zonasB[k].getWorldPosition(new V()); return { que: k, w: [p.x, p.y, p.z] }; }),
+  ];
+  const camaras = Object.fromEntries(Object.keys(g.CAMS).map(k => {
+    const cam = g.CAMS[k].cam, c = L.cams[k]; cam.updateMatrixWorld(true);
+    const [w, h] = c.modo.split('x').map(Number);
+    return [k, { w, h, puntos: [{ que: 'mira', w: [c.mira.x, c.mira.y, c.mira.z] }, ...puntos].map(p => { const n = new V(...p.w).project(cam); return { ...p, ndc: [n.x, n.y, n.z] }; }) }];
+  }));
+  return { obstaculos: g.obstaculos().map(o => ({ ...o })), plato: { radio: Math.max(bb.max.x, -bb.min.x, bb.max.y, -bb.min.y), grosor: bb.max.z }, platos, camaras };
 }
 
 // Hojas de un YAML con su texto fuente: ruta → { fuente, valor, comillas }. Las rutas de los arrays llevan [i].
@@ -193,6 +209,8 @@ function leerScene(src) {
   }
   return { nombre: ls[0], objetos };
 }
+// ---------- T2.5: cámaras ----------
+const ENTEROS_USB = { enteros: ['image_width', 'image_height', 'exposure', 'white_balance'] }; // los que usb_cam declara enteros
 
 test('T2.2 y T2.4 con nominal, el 203 y el 203 con prefijo: parametros_celda.yaml (C1–C4), las TF estáticas (C1–C5) y Común-C1 en la misma página', { timeout: 300000 }, async t => {
   const s = await abrir(srv.url);
@@ -349,13 +367,14 @@ test('T2.2 y T2.4 con nominal, el 203 y el 203 con prefijo: parametros_celda.yam
         for (const f of r.ficheros) assert.ok(!/\b\d{4}-\d{2}-\d{2}\b/.test(f.texto), `${f.nombre}: sin fecha`);
       });
 
-      // ---------- T2.3 (añadido en T2.3 + T2.5): en la misma página y con los mismos casos ----------
+      // ---------- T2.3 y T2.5 (añadido en T2.3 + T2.5): en la misma página y con los mismos casos ----------
       const escena = texto(r, 'escena_colision.yaml'), sc = texto(r, 'celda.scene'), txt = texto(r, 'celda.scene.txt');
       const objetos = YAML.parse(escena).objetos, E = formasEnBase(objetos);
-      await t.test(`${r.c.id} · T2.3 (Común-C1): los ficheros nuevos van detrás de los de T2.2 + T2.4, en orden fijo, y cada valor lleva su origen`, () => {
+      await t.test(`${r.c.id} · T2.3 y T2.5 (Común-C1): los ficheros nuevos van detrás de los de T2.2 + T2.4, en orden fijo, y cada valor lleva su origen`, () => {
         const i = r.ficheros.findIndex(f => f.nombre === 'tf_estaticas.sh');
-        assert.deepEqual(r.ficheros.slice(i + 1).map(f => f.nombre), ['escena_colision.yaml', 'celda.scene', 'celda.scene.txt']);
+        assert.deepEqual(r.ficheros.slice(i + 1).map(f => f.nombre), ['escena_colision.yaml', 'celda.scene', 'celda.scene.txt', ...cams.map(k => `camera_info/camara_${k}.yaml`), ...cams.map(k => `usb_cam/camara_${k}.yaml`)]);
         conOrigen(escena, 'escena_colision.yaml');
+        for (const k of cams) { conOrigen(texto(r, `camera_info/camara_${k}.yaml`), `camera_info/camara_${k}.yaml`); conOrigen(texto(r, `usb_cam/camara_${k}.yaml`), `usb_cam/camara_${k}.yaml`); }
         assert.ok(!sc.includes('#'), 'celda.scene sin comentarios: el lector no los ignora');
         const re = new RegExp(`^#   (\\S+): (${ORIGEN.TIPOS.join('|')})\\b`, 'm'), lista = txt.split('\n').filter(l => re.test(l)).map(l => l.match(re)[1]);
         assert.deepEqual(lista, objetos.map(o => o.id), 'celda.scene.txt da el origen de cada objeto');
@@ -450,6 +469,48 @@ test('T2.2 y T2.4 con nominal, el 203 y el 203 con prefijo: parametros_celda.yam
           assert.notEqual(s.formas[0].dims[0], s.formas[0].dims[1]);
         }
         st.diagnostic(`${r.c.prefijo ? 'world del URDF doble' : 'world de sim_<id>'}: peor diferencia ${(peorB * 1000).toFixed(3)} mm en los ejes de ${raizTF} y ${peorG.toExponential(2)} rad`);
+      });
+      await t.test(`${r.c.id} · T2.5-C1: camera_info/camara_<k>.yaml pasa el validador de camera_info y su camera_name es el de usb_cam`, () => {
+        for (const k of cams) {
+          const ci = texto(r, `camera_info/camara_${k}.yaml`), u = YAML.parse(texto(r, `usb_cam/camara_${k}.yaml`))['/**'].ros__parameters;
+          assert.deepEqual(problemasCameraInfo(ci), [], k);
+          const c = YAML.parse(ci); assert.equal(c.camera_name, u.camera_name, k); assert.equal(c.camera_name, `camara_${k}`);
+          assert.deepEqual([c.image_width, c.image_height], r.L.cams[k].modo.split('x').map(Number), `${k}: el tamaño del modo`);
+        }
+      });
+      await t.test(`${r.c.id} · T2.5-C2: con la K exportada, los píxeles son los de la cámara de render del gemelo (< 0,05 px), y con las TF exportadas, dentro de su redondeo`, st => {
+        for (const k of cams) {
+          const ci = YAML.parse(texto(r, `camera_info/camara_${k}.yaml`)), K = ci.camera_matrix.data, { w, h, puntos } = r.escena.camaras[k];
+          const gem = aBase(r.opticos[k].m); // el marco óptico de la cámara de render, en base_link, sin redondear
+          const b = porHijo[`camara_${k}`], o = porHijo[`camara_${k}_optical`], Rb = deQ(b.q), exp = { R: mul(Rb, deQ(o.q)), p: suma(b.t, aplicar(Rb, o.t)) }; // la cadena TF exportada
+          const th = angulo(exp.R, gem.R), dt = norma(resta(exp.p, gem.p));
+          const px = (M, pb) => { const q = aplicar(tr(M.R), resta(pb, M.p)); return { Z: q[2], m: [q[0] / q[2], q[1] / q[2]], uv: [K[0] * q[0] / q[2] + K[2], K[4] * q[1] / q[2] + K[5]] }; };
+          let n = 0, peorK = 0, peorT = 0, cota = 0;
+          for (const p of puntos) {
+            const [nx, ny, nz] = p.ndc, pb = aplicar(tr(J), resta(p.w, base)), g = px(gem, pb);
+            if (!(g.Z > 0 && Math.abs(nx) <= 1 && Math.abs(ny) <= 1 && Math.abs(nz) <= 1)) continue; // no se ve
+            n++;
+            const uv3 = [(nx + 1) / 2 * w - 0.5, (1 - ny) / 2 * h - 0.5], eK = norma(resta(g.uv, uv3)), eT = norma(resta(px(exp, pb).uv, uv3));
+            // cota del redondeo de las TF (I7: 1 mm y 0,001 rad): el rayo gira como mucho θ + δt/ρ y, en la imagen, |Δm| ≤ (1 + |m|²)·ángulo
+            const c = Math.max(K[0], K[4]) * (th + dt / norma(resta(pb, gem.p))) * (1 + g.m[0] ** 2 + g.m[1] ** 2) * 1.05 + 0.05;
+            assert.ok(eK < 0.05, `${k}, ${p.que}: ${eK.toFixed(4)} px entre la K exportada y three.js`);
+            assert.ok(eT <= c, `${k}, ${p.que}: ${eT.toFixed(3)} px con las TF exportadas (cota del redondeo ${c.toFixed(3)} px)`);
+            peorK = Math.max(peorK, eK); peorT = Math.max(peorT, eT); cota = Math.max(cota, c);
+          }
+          assert.ok(n >= 5, `${k}: ${n} puntos visibles (al menos 5)`);
+          st.diagnostic(`${k}: ${n} puntos visibles; con la K exportada, ${peorK.toFixed(4)} px; con las TF exportadas, ${peorT.toFixed(3)} px (cota ${cota.toFixed(3)} px; TF a ${th.toExponential(2)} rad y ${(dt * 1000).toFixed(3)} mm del marco del gemelo)`);
+        }
+      });
+      await t.test(`${r.c.id} · T2.5-C3: usb_cam/camara_<k>.yaml pasa las reglas de rcl, con su TF óptica, su camera_info, mjpeg2rgb y sin camera_frame_id`, () => {
+        for (const k of cams) {
+          const src = texto(r, `usb_cam/camara_${k}.yaml`), u = YAML.parse(src)['/**'].ros__parameters, ci = YAML.parse(texto(r, `camera_info/camara_${k}.yaml`));
+          assert.deepEqual(problemasParams(src, ENTEROS_USB), [], k);
+          assert.equal(u.frame_id, porHijo[`camara_${k}_optical`].hijo, `${k}: frame_id = el child de su TF óptica`);
+          assert.equal(u.camera_info_url, `file://\${ROS_HOME}/camera_info/${ci.camera_name}.yaml`, `${k}: camera_info_url`);
+          assert.equal(u.pixel_format, 'mjpeg2rgb'); assert.ok(!src.includes('camera_frame_id:') && !('camera_frame_id' in u), `${k}: sin camera_frame_id`);
+          assert.deepEqual([u.image_width, u.image_height], [ci.image_width, ci.image_height], `${k}: el tamaño del modo`); assert.ok(u.framerate > 0, `${k}: framerate`); // double: lo exige problemasParams (no es un entero de usb_cam)
+          assert.deepEqual([u.autoexposure, u.exposure, u.auto_white_balance, u.white_balance], [false, 50, false, 4000], `${k}: exposición y balance manuales`);
+        }
       });
     }
   } finally { await s.cerrar(); }
