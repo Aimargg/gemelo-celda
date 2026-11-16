@@ -57,7 +57,7 @@ test('T1.5-2 e I7: posiciones.yaml con el 203: cabecera (robot, frame con su pre
     assert.match(cab, /^# Frame: base_link \(sin prefijo, como en sim_<id>\)\. Metros y radianes \(REP-103\), redondeo a 1 mm y 0,001 rad\.$/m);
     assert.match(cab, /^# world: el world del gemelo, con los ejes de la mesa .*\[SUPUESTO hasta comprobarlo en el laboratorio\]\.$/m);
     assert.match(cab, /^# base_link está girado -2\.356 rad \(−135,0°\) respecto a ese world/m);
-    assert.match(y, /^robot_id: 203 /m); assert.match(y, /^frame: base_link$/m); assert.match(y, /^prefijo_frames: ''$/m);
+    assert.match(y, /^robot_id: '203' /m); assert.match(y, /^frame: 'base_link'$/m); // DT35: entre comillas, como en los ficheros de ROS assert.match(y, /^prefijo_frames: ''$/m);
     // corrección 6: lo que depende del giro world → base_link es SUPUESTO; world es el del gemelo; la focal sigue en mm
     const linea = (t, k) => t.split('\n').find(l => l.startsWith(`${k}:`)) || '';
     assert.match(linea(y, 'world_a_base_link'), /# world del gemelo \(ejes de la mesa\): SUPUESTO · giro: mount_yaw − π del xacro del curso, SUPUESTO/);
@@ -95,7 +95,7 @@ test('corrección 5: una v10 de solo lectura con un robot desconocido se exporta
     const y = await p.evaluate(() => document.getElementById('yaml').value);
     assert.match(y, /^# Robot: «207» \(desconocido para esta versión del gemelo: se usa la cinemática nominal\)/m);
     assert.match(y, /^# Frame: 207_base_link \(prefijo «207_» de la disposición; esta versión del gemelo no conoce su URDF doble\)/m);
-    assert.match(y, /^robot_id: 207  # de la disposición; el gemelo no lo conoce y usa la cinemática nominal$/m);
+    assert.match(y, /^robot_id: '207'  # de la disposición; el gemelo no lo conoce y usa la cinemática nominal$/m);
     assert.equal(await p.evaluate(() => window.__g.ROB.id), 'nominal');
     comprobar(s.reg);
   } finally { await s.cerrar(); }
