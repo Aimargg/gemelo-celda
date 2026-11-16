@@ -21,7 +21,6 @@ class FalloDemo extends Error { constructor(msg, tipo = 'fallo', info = {}) { su
 const MESA = { w: 1.18, d: 0.83, h: 0.76, e: 0.03 };
 const BASES = { A: { x: -0.439, y: 0.300 }, B: { x: 0.434, y: 0.269 } };
 const RG2 = { carrera: 0.110, piv: 0.021, cuerpo: 0.130, L: 0.065, tip: 0.018, ancho: 0.064, esp: 0.036 };
-const SENSOR = { w: 6.287, h: 4.712 }; // mm, IMX577 4056×3040 a 1,55 µm
 const MODOS = { '1920x1080': { w: 1920, h: 1080, fps: 120 }, '1280x960': { w: 1280, h: 960, fps: 120 }, '2048x1536': { w: 2048, h: 1536, fps: 30 }, '3840x2160': { w: 3840, h: 2160, fps: 30 }, '1280x720': { w: 1280, h: 720, fps: 120 } };
 const BRAZO_MANFROTTO = 0.53;
 const VMAX = [180, 180, 180, 360, 360, 360].map(v => v * D2R); // rad/s UR3e
@@ -34,12 +33,16 @@ const ARUCO = ['1011010100110010', '0000111110011010', '0011001100101101', '1001
 // @@LAYOUT@@
 // @@RNG@@
 // @@PERFIL@@
+// @@SENSOR@@
 // @@CALIBRACION@@
 // Perfil con el que se explora (arrastrar, «Calcular trayectorias», el primer cálculo, la vista de cada objeto): siempre
 // «gemelo» (D6, decisión 2 del brief de T1.6). El de la escena (L.perfil) es el de la demo y el del veredicto principal.
 const PERFIL_EXPLORA = 'gemelo';
 // Un layout de una versión más nueva (solo lectura) puede traer un perfil que esta página no conoce: el de las escenas nuevas
 const perfilEscena = () => PERFIL.NOMBRES.includes(L.perfil) ? L.perfil : LAYOUT.NUEVA.perfil;
+// Sensor de las cámaras de la escena (T1.7, D10; src/sensor.js): «elp-ficha» en las nuevas, «gemelo-v8» en las v8 (I1).
+// Uno que esta página no conoce (solo lectura de una versión más nueva): el de las escenas nuevas.
+const sensorEscena = () => SENSOR.NOMBRES.includes(L.sensor) ? L.sensor : LAYOUT.NUEVA.sensor;
 
 function layoutDefecto() {
   return {
@@ -416,8 +419,10 @@ function cilindroEntre(c, a, b) { const d = b.clone().sub(a); const l = d.length
 
 // ======================= Cámaras =======================
 const CAMS = {};
-function hfovDe(c) { return 2 * Math.atan(SENSOR.w / 2 / c.f); }
-function vfovDe(c) { const M = MODOS[c.modo]; return 2 * Math.atan(Math.min(SENSOR.h, SENSOR.w * M.h / M.w) / 2 / c.f); }
+// Campo de visión con el sensor de la escena en el modo de la cámara (T1.7): el frustum, la miniatura y las métricas
+function areaDe(c) { return SENSOR.area(sensorEscena(), MODOS[c.modo]); }
+function hfovDe(c) { return SENSOR.hfov(areaDe(c).w, c.f); }
+function vfovDe(c) { return SENSOR.vfov(areaDe(c).h, c.f); }
 function crearCam(k) {
   const c = L.cams[k]; const R = { k };
   R.cam = new THREE.PerspectiveCamera(vfovDe(c) * R2D, MODOS[c.modo].w / MODOS[c.modo].h, 0.03, 8); R.cam.up.set(0, 0, 1); scene.add(R.cam);
@@ -1587,10 +1592,10 @@ function puntosObjetivo(k) {
 const rayO = new THREE.Raycaster();
 function metricasCam(k, soloLibre = false) {
   const c = L.cams[k], R = CAMS[k]; R.cam.updateMatrixWorld(true);
-  const M = MODOS[c.modo]; const hf = hfovDe(c), vf = vfovDe(c);
+  const M = MODOS[c.modo]; const hf = hfovDe(c), vf = vfovDe(c), ar = areaDe(c);
   const cp = R.cam.position.clone(); const aim = new THREE.Vector3(c.mira.x, c.mira.y, c.mira.z); const dist = cp.distanceTo(aim);
   const dir = aim.clone().sub(cp).normalize(); const inc = aim.z <= MESA.h + 0.01 ? Math.abs(dir.z) : 1;
-  const pix = (SENSOR.w / c.f) / M.w; const mmpx = dist * pix / Math.max(0.2, inc) * 1000;
+  const mmpx = SENSOR.mmPorPx(dist, ar.w, c.f, M.w, Math.max(0.2, inc)); // d·(w/f)/N ÷ cos θ (T1.7)
   let libre = Infinity; if (robot) { const P = robot.puntos(); P.push(tcpMundo()); for (let i = 1; i < P.length; i++) { if (P[i - 1].distanceTo(P[i]) < 1e-6) continue; const l = new THREE.Line3(P[i - 1], P[i]); const q = l.closestPointToPoint(cp, true, new THREE.Vector3()); libre = Math.min(libre, q.distanceTo(cp) - 0.05); } }
   if (soloLibre) return { libre };
   const pts = puntosObjetivo(k); let dentro = 0; const tapados = [], fuera = [];
@@ -1600,7 +1605,7 @@ function metricasCam(k, soloLibre = false) {
     if (!ok) { fuera.push(n); continue; } dentro++;
     rayO.set(cp, p.clone().sub(cp).normalize()); rayO.far = cp.distanceTo(p) - 0.02; if (robs.length && rayO.intersectObjects(robs, false).length) tapados.push(n);
   }
-  return { hf, vf, mmpx, dist, alt: cp.z - MESA.h, aruco: 50 / mmpx, dentro, total: pts.length, fuera, tapados, libre, brazoOK: R.brazoOK, brazoD: R.brazoD };
+  return { hf, vf, mmpx, dist, inc, alt: cp.z - MESA.h, aruco: 50 / mmpx, dentro, total: pts.length, fuera, tapados, libre, brazoOK: R.brazoOK, brazoD: R.brazoD, sensor: sensorEscena(), nota: ar.nota };
 }
 function pintarCamaras() {
   $('#camCards').innerHTML = Object.keys(L.cams).map(k => {
@@ -1611,14 +1616,27 @@ function pintarCamaras() {
     <div class="field"><label for="f_${k}">Focal (zoom de la lente)</label><output>${fmt(c.f, 1)} mm</output><input type="range" id="f_${k}" min="3.6" max="10" step="0.1" value="${c.f}"></div>
     ${slidersOrient(k, 'co')}
     <div class="row"><label class="hint" for="m_${k}" style="flex:none">Modo</label><select id="m_${k}" style="flex:1;width:auto">${Object.keys(MODOS).map(x => `<option ${x === c.modo ? 'selected' : ''} value="${x}">${x.replace('x', '×')} · ${MODOS[x].fps} fps${MODOS[x].w / MODOS[x].h < 1.5 ? ' · 4:3' : ''}</option>`).join('')}</select></div>
-    <dl class="kv"><dt>Campo de visión</dt><dd>${fmt(m.hf * R2D, 0)}° × ${fmt(m.vf * R2D, 0)}°</dd><dt>Altura sobre la mesa</dt><dd>${mm(m.alt)} mm</dd><dt>Resolución en el punto de mira</dt><dd>${fmt(m.mmpx, 2)} mm/px</dd>
+    <dl class="kv"><dt>Campo de visión <span class="tag s">SIN VALIDAR</span></dt><dd>${fmt(m.hf * R2D, 0)}° × ${fmt(m.vf * R2D, 0)}°</dd><dt>Altura sobre la mesa</dt><dd>${mm(m.alt)} mm</dd><dt>Resolución en el punto de mira <span class="tag s">SIN VALIDAR</span></dt><dd>${fmt(m.mmpx, 2)} mm/px</dd>
     <dt>ArUco de 50 mm</dt><dd><span class="pill ${m.aruco >= 30 ? 'ok' : m.aruco >= 18 ? 'warn' : 'bad'}">${Math.round(m.aruco)} px de lado</span></dd>
     <dt>Ve sus objetivos</dt><dd><span class="pill ${visCls}">${m.dentro}/${m.total}</span>${m.fuera.length ? ' fuera: ' + [...new Set(m.fuera)].join(', ') : ''}${m.tapados.length ? ' · tapados por el brazo: ' + [...new Set(m.tapados)].join(', ') : ''}</dd>
     <dt>Brazo Manfrotto 244</dt><dd><span class="pill ${m.brazoOK ? 'ok' : 'bad'}">${mm(m.brazoD)} de 530 mm</span></dd>
     <dt>Holgura con el UR3e</dt><dd><span class="pill ${libre > 0.08 ? 'ok' : libre > 0.02 ? 'warn' : 'bad'}">${libre === Infinity ? '—' : mm(Math.max(0, libre)) + ' mm'}</span>${minC !== undefined ? ' mínima en la demo' : ' ahora'}</dd></dl>
+    ${m.nota ? `<p class="hint">Modo ${c.modo.replace('x', '×')}: ${m.nota}.</p>` : ''}
     <div class="btns"><button class="btn" data-act="sel">Mover</button><button class="btn" data-act="ver">Ver por esta cámara</button></div></div>`;
-  }).join('') + `<p class="hint">Orientativo: el lado del marcador en píxeles sale de la resolución en el punto de mira; por debajo de unos 20 px la detección y la pose de ArUco se degradan. El campo de visión es de lente ideal: el real se mide en la calibración intrínseca.</p>`;
+  }).join('') + `<p class="hint">Orientativo: el lado del marcador en píxeles sale de la resolución en el punto de mira; por debajo de unos 20 px la detección y la pose de ArUco se degradan. El campo de visión y los mm/px son de lente ideal con el sensor «${SENSOR.de(sensorEscena()).nombre}» [SIN VALIDAR]: el real se mide en la calibración intrínseca (camera_info, F4).</p>`;
+  pintarSensor();
 }
+// Selector del modelo de sensor (T1.7): cambia el campo de visión, el frustum, las miniaturas y las métricas; no mueve nada
+function pintarSensor() {
+  const s = sensorEscena(), m = SENSOR.de(s); $$('#segSensor button').forEach(x => x.setAttribute('aria-pressed', x.dataset.v === s));
+  $('#sensorNota').textContent = `Sensor de la escena: ${m.nombre}, ${fmt(m.w, 3)} × ${fmt(m.h, 3)} mm (${m.origen}). Ancho completo en todos los modos (Sony); el alto, el que deja la relación de aspecto del modo. Las escenas nuevas usan la ficha de la ELP y las v8, el de la v8.`;
+}
+$('#segSensor').addEventListener('click', e => {
+  const b = e.target.closest('button'); if (!b || !SENSOR.NOMBRES.includes(b.dataset.v) || b.dataset.v === L.sensor) return;
+  if (soloLectura()) { toast('Disposición de solo lectura (versión más nueva): no se cambia el sensor'); return; }
+  L.sensor = b.dataset.v; for (const k in L.cams) actualizarCam(k); guardarLocal(); pintarCamaras(); if (!$('[data-panel="datos"]').hidden) pintarDatos();
+  toast(`Sensor: ${SENSOR.de(L.sensor).nombre}. Cambian el campo de visión y los mm/px; no se mueve nada`);
+});
 $('#camCards').addEventListener('input', e => {
   const id = e.target.id; if (!id || /^(so|co)(pan|tilt|roll)_/.test(id)) return; const [t, k] = id.split('_'); if (!L.cams[k]) return;
   if (t === 'f') L.cams[k].f = +e.target.value; if (t === 'm') L.cams[k].modo = e.target.value;
@@ -1687,7 +1705,7 @@ function generarYaml() {
   const bt = B(tp); y += `  bandeja_recepcion: {x: ${r3(bt.x)}, y: ${r3(bt.y)}, z: ${r3(bt.z)}, yaw_rad: ${rad3(yawABase(tp.yaw))}}  ${sup}\n`;
   y += `  zona_primero: ${P(zw('zona_primero'))}  ${sup}\n  zona_segundo: ${P(zw('zona_segundo'))}  ${sup}\n`;
   const pe = B(L.persona); y += `  persona: {x: ${r3(pe.x)}, y: ${r3(pe.y)}, yaw_rad: ${rad3(yawABase(L.persona.yaw))}}  ${sup}\ncamaras:\n`;
-  for (const k in L.cams) { const c = L.cams[k], o = orientDe({ pos: B(c.pos), mira: B(c.mira), roll: c.roll }); y += `  camara_${k}: {grupo: ${c.grupo}, modelo: ELP-USB12MP01-UFV, focal_mm: ${c.f.toFixed(1)}, modo: ${c.modo}, hfov_rad: ${r3(hfovDe(c))}, posicion: ${P(c.pos)}, mira: ${P(c.mira)}, orientacion_rad: {giro: ${rad3(o.pan)}, inclinacion: ${rad3(o.tilt)}, alabeo: ${rad3(o.roll)}}, pinza_mesa: ${P(c.clamp)}}  # pose: SUPUESTO · modelo: MEDIDO · focal y modo: elegidos · hfov: SUPUESTO (lente ideal)\n`; }
+  for (const k in L.cams) { const c = L.cams[k], o = orientDe({ pos: B(c.pos), mira: B(c.mira), roll: c.roll }); y += `  camara_${k}: {grupo: ${c.grupo}, modelo: ELP-USB12MP01-UFV, focal_mm: ${c.f.toFixed(1)}, modo: ${c.modo}, hfov_rad: ${r3(hfovDe(c))}, posicion: ${P(c.pos)}, mira: ${P(c.mira)}, orientacion_rad: {giro: ${rad3(o.pan)}, inclinacion: ${rad3(o.tilt)}, alabeo: ${rad3(o.roll)}}, pinza_mesa: ${P(c.clamp)}}  # pose: SUPUESTO · modelo: MEDIDO · focal y modo: elegidos · hfov: SUPUESTO (lente ideal, sensor ${sensorEscena()})\n`; }
   y += `# layout-json: ${JSON.stringify(L)}\n`;
   return y;
 }
@@ -1715,7 +1733,7 @@ $('#btnImport').addEventListener('click', () => {
 function aplicarLayout() {
   cerrarPreguntaRobot(); aplicarPedido(); $$('#segRobot button').forEach(x => x.setAttribute('aria-pressed', x.dataset.v === L.robot));
   colocarRobots(); actualizarZona(); actualizarPlatos(); actualizarAruco(); for (const k in L.cams) actualizarCam(k); aplicarBandeja(simT);
-  reiniciarDemo(); pintarCaja(); pintarPerfil(); evaluar(); calcularMapa(); pintarSoloLectura(); guardarLocal(); if (!$('[data-panel="datos"]').hidden) pintarDatos();
+  reiniciarDemo(); pintarCaja(); pintarPerfil(); pintarSensor(); evaluar(); calcularMapa(); pintarSoloLectura(); guardarLocal(); if (!$('[data-panel="datos"]').hidden) pintarDatos();
 }
 const FUENTES = [
   ['Mesa', '1180 × 830 mm, superficie a 760 mm', 'm', 'Cinta + foto (regla y A4, error < 2 %)'],
@@ -1729,7 +1747,7 @@ const FUENTES = [
   ['Caja bajo el plato', '10 × 10 cm, altura regulable', 's', 'Propuesta del grupo; tamaño sin medir'],
   ['Orientación de base_link', 'eje x paralelo al lado largo de la mesa', 's', 'Comprobar en PolyScope'],
   ['Cámaras', 'ELP-USB12MP01-UFV, IMX577, 3,6–10 mm, USB 2.0', 'm', 'Caja de la cámara + web del fabricante'],
-  ['Campo de visión', 'lente ideal sobre el ancho del sensor', 's', 'Medir en la calibración intrínseca'],
+  ['Campo de visión', 'lente ideal sobre el ancho del sensor', 's', 'Medir en la calibración intrínseca'], // la fila la completa fuentesRobot con el sensor de la escena (T1.7)
   ['Marcadores', 'ArUco DICT_4X4_50: zona 0–3, entrega 4–5, bandeja 6–9 (dibujados con su patrón real)', 's', 'Ids propuestos'],
   ['Soportes de cámara', 'Manfrotto 035 + brazo 244 de 53 cm', 'm', 'Foto + ficha'],
   ['Fruta', 'piezas de plástico de 4,5–7 cm', 's', 'Foto de referencia del grupo'],
@@ -1748,6 +1766,7 @@ const FUENTES = [
 function fuentesRobot() {
   const id = ROB.id, d = ROB.datos;
   return FUENTES.map(f => f[0] === 'Cinemática del UR3e' && id !== 'nominal' ? [f[0], `calibración del robot ${id}; IK analítica nominal refinada con Levenberg–Marquardt (1e-6 m y 1e-6 rad)`, d.sospechoso ? 's' : 'm', `calibration_${id}.yaml del repo del curso (4e4e1a7)${d.sospechoso ? ', sospechosa' : ''}; SIN VALIDAR en ROS`]
+    : f[0] === 'Campo de visión' ? [f[0], `lente ideal sobre el ancho del sensor «${SENSOR.de(sensorEscena()).nombre}» (${fmt(SENSOR.de(sensorEscena()).w, 3)} mm), completo en todos los modos`, 's', `${SENSOR.de(sensorEscena()).origen}; medir en la calibración intrínseca (F4)`]
     : f[0] === 'Orientación de base_link' ? [f[0], `girado ${gradosTxt(ROB.yaw)} respecto a world; world con los ejes de la mesa`, 's', 'Giro: mount_yaw − π del xacro del curso. Ejes de world: comprobar en el laboratorio (docs/estado/frames.md)'] : f);
 }
 function pintarFuentes() { $('#srcTbl tbody').innerHTML = fuentesRobot().map(([a, b, t, c]) => `<tr><td>${a}<br><span class="hint">${c}</span></td><td>${b}</td><td><span class="tag ${t}">${{ m: 'MEDIDO', f: 'FABRICANTE', s: 'SUPUESTO' }[t]}</span></td></tr>`).join(''); }
@@ -1836,7 +1855,7 @@ async function ensayo(cfg = {}) {
 // ======================= Arranque =======================
 let D_ready = false;
 aplicarPedido(); dibujarGrafo(); pintarPasos(-1);
-actualizarZona(); actualizarPlatos(); actualizarAruco(); for (const k in L.cams) actualizarCam(k); aplicarTema(); pintarCaja(); pintarSoloLectura(); pintarRobotId(); pintarPerfil();
+actualizarZona(); actualizarPlatos(); actualizarAruco(); for (const k in L.cams) actualizarCam(k); aplicarTema(); pintarCaja(); pintarSoloLectura(); pintarRobotId(); pintarPerfil(); pintarSensor();
 $$('#segRobot button').forEach(x => x.setAttribute('aria-pressed', x.dataset.v === L.robot));
 $('#segPedido').addEventListener('click', e => { const b = e.target.closest('button'); if (!b || D.playing) return; L.pedido = +b.dataset.v; D.activo = false; aplicarPedido(); reiniciarDemo(); actualizarPlatos(); evaluar(); guardarLocal(); toast(L.pedido === 1 ? 'Pide un solo plato: va al centro de la bandeja' : 'Pide primero y segundo'); });
 $('#segRate').addEventListener('click', e => { const b = e.target.closest('button'); if (!b) return; D.rate = +b.dataset.v; $$('#segRate button').forEach(x => x.setAttribute('aria-pressed', x === b)); });
@@ -1844,7 +1863,7 @@ $('#segModoB').addEventListener('click', e => { const b = e.target.closest('butt
 $('#dVel').addEventListener('input', e => { D.vel = e.target.value / 100; $('#dVelOut').textContent = `${e.target.value} %`; });
 $('#dAmp').addEventListener('input', e => { D.amp = e.target.value / 100; $('#dAmpOut').textContent = `${fmt(+e.target.value, 1)} cm`; actualizarCheck(); });
 requestAnimationFrame(bucle);
-if (location.search.includes('prueba')) window.__g = { aplicarPedido, actualizarZona, esferasObjeto, cargaDe, BAND, bandeja, aplicarBandeja: t => aplicarBandeja(t), ladoZonas: () => ladoZonas(), comprobarPlan, llegaVertical, puntosSoltar, FRUTAS, CACHE_PLAN, poseHoriz, ejeHoriz, mundoABase, enLimites, qValida, rutaNivelada: (...a) => rutaNivelada(...a), colocacionConTransporte: (...a) => colocacionConTransporte(...a), planColocar: (...a) => planColocar(...a), zonasB, ikTCP, planAgarrePlato, planColocar, planPlatoCache, KIN_: KIN, BASES, consts: { R_AGARRE, H_BORDE }, COL: () => COL, choqueEn: (q, c) => choqueEn(q, c), obstaculos: () => obstaculos(), textoChoque: c => textoChoque(c), D, L: () => L, cam, orbit, scene, renderer, OBJ, piezas: () => piezas, simT: () => simT, CAMS, actualizarCam, actualizarAruco, actualizarPlatos, metricasCam, estadoObjeto, alcance, comprobarPlan, ensayo, planAgarrePlato, holguraActual, get robot() { return robot; }, KIN, pinza, tcpMundo, zPlato, setL: l => { L = l; }, ESC, ALM, abrirEscena, codigoEscena, abrirCodigo, guardarEscena, escCam: cam, orbit, vista, CALC, calcularPlanes, planesAlDia, recalcular, orientDe, fijarOrient, orientarDesdeQuat, CAMS, seleccionar, tctl, generarYaml, cadenaPlato, cargaPlan, rutaCartesiana: (...a) => rutaCartesiana(...a), zonasB_: () => zonasB, zonaDe, qReposo, aplicarLayout, buscarAlternativa, candidatos, explicar, mostrarFalloInfo, diagnosticarPunto, LAYOUT, ESQ_L, migrarLayout, soloLectura, RNG, planificar: (...a) => planificar(...a), get CIN() { return CIN; }, get ROB() { return ROB; }, CALIBRACION, marco: () => marco(), baseAMundo: (x, y, z) => baseAMundo(x, y, z), tcpDeQ: (q, w) => tcpDeQ(q, w), pedirRobotId: id => pedirRobotId(id), ikNoConverge: (p, y, o) => ikNoConverge(p, y, o), posesTCP, volCol, calcularPerfil, radioA, PERFIL, prepararMoveJ: (...a) => prepararMoveJ(...a), perfilEscena: () => perfilEscena(), planesAlDiaDe: pf => planesAlDia(pf), validar: () => validar(), VAL, firmaVal: () => firmaVal(), valAlDia: () => valAlDia(), perfilesDe: e => perfilesDe(e), estadoParaGuardar: () => estadoParaGuardar() }; // T1.4: robot activo, su cinemática y el marco de base_link (una sola línea: build_web.sh la quita entera)
+if (location.search.includes('prueba')) window.__g = { aplicarPedido, actualizarZona, esferasObjeto, cargaDe, BAND, bandeja, aplicarBandeja: t => aplicarBandeja(t), ladoZonas: () => ladoZonas(), comprobarPlan, llegaVertical, puntosSoltar, FRUTAS, CACHE_PLAN, poseHoriz, ejeHoriz, mundoABase, enLimites, qValida, rutaNivelada: (...a) => rutaNivelada(...a), colocacionConTransporte: (...a) => colocacionConTransporte(...a), planColocar: (...a) => planColocar(...a), zonasB, ikTCP, planAgarrePlato, planColocar, planPlatoCache, KIN_: KIN, BASES, consts: { R_AGARRE, H_BORDE }, COL: () => COL, choqueEn: (q, c) => choqueEn(q, c), obstaculos: () => obstaculos(), textoChoque: c => textoChoque(c), D, L: () => L, cam, orbit, scene, renderer, OBJ, piezas: () => piezas, simT: () => simT, CAMS, actualizarCam, actualizarAruco, actualizarPlatos, metricasCam, estadoObjeto, alcance, comprobarPlan, ensayo, planAgarrePlato, holguraActual, get robot() { return robot; }, KIN, pinza, tcpMundo, zPlato, setL: l => { L = l; }, ESC, ALM, abrirEscena, codigoEscena, abrirCodigo, guardarEscena, escCam: cam, orbit, vista, CALC, calcularPlanes, planesAlDia, recalcular, orientDe, fijarOrient, orientarDesdeQuat, CAMS, seleccionar, tctl, generarYaml, cadenaPlato, cargaPlan, rutaCartesiana: (...a) => rutaCartesiana(...a), zonasB_: () => zonasB, zonaDe, qReposo, aplicarLayout, buscarAlternativa, candidatos, explicar, mostrarFalloInfo, diagnosticarPunto, LAYOUT, ESQ_L, migrarLayout, soloLectura, RNG, planificar: (...a) => planificar(...a), get CIN() { return CIN; }, get ROB() { return ROB; }, CALIBRACION, marco: () => marco(), baseAMundo: (x, y, z) => baseAMundo(x, y, z), tcpDeQ: (q, w) => tcpDeQ(q, w), pedirRobotId: id => pedirRobotId(id), ikNoConverge: (p, y, o) => ikNoConverge(p, y, o), posesTCP, volCol, calcularPerfil, radioA, PERFIL, prepararMoveJ: (...a) => prepararMoveJ(...a), perfilEscena: () => perfilEscena(), planesAlDiaDe: pf => planesAlDia(pf), validar: () => validar(), VAL, SENSOR, areaDe: c => areaDe(c), hfovDe: c => hfovDe(c), vfovDe: c => vfovDe(c), firmaVal: () => firmaVal(), valAlDia: () => valAlDia(), perfilesDe: e => perfilesDe(e), estadoParaGuardar: () => estadoParaGuardar() }; // T1.4: robot activo, su cinemática y el marco de base_link (una sola línea: build_web.sh la quita entera)
 fetch('ur3e-malla.json').then(r => { if (!r.ok) throw new Error(r.status); return r.json(); }).then(j => { const bin = atob(j.glb); const u8 = new Uint8Array(bin.length); for (let i = 0; i < bin.length; i++) u8[i] = bin.charCodeAt(i); new GLTFLoader().parse(u8.buffer, '', cargado, fallo); }).catch(fallo);
 function fallo(err) { $('#loading').textContent = 'No se ha podido cargar el modelo del UR3e.'; console.error(err); }
 function cargado(g) {
