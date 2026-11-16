@@ -20,17 +20,28 @@ export const CLAVE_BUENA = 'clave-buena'; // la única que acepta firebase-mock.
 const PERMITIDOS = JSON.parse(fs.readFileSync(path.join(RAIZ, 'tests/e2e/permitidos.json'), 'utf8')).avisos;
 const FLAGS = ['--use-gl=angle', '--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist'];
 
-export function lanzar() { return chromium.launch({ args: FLAGS }); }
+// Lanza un Chromium con su propio servidor de Playwright (mismos flags) y devuelve el navegador conectado y cómo terminarlo.
+// Terminar = kill() del grupo de procesos (~40 ms; Playwright borra el perfil temporal), no browser.close(): con el gemelo
+// abierto, SwiftShader acumula fotogramas en el proceso de la GPU y el cierre ordenado espera a vaciarlos, 10–28 s según
+// cuánto tiempo llevaba abierta la página (medido en T2.0). Cerrar va siempre después de las comprobaciones del test.
+export async function lanzar() {
+  const server = await chromium.launchServer({ args: FLAGS });
+  try {
+    const browser = await chromium.connect(server.wsEndpoint());
+    return { browser, terminar: async () => { await server.kill(); await browser.close().catch(() => { }); } };
+  } catch (e) { await server.kill(); throw e; }
+}
 
 const esLocal = u => u.hostname === '127.0.0.1' || u.hostname === 'localhost';
 const permitido = (tipo, texto) => PERMITIDOS.some(p => p.tipo === tipo && texto.includes(p.texto));
 
 // Abre un destino del gemelo en un navegador propio y un contexto nuevo (almacenamiento limpio).
 // Navegador por página: tras cerrar un contexto, su renderizado con SwiftShader sigue ocupando la CPU unos segundos
-// y la siguiente carga pasa de ~14 s a ~23 s; cerrar el navegador entero lo evita (medido en T0.2).
+// y la siguiente carga pasa de ~14 s a ~23 s; cerrar el navegador entero lo evita (medido en T0.2). Desde T2.0 se termina
+// de golpe (lanzar): la siguiente carga sigue en ~14 s.
 // destino: 'artefacto' | 'artefacto-claude' | 'web'. hash: p. ej. '#g=clave-buena'. initScripts: funciones para addInitScript.
 export async function abrir(base, { destino = 'artefacto', hash = '', prueba = true, esperarCalculo = true, initScripts = [] } = {}) {
-  const browser = await lanzar();
+  const { browser, terminar } = await lanzar();
   try {
     const ctx = await browser.newContext({ viewport: { width: 1440, height: 900 }, deviceScaleFactor: 1 });
     const reg = { errores: [], avisos: [], externas: [], interceptadas: [] };
@@ -80,8 +91,10 @@ export async function abrir(base, { destino = 'artefacto', hash = '', prueba = t
       if (destino === 'web') await page.waitForFunction(() => document.getElementById('calcBar').hidden, null, { timeout: 240000, polling: 100 }); // sin __g
       else if (prueba) await esperarPlanes(page);
     }
-    return { ctx, page, reg, version: browser.version(), cerrar: () => browser.close() };
-  } catch (e) { await browser.close().catch(() => { }); throw e; } // nada queda abierto si falla la carga
+    // Sin esperar a las peticiones que aún estén pasando por ctx.route: al terminar el navegador fallarían sin motivo
+    const cerrar = async () => { await ctx.unrouteAll({ behavior: 'ignoreErrors' }).catch(() => { }); await terminar(); };
+    return { ctx, page, reg, version: browser.version(), cerrar };
+  } catch (e) { await terminar().catch(() => { }); throw e; } // nada queda abierto si falla la carga
 }
 
 // Espera a que termine calcularPlanes (el primer cálculo arranca solo al cargar)

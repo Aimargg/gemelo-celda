@@ -1,7 +1,8 @@
 // Determinismo del planificador (T1.2, D5, I6): la semilla del RRT sale de la petición, no del orden de cálculo.
 //  · planificar A, después B y después A da el mismo camino (mismos q) para A y A';
 //  · si el RRT no encuentra camino con su semilla, no hay plan: una sola semilla por petición, sin reintento;
-//  · a nivel de demo, la matriz de 8 casos en orden inverso da exactamente los registros de matriz-base.json (orden directo).
+//  · a nivel de demo, la matriz de 8 casos en orden inverso da exactamente los registros de matriz-base.json (orden directo):
+//    en determinismo-demo.test.mjs, nivel de puerta (T2.0).
 import { test, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
@@ -80,16 +81,6 @@ test('sin camino con su semilla, planificar da «sin plan» (null) sin probar ot
     const J1 = await planificar(p, 'J'), J2 = await planificar(p, 'J');
     assert.deepEqual(J1, { r: null, semillas: 1, generadores: 1 }, 'sin plan, con una sola semilla');
     assert.deepEqual(J2, J1, 'otra vez lo mismo: no hay reintento con otra semilla');
-    comprobar(s.reg);
-  } finally { await s.cerrar(); }
-});
-
-test('I6 en la demo: la matriz en orden inverso da los mismos registros, campo a campo, que matriz-base.json', { timeout: 600000 }, async () => {
-  const BASE = JSON.parse(fs.readFileSync(path.join(RAIZ, 'tests/fixtures/matriz-base.json'), 'utf8')).casos;
-  const s = await abrir(srv.url);
-  try {
-    const res = (await ensayar(s.page, [...CASOS_MATRIZ].reverse())).reverse().map(({ ms, ...r }) => r);
-    assert.deepEqual(res, BASE); // todos los campos: t_sim, t_mov, errores, planes, pausas…
     comprobar(s.reg);
   } finally { await s.cerrar(); }
 });

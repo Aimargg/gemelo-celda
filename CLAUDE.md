@@ -13,8 +13,9 @@ y no es fuente del repo del proyecto de Robótica (invariante I9).
 ## Estructura
 
 - `src/`: fuentes (`part1.html`, `app.js`, `kin.js`, `colision.js`, `fallos.js`, `escenas.js`, `layout.js`, `rng.js`,
-  `perfil.js`, `sensor.js` y `datos/calibracion.js`, que genera `tools/fixtures/fk_desde_xacro.py`). Se concatenan con
-  los marcadores `@@…@@`; sin módulos ES ni bundler (D4).
+  `perfil.js`, `sensor.js`, `origen.js` y `datos/calibracion.js`, que genera `tools/fixtures/fk_desde_xacro.py`). Se
+  concatenan con los marcadores `@@…@@`; sin módulos ES ni bundler (D4). `origen.js` es la única fuente del origen
+  (MEDIDO, FABRICANTE o SUPUESTO) de cada valor exportable: los exportadores lo leen con un contexto, sin globales (T2.1).
 - `tools/build.sh` → `dist/gemelo-celda.html` (artefacto de claude.ai, con el gancho `window.__g` y `?prueba`).
 - `tools/build_web.sh` → `index.html` (GitHub Pages; quita el gancho y añade `config.js`). Llama a `build.sh`.
 - `web_src/`: plantillas con `@@CLAVE@@` y `PEGA_AQUI`. `tests/`: arnés de pruebas. `tests/mocks/`: simulacros de Firestore
@@ -25,14 +26,17 @@ y no es fuente del repo del proyecto de Robótica (invariante I9).
 - `npm install` (solo `playwright@1.63.0` y `three@0.160.0`, versión exacta). Si falta el navegador de Playwright 1.63.0,
   para y avisa: no ejecutes `playwright install` sin preguntar.
 - `npm run build`: los dos destinos. `index.html` se versiona construido (D1).
-- `npm test`: build + unitarios (`node:test`) + e2e (Playwright + Chromium con SwiftShader, sin GPU ni red).
+- `npm test`: nivel de tarea (T2.0): build + unitarios (`node:test`) + e2e de tarea (Playwright + Chromium con
+  SwiftShader, sin GPU ni red), < 15 min. `npm run test:puerta`: los dos niveles, todos los tests (puertas de fase).
+  Qué fichero e2e va en cada nivel: `tests/niveles.mjs`; el porqué, en `tests/README.md`. Un e2e nuevo se añade allí.
 - `npm run test:rapido`: build + unitarios + carga de los dos destinos (< 2 min).
-- `bash tools/check.sh`: búsqueda de la clave (I3) en el árbol y en el índice + build + `npm test`. Pásalo antes de cada
-  commit de entrega. Sin `clave_grupo.txt` la búsqueda es heurística (patrones `#g=`, `grupo ==`, rutas `grupos/…`); la
-  búsqueda exacta de la clave solo se hace en el equipo del usuario, que es quien tiene ese fichero.
+- `bash tools/check.sh`: búsqueda de la clave (I3) en el árbol y en el índice + build + `npm test`; con `--puerta`, con
+  `npm run test:puerta`. Pásalo antes de cada commit de entrega (`--puerta` en las puertas). Sin `clave_grupo.txt` la
+  búsqueda es heurística (`#g=`, `grupo ==`, rutas `grupos/…`); la exacta solo se hace en el equipo del usuario.
 - `npm run caracterizar`: regenera solo `tests/fixtures/matriz-base.json` desde el gemelo actual, y solo cuando la tarea
   lo pida (p. ej. T1.2), con el diff explicado en el informe. `npm run caracterizar -- --curso` hace lo mismo con
-  `tests/fixtures/matriz-curso.json` (los 8 casos con el perfil «curso»).
+  `tests/fixtures/matriz-curso.json` (los 8 casos con el perfil «curso»); `-- --yaml`, con `tests/fixtures/yaml/`
+  (posiciones.yaml y la tabla de fuentes del panel «Datos» con nominal, 203 y prefijo, T2.1).
 - `escenas-v8/` no se regenera: su `codigo` es fijo (I1). `npm run caracterizar -- --escenas` recalcula solo `esperado`
   (nunca el `codigo`) y exige explicar el diff.
 - `npm run medir`: regenera la línea base (`docs/estado/linea-base-v8.md`). `npm run medir -- <fichero>` escribe la medida
@@ -60,7 +64,7 @@ y no es fuente del repo del proyecto de Robótica (invariante I9).
 
 ## Al terminar una tarea
 
-1. `bash tools/check.sh` en verde (o explica qué falla y por qué).
+1. `bash tools/check.sh` en verde (o explica qué falla y por qué); en una puerta de fase, `bash tools/check.sh --puerta`.
 2. Marca la tarea como «entregada» en la tabla de tareas del plan, con el hash del commit. No cambies nada más del plan.
 3. Informa con el formato del brief: criterios con evidencia, hallazgos, deuda y desviaciones.
 

@@ -34,6 +34,42 @@ export const ESCENAS_V8 = [
   { id: '3-un-plato', nombre: 'Un plato, zona desplazada', descripcion: 'Pedido de un plato, zona de fruta 3 cm en +x y focal de la cenital a 4,5 mm', preparar: () => { const L = window.__g.L(); L.pedido = 1; L.zona.x += 0.03; L.cams.cenital.f = 4.5; } },
 ];
 
+// Panel «Datos» (T2.1, decisión 7 de su brief): posiciones.yaml y la tabla de fuentes de la disposición de partida con el
+// robot nominal, con el 203 y con el 203 y el prefijo de frames del URDF doble, en este orden y en la misma página recién
+// cargada. Fuera de la demo la bandeja no se balancea: el YAML no depende del reloj. El generador (npm run caracterizar --
+// --yaml → tests/fixtures/yaml/) y el test (tests/e2e/datos.test.mjs) usan este mismo procedimiento.
+export const CASOS_YAML = [
+  { id: 'nominal', descripcion: 'disposición de partida con el robot nominal, sin prefijo de frames', robot: 'nominal', prefijo: '' },
+  { id: '203', descripcion: 'la misma con el 203 («Mantener la mesa»: los objetos no se mueven en world), sin prefijo', robot: '203', prefijo: '' },
+  { id: '203-prefijo', descripcion: 'la misma con el 203 y el prefijo «203_» del URDF doble (doble_ur3e_203_204)', robot: '203', prefijo: '203_' },
+];
+export async function datosDe(page, casos = CASOS_YAML) {
+  const out = [];
+  for (const c of casos) {
+    if (await page.evaluate(() => window.__g.ROB.id) !== c.robot) {
+      await page.click('.tabs [data-tab="escena"]'); await page.click(`#segRobotId [data-v="${c.robot}"]`);
+      if (await page.evaluate(() => !document.getElementById('robotPregunta').hidden)) await page.click('#rpMesa');
+      await page.waitForFunction(id => window.__g.ROB.id === id && window.__g.L().robotId === id, c.robot, { timeout: 60000, polling: 50 });
+    }
+    await page.click('.tabs [data-tab="datos"]'); // pinta el YAML y la tabla de fuentes (pintarDatos)
+    if (await page.evaluate(() => window.__g.L().prefijoFrames) !== c.prefijo) {
+      await page.selectOption('#prefijo', c.prefijo);
+      await page.waitForFunction(pf => window.__g.L().prefijoFrames === pf, c.prefijo, { timeout: 30000, polling: 50 });
+    }
+    const r = await page.evaluate(() => {
+      const filas = [...document.querySelectorAll('#srcTbl tbody tr')].map(tr => {
+        const [a, b, t] = tr.cells, tag = t.querySelector('.tag');
+        return { dato: a.firstChild.textContent, fuente: a.querySelector('.hint').textContent, valor: b.textContent, etiqueta: tag.textContent, clase: tag.className, html: tr.innerHTML };
+      });
+      return { yaml: window.__g.generarYaml(), panel: filas };
+    });
+    out.push({ caso: c.id, ...r });
+  }
+  return out;
+}
+// La línea «fecha:» del YAML es la del día en que se genera: se compara todo lo demás
+export const sinFecha = y => y.replace(/^fecha: \d{4}-\d{2}-\d{2}$/m, 'fecha: (sin comparar)');
+
 // Crea el código de una escena con codigoEscena() en una página recién cargada
 export async function codigoDe(page, escena) {
   await page.evaluate(escena.preparar);

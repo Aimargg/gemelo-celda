@@ -3,7 +3,9 @@
 // Uso: npm run caracterizar                        → solo tests/fixtures/matriz-base.json
 //      npm run caracterizar -- --curso             → solo tests/fixtures/matriz-curso.json (los 8 casos con «curso», T1.9)
 //      npm run caracterizar -- --escenas           → solo recalcula `esperado` de tests/fixtures/escenas-v8/*.json
-//      npm run caracterizar -- --matriz --escenas  → varias cosas a la vez (--matriz, --curso y --escenas se combinan)
+//      npm run caracterizar -- --yaml              → solo tests/fixtures/yaml/: posiciones.yaml y la tabla de fuentes del
+//                                                    panel «Datos» con nominal, con el 203 y con prefijo (T2.1, CASOS_YAML)
+//      npm run caracterizar -- --matriz --escenas  → varias cosas a la vez (--matriz, --curso, --escenas y --yaml se combinan)
 // escenas-v8/ es la base de I1: el `codigo` de un fichero existente no se reescribe nunca. Un fichero nuevo solo se crea
 // (con codigoEscena() de la v8 actual) si una escena de ESCENAS_V8 todavía no tiene el suyo.
 import fs from 'node:fs';
@@ -11,15 +13,16 @@ import path from 'node:path';
 import { execSync } from 'node:child_process';
 import { arrancarServidor, RAIZ } from '../servidor.mjs';
 import { abrir, comprobar } from '../navegador.mjs';
-import { CASOS_MATRIZ, CASOS_CURSO, ensayar, ESCENAS_V8, codigoDe, medirEscena } from '../medir.mjs';
+import { CASOS_MATRIZ, CASOS_CURSO, ensayar, ESCENAS_V8, codigoDe, medirEscena, CASOS_YAML, datosDe } from '../medir.mjs';
 
 const args = process.argv.slice(2);
-const desconocidos = args.filter(a => !['--matriz', '--curso', '--escenas'].includes(a));
-if (desconocidos.length) { console.error(`Argumentos no válidos: ${desconocidos.join(' ')} (usa --matriz, --curso y/o --escenas)`); process.exit(2); }
-const escenas = args.includes('--escenas'), curso = args.includes('--curso'), matriz = args.includes('--matriz') || (!escenas && !curso);
+const desconocidos = args.filter(a => !['--matriz', '--curso', '--escenas', '--yaml'].includes(a));
+if (desconocidos.length) { console.error(`Argumentos no válidos: ${desconocidos.join(' ')} (usa --matriz, --curso, --escenas y/o --yaml)`); process.exit(2); }
+const escenas = args.includes('--escenas'), curso = args.includes('--curso'), yaml = args.includes('--yaml'), matriz = args.includes('--matriz') || (!escenas && !curso && !yaml);
 const fuente = (() => { try { return execSync('git log -1 --format=%h -- src', { cwd: RAIZ }).toString().trim(); } catch (e) { return 'desconocido'; } })();
 const escribir = (f, o) => { fs.mkdirSync(path.dirname(f), { recursive: true }); fs.writeFileSync(f, JSON.stringify(o, null, 2) + '\n'); console.log('escrito', path.relative(RAIZ, f)); };
 const DIR_ESC = path.join(RAIZ, 'tests/fixtures/escenas-v8');
+const DIR_YAML = path.join(RAIZ, 'tests/fixtures/yaml');
 
 // Abre una página, ejecuta fn y la cierra pase lo que pase
 async function conPagina(srv, fn) {
@@ -54,5 +57,14 @@ try {
       escribir(f, previo ? { ...previo, comando: 'npm run caracterizar -- --escenas', codigo: previo.codigo, esperado, esperado_fuente_src: fuente }
         : { nombre: e.nombre, descripcion: e.descripcion, fuente_src: fuente, comando: 'npm run caracterizar -- --escenas', codigo, esperado });
     }
+  }
+  if (yaml) { // panel «Datos» (T2.1): un .yaml por caso, tal cual lo genera el gemelo, y las tablas de fuentes en casos.json
+    const res = await conPagina(srv, p => datosDe(p));
+    for (const r of res) { const f = path.join(DIR_YAML, `${r.caso}.yaml`); fs.mkdirSync(DIR_YAML, { recursive: true }); fs.writeFileSync(f, r.yaml); console.log('escrito', path.relative(RAIZ, f)); }
+    escribir(path.join(DIR_YAML, 'casos.json'), {
+      descripcion: 'Caracterización del panel «Datos» (T2.1, decisión 7): posiciones.yaml (<caso>.yaml) y las filas de la tabla de fuentes de cada caso de CASOS_YAML (tests/medir.mjs), en este orden y en una página recién cargada. El test (tests/e2e/datos.test.mjs) compara el YAML byte a byte salvo la línea «fecha:» y cada fila de la tabla (texto, fuente, etiqueta, clase y HTML).',
+      fuente_src: fuente, comando: 'npm run caracterizar -- --yaml',
+      casos: res.map(r => ({ ...CASOS_YAML.find(c => c.id === r.caso), yaml: `${r.caso}.yaml`, panel: r.panel })),
+    });
   }
 } finally { await srv.cerrar(); }

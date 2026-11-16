@@ -1,0 +1,31 @@
+# posiciones.yaml · gemelo de la celda UR3e · BORRADOR (generado por IA)
+# Robot: nominal (sin identificar: cinemática nominal del UR3e), en la posición B de la celda (derecha en la foto cenital).
+# Frame: base_link (sin prefijo, como en sim_<id>). Metros y radianes (REP-103), redondeo a 1 mm y 0,001 rad.
+# world: el world del gemelo, con los ejes de la mesa y el origen en el centro de la base sobre el tablero [SUPUESTO hasta comprobarlo en el laboratorio].
+# base_link está girado 0.000 rad (0,0°) respecto a ese world: mount_yaw − π del xacro del curso [SIN VALIDAR en ROS; docs/estado/frames.md].
+# Origen de cada valor, al final de su línea: MEDIDO, FABRICANTE o SUPUESTO. Las cámaras dan el giro desde +y de base_link hacia +x.
+fecha: 2026-11-16
+robot: B  # MEDIDO (posición de la base en la celda)
+robot_id: nominal  # elegido en el gemelo
+frame: base_link
+prefijo_frames: ''
+world_a_base_link: {x: 0.000, y: 0.000, z: 0.000, yaw_rad: 0.000}  # world del gemelo (ejes de la mesa): SUPUESTO · giro: mount_yaw − π del xacro del curso, SUPUESTO (sin validar en ROS)
+pinza: {modelo: OnRobot RG2, tcp_z_m: 0.200, carrera_m: 0.110}  # tcp_z: SUPUESTO (modelo simplificado) · carrera: MEDIDO
+mesa: {ancho_m: 1.180, fondo_m: 0.830, alto_m: 0.760, centro_en_base_link: {x: -0.434, y: -0.269}, yaw_rad: 0.000}  # MEDIDO
+pedido: dos_platos  # primero y segundo · elegido en el gemelo
+platos: {sobre_caja: true, caja_alto_m: 0.100, caja_lado_m: 0.100, agarre: horizontal_por_el_borde, radio_agarre_m: 0.082}  # agarre: MEDIDO (decisión del grupo) · resto: SUPUESTO
+objetos:
+  zona_fruta: {x: -0.314, y: 0.001, z: 0.000, yaw_rad: 0.000, ancho_m: 0.220, fondo_m: 0.160}  # SUPUESTO (disposición propuesta, sin medir)
+  plato_1: {x: -0.169, y: -0.318, z: 0.100}  # SUPUESTO (disposición propuesta, sin medir)
+  plato_2: {x: -0.312, y: -0.180, z: 0.100}  # SUPUESTO (disposición propuesta, sin medir)
+  marcador_entrega_1: {id: 4, diccionario: DICT_4X4_50, x: 0.046, y: -0.169, z: 0.000}  # SUPUESTO (disposición propuesta, sin medir)
+  marcador_entrega_2: {id: 5, diccionario: DICT_4X4_50, x: 0.116, y: -0.319, z: 0.000}  # SUPUESTO (disposición propuesta, sin medir)
+  bandeja_recepcion: {x: 0.446, y: 0.051, z: 0.240, yaw_rad: 3.142}  # SUPUESTO (disposición propuesta, sin medir)
+  zona_primero: {x: 0.466, y: -0.049, z: 0.240}  # SUPUESTO (disposición propuesta, sin medir)
+  zona_segundo: {x: 0.466, y: 0.151, z: 0.240}  # SUPUESTO (disposición propuesta, sin medir)
+  persona: {x: 0.846, y: 0.051, yaw_rad: 3.142}  # SUPUESTO (disposición propuesta, sin medir)
+camaras:
+  camara_cenital: {grupo: V2, modelo: ELP-USB12MP01-UFV, focal_mm: 3.6, modo: 1920x1080, hfov_rad: 1.382, posicion: {x: -0.264, y: -0.439, z: 0.410}, mira: {x: -0.254, y: -0.169, z: 0.000}, orientacion_rad: {giro: 0.037, inclinacion: 0.988, alabeo: 0.000}, pinza_mesa: {x: -0.264, y: -0.684, z: 0.000}}  # pose: SUPUESTO · modelo: MEDIDO · focal y modo: elegidos · hfov: SUPUESTO (lente ideal, sensor elp-ficha)
+  camara_entrega: {grupo: V1, modelo: ELP-USB12MP01-UFV, focal_mm: 3.6, modo: 1920x1080, hfov_rad: 1.382, posicion: {x: 0.116, y: -0.664, z: 0.490}, mira: {x: 0.246, y: -0.169, z: 0.140}, orientacion_rad: {giro: 0.257, inclinacion: 0.600, alabeo: 0.000}, pinza_mesa: {x: 0.116, y: -0.684, z: 0.000}}  # pose: SUPUESTO · modelo: MEDIDO · focal y modo: elegidos · hfov: SUPUESTO (lente ideal, sensor elp-ficha)
+  camara_persona: {grupo: V1, modelo: ELP-USB12MP01-UFV, focal_mm: 4.5, modo: 1920x1080, hfov_rad: 1.169, posicion: {x: -0.134, y: -0.634, z: 0.490}, mira: {x: 0.766, y: 0.051, z: 0.540}, orientacion_rad: {giro: 0.920, inclinacion: -0.044, alabeo: 0.000}, pinza_mesa: {x: -0.134, y: -0.684, z: 0.000}}  # pose: SUPUESTO · modelo: MEDIDO · focal y modo: elegidos · hfov: SUPUESTO (lente ideal, sensor elp-ficha)
+# layout-json: {"version":9,"robotId":"nominal","perfil":"curso","sensor":"elp-ficha","prefijoFrames":"","robot":"B","zona":{"x":0.12,"y":0.27,"yaw":0,"w":0.22,"d":0.16},"plato1":{"x":0.265,"y":-0.049},"plato2":{"x":0.122,"y":0.089},"caja":{"on":true,"h":0.1},"pedido":2,"persona":{"x":1.28,"y":0.32,"yaw":3.141592653589793},"bandeja":{"alt":1,"ade":0.4},"arucoE":[{"x":0.48,"y":0.1},{"x":0.55,"y":-0.05}],"cams":{"cenital":{"grupo":"V2","nombre":"Cenital","f":3.6,"modo":"1920x1080","clamp":{"x":0.17,"y":-0.415},"pos":{"x":0.17,"y":-0.17,"z":1.17},"mira":{"x":0.18,"y":0.1,"z":0.76},"roll":0},"entrega":{"grupo":"V1","nombre":"Entrega","f":3.6,"modo":"1920x1080","clamp":{"x":0.55,"y":-0.415},"pos":{"x":0.55,"y":-0.395,"z":1.25},"mira":{"x":0.68,"y":0.1,"z":0.9},"roll":0},"persona":{"grupo":"V1","nombre":"Persona","f":4.5,"modo":"1920x1080","clamp":{"x":0.3,"y":-0.415},"pos":{"x":0.3,"y":-0.365,"z":1.25},"mira":{"x":1.2,"y":0.32,"z":1.3},"roll":0}}}

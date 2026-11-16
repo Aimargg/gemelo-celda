@@ -143,8 +143,8 @@ Estados: pendiente · en curso · entregada · aceptada · correcciones · bloqu
 | T1.7 | 1 | Modelo de sensor de la ELP por modo | Claude Code | T1.1 | bajo | aceptada | 9bcf739 |
 | T1.8 | 1 | Flujo «explorar → validar» con los dos perfiles | Claude Code | T1.6 | medio | aceptada | b44dff3, 4b80043 |
 | T1.9 | 1 | Salida de la bandeja sin contacto (DT22, DT23) | Claude Code | T1.8 | medio | aceptada | 07ce862, 8f9e0ca |
-| T2.0 | 2 | Arnés en dos niveles: `npm test` por tarea y suite completa en las puertas (DT32) | Claude Code | F1 | bajo | en curso | |
-| T2.1 | 2 | Origen de cada valor (MEDIDO, FABRICANTE, SUPUESTO) unificado para exportar | Claude Code | F1 | bajo | en curso | |
+| T2.0 | 2 | Arnés en dos niveles: `npm test` por tarea y suite completa en las puertas (DT32) | Claude Code | F1 | bajo | entregada | a0ff130 |
+| T2.1 | 2 | Origen de cada valor (MEDIDO, FABRICANTE, SUPUESTO) unificado para exportar | Claude Code | F1 | bajo | entregada | 86184e3, 1d01f34 |
 | T2.2 | 2 | YAML `ros__parameters` de poses | Claude Code | T2.1 | medio | pendiente | |
 | T2.3 | 2 | Escena: `CollisionObject` en YAML y `.scene` | Claude Code | T2.1 | medio | pendiente | |
 | T2.4 | 2 | TF estáticas (YAML por TF y comandos) | Claude Code | T2.1 | bajo | pendiente | |
