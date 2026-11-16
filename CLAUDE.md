@@ -12,11 +12,13 @@ y no es fuente del repo del proyecto de Robótica (invariante I9).
 
 ## Estructura
 
-- `src/`: fuentes (`part1.html`, `app.js`, `kin.js`, `colision.js`, `fallos.js`, `escenas.js`). Se concatenan con los
-  marcadores `@@…@@`; sin módulos ES ni bundler (D4).
+- `src/`: fuentes (`part1.html`, `app.js`, `kin.js`, `colision.js`, `fallos.js`, `escenas.js`, `layout.js`, `rng.js`,
+  `perfil.js`, `sensor.js` y `datos/calibracion.js`, que genera `tools/fixtures/fk_desde_xacro.py`). Se concatenan con
+  los marcadores `@@…@@`; sin módulos ES ni bundler (D4).
 - `tools/build.sh` → `dist/gemelo-celda.html` (artefacto de claude.ai, con el gancho `window.__g` y `?prueba`).
 - `tools/build_web.sh` → `index.html` (GitHub Pages; quita el gancho y añade `config.js`). Llama a `build.sh`.
-- `web_src/`: plantillas con `@@CLAVE@@` y `PEGA_AQUI`. `tests/`: arnés de pruebas. `tests/legacy/`: referencia, no se toca.
+- `web_src/`: plantillas con `@@CLAVE@@` y `PEGA_AQUI`. `tests/`: arnés de pruebas. `tests/mocks/`: simulacros de Firestore
+  (`firebase-mock.js`, con las reglas) y del almacén de claude.ai (`mock_claude.html`); no se tocan.
 
 ## Construir y probar
 
@@ -29,10 +31,12 @@ y no es fuente del repo del proyecto de Robótica (invariante I9).
   commit de entrega. Sin `clave_grupo.txt` la búsqueda es heurística (patrones `#g=`, `grupo ==`, rutas `grupos/…`); la
   búsqueda exacta de la clave solo se hace en el equipo del usuario, que es quien tiene ese fichero.
 - `npm run caracterizar`: regenera solo `tests/fixtures/matriz-base.json` desde el gemelo actual, y solo cuando la tarea
-  lo pida (p. ej. T1.2), con el diff explicado en el informe.
+  lo pida (p. ej. T1.2), con el diff explicado en el informe. `npm run caracterizar -- --curso` hace lo mismo con
+  `tests/fixtures/matriz-curso.json` (los 8 casos con el perfil «curso»).
 - `escenas-v8/` no se regenera: su `codigo` es fijo (I1). `npm run caracterizar -- --escenas` recalcula solo `esperado`
   (nunca el `codigo`) y exige explicar el diff.
-- `npm run medir`: regenera la línea base (`docs/estado/linea-base-v8.md`).
+- `npm run medir`: regenera la línea base (`docs/estado/linea-base-v8.md`). `npm run medir -- <fichero>` escribe la medida
+  en otro fichero (p. ej. `docs/estado/medida-f1.md`) y no toca la línea base.
 
 ## Reglas que no se rompen
 
@@ -64,6 +68,6 @@ y no es fuente del repo del proyecto de Robótica (invariante I9).
 
 - Chromium con `--use-gl=angle --use-angle=swiftshader --enable-unsafe-swiftshader --ignore-gpu-blocklist`.
 - three se sirve desde `node_modules` interceptando jsDelivr; Google Fonts responde vacío; `config.js` y `firebase.js`
-  de la web se sustituyen por `tests/navegador.mjs` (config de prueba y `tests/legacy/firebase-mock.js`).
+  de la web se sustituyen por `tests/navegador.mjs` (config de prueba y `tests/mocks/firebase-mock.js`).
 - Espera a condiciones (`#loading` desaparece, `__g.CALC.activo` falso), no a tiempos fijos.
 - Avisos de consola permitidos solo en `tests/e2e/permitidos.json`, cada uno con su texto y su motivo.

@@ -1,6 +1,10 @@
-// Línea base medida de la v8 (T0.3). Solo mide: no cambia el gemelo ni los fixtures.
-// Uso: npm run medir   (= npm run build && node tests/medidas/linea-base.mjs) → escribe docs/estado/linea-base-v8.md
-// Mide en este entorno: matriz de 32 casos, tiempos de carga, calcularPlanes y ensayo M0, tareas largas y tamaños.
+// Línea base medida de la v8 (T0.3) y medida de la fase 1 (DT14). Solo mide: no cambia el gemelo ni los fixtures.
+// Uso: npm run medir                                  → escribe docs/estado/linea-base-v8.md (el informe de T0.3)
+//      npm run medir -- docs/estado/medida-f1.md      → escribe ese fichero con la medida de F1 (otro fichero cualquiera,
+//                                                       igual): no toca linea-base-v8.md
+// Mide en este entorno: matriz de 32 casos, tiempos de carga, calcularPlanes y ensayo M0, tareas largas y tamaños. La
+// medida de F1 añade calcularPlanes con el robot nominal y con el 203 (DT14), lo que tarda Validar y la matriz de 8
+// casos con el perfil «curso», y solo da cifras y entorno.
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -8,7 +12,10 @@ import zlib from 'node:zlib';
 import { execSync } from 'node:child_process';
 import { arrancarServidor, RAIZ } from '../servidor.mjs';
 import { abrir, comprobar, esperarPlanes } from '../navegador.mjs';
-import { BASE, ensayar } from '../medir.mjs';
+import { BASE, CASOS_CURSO, ensayar } from '../medir.mjs';
+
+const LINEA_BASE = path.join(RAIZ, 'docs/estado/linea-base-v8.md');
+const SALIDA = path.resolve(RAIZ, process.argv[2] || LINEA_BASE), F1 = SALIDA !== LINEA_BASE;
 
 // Matriz completa: caja/mesa × M0/M1 × balanceo 0 y 2 cm × velocidad 10, 25, 50 y 100 % (32 casos, balanceo ≤ 2 cm)
 const CASOS_MATRIZ_32 = [];
@@ -67,6 +74,42 @@ try {
   const s = await abrir(srv.url); const t = Date.now();
   try { R.matriz = await ensayar(s.page, CASOS_MATRIZ_32); R.tMatriz = Date.now() - t; comprobar(s.reg); } finally { await s.cerrar(); }
   console.log(`matriz 32: ${R.tMatriz} ms`);
+  if (F1) {
+    // 6) calcularPlanes de la disposición por defecto con el robot nominal y con el 203, sin caché, en N_CARGAS páginas
+    //    nuevas (DT14). La misma página mide los dos: primero nominal (caché vaciada) y después 203 (otra clave de plan)
+    R.calcRobot = { nominal: [], '203': [] };
+    for (let i = 0; i < N_CARGAS; i++) {
+      const s = await abrir(srv.url);
+      try {
+        for (const id of ['nominal', '203']) {
+          const ms = await s.page.evaluate(async id => {
+            const g = window.__g; if (id !== g.ROB.id) { g.L().robotId = id; g.aplicarLayout(); }
+            for (const k in g.CACHE_PLAN) g.CACHE_PLAN[k] = {};
+            const t0 = performance.now(); await g.calcularPlanes('gemelo'); if (!g.planesAlDia()) throw new Error('calcularPlanes no terminó'); return performance.now() - t0;
+          }, id);
+          R.calcRobot[id].push(ms);
+        }
+        comprobar(s.reg);
+      } finally { await s.cerrar(); }
+      console.log(`página ${i + 1}: calcularPlanes nominal ${Math.round(R.calcRobot.nominal[i])} ms, 203 ${Math.round(R.calcRobot['203'][i])} ms`);
+    }
+    // 7) Validar la disposición por defecto en N_CARGAS páginas nuevas: VAL.res.ms (trayectorias de los dos perfiles,
+    //    comprobación previa y demo con los dos) y su resultado
+    R.validar = [];
+    for (let i = 0; i < N_CARGAS; i++) {
+      const s = await abrir(srv.url);
+      try {
+        R.validar.push(await s.page.evaluate(async () => { const g = window.__g; await g.validar(); const r = g.VAL.res, v = pf => ({ previa: r.per[pf].previa.ok, demo: r.per[pf].demo.fin, t: r.per[pf].demo.t_ciclo_s });
+          return { ms: r.ms, gemelo: v('gemelo'), curso: v('curso') }; }));
+        comprobar(s.reg);
+      } finally { await s.cerrar(); }
+      console.log(`página ${i + 1}: Validar ${R.validar[i].ms} ms`);
+    }
+    // 8) Matriz de 8 casos con «curso» (los de tests/fixtures/matriz-curso.json) en una página nueva
+    const s = await abrir(srv.url); const t = Date.now();
+    try { R.curso = await ensayar(s.page, CASOS_CURSO); R.tCurso = Date.now() - t; comprobar(s.reg); } finally { await s.cerrar(); }
+    console.log(`matriz curso: ${R.tCurso} ms`);
+  }
 } finally { await srv.cerrar(); }
 
 // 5) Tamaños de los dos destinos y de los recursos que cargan
@@ -164,5 +207,66 @@ ${new Set(R.ensayoM0.map(e => JSON.stringify([e.fin, e.pausas, e.choques, e.roce
   global). La matriz de 32 casos es una sola ejecución: tómala como referencia, no como valor exacto.
 ` : `- El ensayo M0 de la sección 2 dio el mismo resultado (todos los campos de la tabla) en las ${N_CARGAS} páginas.
 `}`;
-const out = path.join(RAIZ, 'docs/estado/linea-base-v8.md'); fs.mkdirSync(path.dirname(out), { recursive: true }); fs.writeFileSync(out, md);
+// Medida de F1: solo cifras y entorno (DT14)
+const filaMatriz = r => `| ${r.caso} | ${r.fin} | ${r.paso} | ${r.t_sim} | ${r.t_mov} | ${r.errores_mm.join(' / ') || '—'} | ${r.choques} | ${r.roces} | ${r.pausas} | ${r.planes} | ${r.ms} |`;
+const agregado = M => { const f = {}; for (const r of M) f[r.fin] = (f[r.fin] || 0) + 1; const sm = k => M.reduce((a, r) => a + r[k], 0); return `${Object.entries(f).map(([k, v]) => `${v} «${k}»`).join(', ')} · choques ${sm('choques')} · roces ${sm('roces')} · pausas ${sm('pausas')} · autocolisiones ${sm('autocol')}`; };
+const rango = a => `| ${seg(med(a))} s | ${seg(Math.min(...a))} s | ${seg(Math.max(...a))} s |`;
+const mdF1 = () => `# Medida de la fase 1
+
+> Generado por \`npm run medir -- ${path.relative(RAIZ, SALIDA)}\` (\`tests/medidas/linea-base.mjs\`, pasada de deuda de F1, DT14). No editar a
+> mano: se regenera. Tiempos de Chromium con SwiftShader (WebGL por CPU) en un contenedor sin GPU.
+
+## Entorno
+
+${entorno.join('\n')}
+
+## 1. Carga (${N_CARGAS} páginas nuevas; mediana y rango)
+
+| Medida | Mediana | Mín. | Máx. |
+|---|---|---|---|
+| Carga: inicio de la navegación → desaparece \`#loading\` ${rango(R.cargas.map(c => c.tCarga))}
+| \`calcularPlanes\` automático tras la carga (nominal, «gemelo», sin caché) ${rango(R.calc)}
+
+## 2. \`calcularPlanes\` con el robot nominal y con el 203 (DT14)
+
+Disposición por defecto, perfil «gemelo», caché vaciada, ${N_CARGAS} páginas nuevas (en cada una, nominal y después 203).
+
+| Robot | Mediana | Mín. | Máx. |
+|---|---|---|---|
+| nominal ${rango(R.calcRobot.nominal)}
+| 203 ${rango(R.calcRobot['203'])}
+
+## 3. Validar
+
+Botón «Validar con perfil curso» sobre la disposición por defecto en una página recién cargada (\`VAL.res.ms\`: trayectorias de
+los dos perfiles, comprobación previa y demo con los dos), ${N_CARGAS} páginas nuevas.
+
+| Página | Validar (s) | gemelo: previa · demo · ciclo (s) | curso: previa · demo · ciclo (s) |
+|---|---|---|---|
+${R.validar.map((v, i) => `| ${i + 1} | ${seg(v.ms)} | ${v.gemelo.previa ? 'sin problemas' : 'con problemas'} · ${v.gemelo.demo} · ${v.gemelo.t} | ${v.curso.previa ? 'sin problemas' : 'con problemas'} · ${v.curso.demo} · ${v.curso.t} |`).join('\n')}
+
+Mediana: ${seg(med(R.validar.map(v => v.ms)))} s (mín. ${seg(Math.min(...R.validar.map(v => v.ms)))} s, máx. ${seg(Math.max(...R.validar.map(v => v.ms)))} s).
+
+## 4. Matriz de 32 casos con «gemelo»
+
+Caja/mesa × M0/M1 × balanceo 0 y 2 cm × velocidad 10, 25, 50 y 100 %, fase 0, en una página nueva y en este orden
+(\`CASOS_MATRIZ_32\`). Tiempo total: ${seg(R.tMatriz)} s.
+
+**Agregado:** ${agregado(M)}.
+
+| Caso | fin | paso | t_sim (s) | t_mov (s) | errores (mm) | choques | roces | pausas | planes | ms |
+|---|---|---|---|---|---|---|---|---|---|---|
+${M.map(filaMatriz).join('\n')}
+
+## 5. Matriz de 8 casos con «curso»
+
+Los casos de \`tests/fixtures/matriz-curso.json\` (\`CASOS_CURSO\`), en una página nueva y en este orden. Tiempo total: ${seg(R.tCurso)} s.
+
+**Agregado:** ${agregado(R.curso)}.
+
+| Caso | fin | paso | t_sim (s) | t_mov (s) | errores (mm) | choques | roces | pausas | planes | ms |
+|---|---|---|---|---|---|---|---|---|---|---|
+${R.curso.map(filaMatriz).join('\n')}
+`;
+const out = SALIDA; fs.mkdirSync(path.dirname(out), { recursive: true }); fs.writeFileSync(out, F1 ? mdF1() : md);
 console.log('escrito', path.relative(RAIZ, out));

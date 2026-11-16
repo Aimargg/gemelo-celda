@@ -11,28 +11,50 @@ const m4 = a => new THREE.Matrix4().set(...a);
 const css = v => getComputedStyle(document.documentElement).getPropertyValue(v).trim();
 const STOP = new Error('stop');
 // Escena del grupo abierta (cur) o «Tu mesa» (cur = null); base = disposición al abrirla, para saber si se ha modificado
-const ESC = { lista: [], papelera: [], cur: null, base: null, basada: null, ultima: null, cargando: true, borrarId: null };
+const ESC = { lista: [], papelera: [], cur: null, base: null, basada: null, ultima: null, cargando: true, borrarId: null, ilegibles: '' };
 let EDITANDO = false; // mientras se arrastra algo no se recalculan los planes (es lo caro); se recalculan al soltar
 let OBS_EXTRA = []; // obstáculos previstos (la fruta que tendrá el plato cuando se coja)
 let VERSION_ESCENA = 0; // sube cada vez que cambia algo del entorno (objetos movidos, cogidos o soltados)
+let ROBOT_PEDIDO = false, AVISO_ROBOT = null; // cambio de robot desde el selector · aviso de robot pendiente (aplicarCinematica)
 class FalloDemo extends Error { constructor(msg, tipo = 'fallo', info = {}) { super(msg); this.tipo = tipo; this.info = { ...(typeof D !== 'undefined' ? D.ctx : {}), ...info }; } }
 
 const MESA = { w: 1.18, d: 0.83, h: 0.76, e: 0.03 };
 const BASES = { A: { x: -0.439, y: 0.300 }, B: { x: 0.434, y: 0.269 } };
 const RG2 = { carrera: 0.110, piv: 0.021, cuerpo: 0.130, L: 0.065, tip: 0.018, ancho: 0.064, esp: 0.036 };
-const SENSOR = { w: 6.287, h: 4.712 }; // mm, IMX577 4056×3040 a 1,55 µm
 const MODOS = { '1920x1080': { w: 1920, h: 1080, fps: 120 }, '1280x960': { w: 1280, h: 960, fps: 120 }, '2048x1536': { w: 2048, h: 1536, fps: 30 }, '3840x2160': { w: 3840, h: 2160, fps: 30 }, '1280x720': { w: 1280, h: 720, fps: 120 } };
 const BRAZO_MANFROTTO = 0.53;
 const VMAX = [180, 180, 180, 360, 360, 360].map(v => v * D2R); // rad/s UR3e
 const GRUPO_COL = () => ({ V1: css('--v1'), V2: css('--v2'), ROB: css('--rob') });
 const PLATO_R = 0.08, R_AGARRE = 0.082, H_BORDE = 0.022; // el centro de la yema queda 2 mm por fuera del borde del ala // radio del plato, radio y altura del punto de agarre del borde
 const H_TR = 0.12, H_AP = 0.06; // altura de traslado sobre la mesa y de aproximación sobre la bandeja
+// Subida en recta tras «la salida de la bandeja» (T1.9, DT22): al retroceder 8 cm en horizontal, el dedo que va por debajo
+// del ala (y en el 2º plato también el cuerpo de la pinza) sigue a la altura de la bandeja. Es el menor valor de
+// {2, 3, 4, 5, 6} cm que deja la pinza libre (choqueEn null con el contexto del movimiento siguiente) en todos los casos
+// de la matriz que llegan a la salida, con «gemelo» y con «curso», y en las escenas v8. Medido con el gemelo (2026-11-16,
+// informe de T1.9): con 2 cm, las 19 salidas libres y holgura mínima de 5,5 mm; con 3 cm, una salida de «curso» toca la
+// bandeja (−1,7 mm: arranque en contacto); con 5 y 6 cm, la subida de «gemelo» caja M1 2 cm llega a la singularidad del
+// codo y la demo falla (sin trayectoria)
+const H_SALIDA = 0.02;
 const CAJA_LADO = 0.10;
 // ArUco reales del diccionario DICT_4X4_50 (ids 0–15), bits interiores por filas
 const ARUCO = ['1011010100110010', '0000111110011010', '0011001100101101', '1001100101000110', '0101010010011110', '0111100111001101', '1001111000101110', '1100010011110010', '1111111011011010', '1100111101010110', '1111100110010001', '0001000110100111', '0000111010110111', '0010101000001111', '0010010010110001', '0010011000111110'];
+// @@LAYOUT@@
+// @@RNG@@
+// @@PERFIL@@
+// @@SENSOR@@
+// @@CALIBRACION@@
+// Perfil con el que se explora (arrastrar, «Calcular trayectorias», el primer cálculo, la vista de cada objeto): siempre
+// «gemelo» (D6, decisión 2 del brief de T1.6). El de la escena (L.perfil) es el de la demo y el del veredicto principal.
+const PERFIL_EXPLORA = 'gemelo';
+// Un layout de una versión más nueva (solo lectura) puede traer un perfil que esta página no conoce: el de las escenas nuevas
+const perfilEscena = () => PERFIL.NOMBRES.includes(L.perfil) ? L.perfil : LAYOUT.NUEVA.perfil;
+// Sensor de las cámaras de la escena (T1.7, D10; src/sensor.js): «elp-ficha» en las nuevas, «gemelo-v8» en las v8 (I1).
+// Uno que esta página no conoce (solo lectura de una versión más nueva): el de las escenas nuevas.
+const sensorEscena = () => SENSOR.NOMBRES.includes(L.sensor) ? L.sensor : LAYOUT.NUEVA.sensor;
 
 function layoutDefecto() {
   return {
+    version: LAYOUT.VERSION, ...LAYOUT.NUEVA, // escena nueva: robot nominal, perfil «curso» y sensor de la ficha de la ELP (T1.1)
     robot: 'B',
     zona: { x: 0.12, y: 0.27, yaw: 0, w: 0.22, d: 0.16 },
     plato1: { x: 0.265, y: -0.049 }, plato2: { x: 0.122, y: 0.089 }, // a 36 cm de la base, a -118° y -150°: agarre horizontal y fruta desde arriba
@@ -54,16 +76,38 @@ function espejo(L) { // cambia el lado: x → −x
   for (const k in c.cams) { fx(c.cams[k].clamp); fx(c.cams[k].pos); fx(c.cams[k].mira); c.cams[k].roll = -(c.cams[k].roll || 0); }
   return c;
 }
-function normalizar(l) { const d = layoutDefecto(); if (!l || !l.zona || !l.cams) return d; if (!l.caja) l.caja = d.caja; if (!l.pedido) l.pedido = 2; return l; }
-const CLAVE = 'gemelo-ur3e-v4';
-let L = normalizar(cargarLocal());
-function cargarLocal() { try { const s = localStorage.getItem(CLAVE); return s ? JSON.parse(s) : null; } catch (e) { return null; } }
-let saveT = 0;
-function guardarLocal() { if (ESC.cur) return; clearTimeout(saveT); // una escena del grupo abierta no pisa tu mesa
-  saveT = setTimeout(() => { try { localStorage.setItem(CLAVE, JSON.stringify(L)); } catch (e) { } }, 400); }
+// Toda carga de una disposición pasa por migrarLayout (T1.1, I1): la valida contra la forma de la de partida, migra la
+// de la v8 y dice si es de una versión más nueva (solo lectura). Devuelve { layout, soloLectura } o { error }.
+const ESQ_L = { ref: layoutDefecto(), robots: Object.keys(BASES), modos: Object.keys(MODOS), grupos: ['V1', 'V2', 'ROB'] };
+const migrarLayout = entrada => LAYOUT.migrarLayout(entrada, ESQ_L);
+// Solo lectura: una disposición de una versión más nueva se ve, pero no se guarda en local ni en el grupo
+function soloLectura() { return LAYOUT.soloLectura(L); }
+const CLAVE = 'gemelo-ur3e-v4', CLAVE_ILEG = CLAVE + '-ilegible'; // CLAVE_ILEG: copia de una Tu mesa que no se puede abrir (revisión de F1, H2)
+function cargarLocal() { try { return localStorage.getItem(CLAVE); } catch (e) { return null; } } // texto de Tu mesa o null (sin almacenamiento)
+// Tu mesa guardada en este navegador. Si no se puede abrir, la disposición de partida con un aviso (la v8 la descartaba en silencio)
+function mesaLocal() {
+  const s = cargarLocal(); if (s == null) return layoutDefecto();
+  const r = migrarLayout(s);
+  // el texto original se copia antes: el primer guardado de Tu mesa lo sustituye por la disposición de partida y la v8 no
+  // perdía nada que esta versión no sepa leer (revisión de F1, H2; DT11)
+  if (r.error) {
+    let copia = false; try { localStorage.setItem(CLAVE_ILEG, s); copia = true; } catch (e) { }
+    toast(`Tu mesa guardada no se puede abrir (${r.error}): se usa la disposición de partida${copia ? ` y la original queda copiada en este navegador («${CLAVE_ILEG}»)` : ''}`); return layoutDefecto();
+  }
+  if (r.soloLectura) toast(`Tu mesa es de una versión más nueva del gemelo (v${r.layout.version}): se abre en solo lectura`);
+  return r.layout;
+}
+let L = mesaLocal();
+let saveT = 0, savePend = false;
+// Escribe Tu mesa ya. Nunca con una escena del grupo abierta ni con una disposición de solo lectura (versión más nueva):
+// se comprueba al escribir, no al programar el guardado, porque L puede haber cambiado en esos 400 ms (T1.1, revisión)
+function escribirMesa() { clearTimeout(saveT); savePend = false; if (ESC.cur || soloLectura()) return; try { localStorage.setItem(CLAVE, JSON.stringify(L)); } catch (e) { } }
+function guardarLocal() { clearTimeout(saveT); savePend = !ESC.cur && !soloLectura(); if (savePend) saveT = setTimeout(escribirMesa, 400); } // a los 400 ms del último cambio
+// Antes de sustituir L por otra disposición: lo pendiente de guardar de Tu mesa se escribe ya y no se pierde
+function vaciarGuardado() { if (savePend) escribirMesa(); }
 
 // ======================= Texturas procedurales =======================
-function aleat(seed) { let s = seed >>> 0 || 1; return () => { s ^= s << 13; s ^= s >>> 17; s ^= s << 5; return ((s >>> 0) % 100000) / 100000; }; }
+const aleat = s => RNG.aleat(s); // xorshift32 sembrado (src/rng.js): texturas y modelo de colisión. Llama a RNG.aleat en cada uso (DT12): así el test de «sin reintento» cuenta también los generadores que se creen desde aquí
 function lienzo(w, h, dibujar, { color = true, rep = null } = {}) {
   const c = document.createElement('canvas'); c.width = w; c.height = h; dibujar(c.getContext('2d'), w, h);
   const t = new THREE.CanvasTexture(c); if (color) t.colorSpace = THREE.SRGBColorSpace; t.wrapS = t.wrapT = THREE.RepeatWrapping; t.anisotropy = 8; if (rep) t.repeat.set(...rep); return t;
@@ -160,11 +204,13 @@ class Robot {
     const link = name => { const g = new THREE.Group(); this.porLink[name] = []; gltf.scene.traverse(o => { if (o.isMesh && o.name.startsWith(name + '__')) { const k = (o.name.split('__')[1].match(/^[a-z]+/) || ['gris'])[0]; if (!o.geometry.attributes.normal) o.geometry.computeVertexNormals(); const m = new THREE.Mesh(o.geometry, mats[k] || mats.gris); m.castShadow = !fantasma; m.receiveShadow = !fantasma; g.add(m); this.meshes.push(m); this.porLink[name].push(m); } }); return g; };
     const place = (g, v) => { g.matrixAutoUpdate = false; g.matrix.copy(m4(KIN.org(...v))); return g; };
     this.root.add(link('base'));
-    this.j = []; let parent = this.root; const names = ['shoulder', 'upperarm', 'forearm', 'wrist1', 'wrist2', 'wrist3'];
-    for (let i = 0; i < 6; i++) { const o = new THREE.Group(); o.matrixAutoUpdate = false; o.matrix.copy(m4(KIN.JO[i])); parent.add(o); const j = new THREE.Group(); o.add(j); j.add(place(link(names[i]), VIS[names[i]])); this.j.push(j); parent = j; }
+    this.j = []; this.o = []; let parent = this.root; const names = ['shoulder', 'upperarm', 'forearm', 'wrist1', 'wrist2', 'wrist3'];
+    for (let i = 0; i < 6; i++) { const o = new THREE.Group(); o.matrixAutoUpdate = false; o.matrix.copy(m4(KIN.JO[i])); parent.add(o); this.o.push(o); const j = new THREE.Group(); o.add(j); j.add(place(link(names[i]), VIS[names[i]])); this.j.push(j); parent = j; }
     this.tool0 = new THREE.Group(); this.tool0.matrixAutoUpdate = false; this.tool0.matrix.copy(m4(KIN.W3T)); parent.add(this.tool0);
     this.q = [0, -PI / 2, 0, -PI / 2, 0, 0]; this.setQ(this.q);
   }
+  // Orígenes de articulación de otra cinemática (T1.4): el brazo se dibuja con la misma cadena que usan la IK y la colisión
+  setCinematica(C) { for (let i = 0; i < 6; i++) this.o[i].matrix.copy(m4(C.JO[i])); this.tool0.matrix.copy(m4(C.W3T)); this.root.updateMatrixWorld(true); }
   setQ(q) { this.q = q.slice(); for (let i = 0; i < 6; i++) this.j[i].rotation.z = q[i]; this.root.updateMatrixWorld(true); }
   place(x, y, yaw) { this.root.position.set(x, y, MESA.h); this.root.rotation.set(0, 0, yaw); this.root.updateMatrixWorld(true); }
   puntos() { const p = []; const v = new THREE.Vector3(); for (let i = 0; i < 6; i++) { this.j[i].getWorldPosition(v); p.push(v.clone()); } this.tool0.getWorldPosition(v); p.push(v.clone()); return p; }
@@ -298,7 +344,17 @@ function actualizarPlatos() {
     caja.position.set(L[k].x, L[k].y, MESA.h);
     const b = BASES[L.robot]; caja.rotation.z = Math.atan2(L[k].y - b.y, L[k].x - b.x); caja.updateMatrixWorld(true);
     if (OBJ[k].parent === scene) OBJ[k].position.set(L[k].x, L[k].y, zPlato());
-    const pl = robot && L.caja.on && !EDITANDO && planAlDia(k) ? CACHE_PLAN[k].pl : null; if (pl) { caja.rotation.z = pl.yaw; caja.updateMatrixWorld(true); }
+    const pl = robot && L.caja.on && !EDITANDO && planAlDia(k, PERFIL_EXPLORA) ? cachePlan(PERFIL_EXPLORA)[k].pl : null; if (pl) { caja.rotation.z = pl.yaw; caja.updateMatrixWorld(true); }
+  }
+}
+// La caja se orienta con una cara hacia la pinza según el agarre elegido (pasosPlan). Cada perfil puede elegir otro agarre:
+// la demo y la comprobación previa de un perfil orientan las cajas con el plan de ese perfil (T1.6), como lo haría
+// actualizarPlatos con el de explorar. Si una caja gira, sube VERSION_ESCENA (cambian los obstáculos).
+function orientarCajas(pf) {
+  const b = BASES[L.robot];
+  for (const k of ['plato1', 'plato2']) {
+    const caja = OBJ['caja' + k.slice(-1)]; const pl = robot && L.caja.on && !EDITANDO && planAlDia(k, pf) ? cachePlan(pf)[k].pl : null;
+    const yaw = pl ? pl.yaw : Math.atan2(L[k].y - b.y, L[k].x - b.x); if (caja.rotation.z !== yaw) { caja.rotation.z = yaw; caja.updateMatrixWorld(true); VERSION_ESCENA++; }
   }
 }
 
@@ -376,8 +432,10 @@ function cilindroEntre(c, a, b) { const d = b.clone().sub(a); const l = d.length
 
 // ======================= Cámaras =======================
 const CAMS = {};
-function hfovDe(c) { return 2 * Math.atan(SENSOR.w / 2 / c.f); }
-function vfovDe(c) { const M = MODOS[c.modo]; return 2 * Math.atan(Math.min(SENSOR.h, SENSOR.w * M.h / M.w) / 2 / c.f); }
+// Campo de visión con el sensor de la escena en el modo de la cámara (T1.7): el frustum, la miniatura y las métricas
+function areaDe(c) { return SENSOR.area(sensorEscena(), MODOS[c.modo]); }
+function hfovDe(c) { return SENSOR.hfov(areaDe(c).w, c.f); }
+function vfovDe(c) { return SENSOR.vfov(areaDe(c).h, c.f); }
 function crearCam(k) {
   const c = L.cams[k]; const R = { k };
   R.cam = new THREE.PerspectiveCamera(vfovDe(c) * R2D, MODOS[c.modo].w / MODOS[c.modo].h, 0.03, 8); R.cam.up.set(0, 0, 1); scene.add(R.cam);
@@ -451,7 +509,28 @@ function actualizarCam(k) {
 
 // ======================= Cinemática aplicada =======================
 let robot = null, otro = null; const pinza = new Pinza();
-let REF_MANIP = 1;
+let REF_MANIP = 1; const Q_REF_MANIP = [0, -1.9, 1.9, -1.57, -1.57, 0];
+// ----- Robot calibrado activo (T1.4, D7) y conversión world ↔ base_link (T1.5) -----
+// L.robotId elige la cinemática: 'nominal' (la de src/kin.js tal cual, IK analítica sin refinar) o la calibración del curso
+// de 203–206 (src/datos/calibracion.js, IK analítica refinada). También fija el giro de base_link respecto a world, que
+// sale de los datos: mount_yaw − π de su xacro (nominal, 205 y 206: 0). L.robot sigue siendo la posición A/B en la celda.
+// Solo hay un robot activo: la IK, la colisión y el dibujo del brazo usan CIN. El brazo «otro» (decorativo) es nominal.
+const ROBOTS = {};
+function robotDe(id) {
+  if (!ROBOTS[id]) { const datos = CALIBRACION.robots[id]; ROBOTS[id] = { id, datos, cin: id === 'nominal' ? KIN.nominal : KIN.calibrada(datos.kinematics), yaw: datos.mount_yaw - PI }; }
+  return ROBOTS[id];
+}
+// Un layout de una versión más nueva (solo lectura) puede traer un robot que esta página no conoce: se dibuja con el nominal
+const idValido = id => Object.hasOwn(CALIBRACION.robots, id) && LAYOUT.ROBOT_IDS.includes(id) ? id : 'nominal';
+let ROB = robotDe(idValido(L.robotId)), CIN = ROB.cin;
+// Marco de base_link del robot activo en su posición de la celda: la única conversión entre world (la escena, con los ejes
+// de la mesa) y base_link (KIN.marcoBase). Todo lo que pasa de un marco a otro la usa: planificación, colisión, dibujo,
+// exportación y textos.
+let _marco = { k: '', m: null };
+function marco() { const b = BASES[L.robot], k = `${L.robot}|${ROB.id}`; if (_marco.k !== k) _marco = { k, m: KIN.marcoBase(b.x, b.y, MESA.h, ROB.yaw) }; return _marco.m; }
+function mundoABase(p) { const r = marco().aBase(p.x, p.y, p.z); return new THREE.Vector3(r[0], r[1], r[2]); }
+function baseAMundo(x, y, z) { const r = marco().aMundo(x, y, z); return new THREE.Vector3(r[0], r[1], r[2]); }
+const yawABase = a => marco().yawABase(a);
 function poseVertical(pb, yawb) { const c = Math.cos(yawb), s = Math.sin(yawb); return [c, s, 0, pb.x, s, -c, 0, pb.y, 0, 0, -1, pb.z, 0, 0, 0, 1]; }
 // Pinza horizontal: eje de la herramienta en el plano de la mesa (yaw) y dedos en vertical (flip = ±1)
 // Pinza «horizontal»: eje de la herramienta casi horizontal hacia yaw y bajando un ángulo pitch; dedos que se abren en el plano vertical (flip = ±1)
@@ -462,19 +541,22 @@ function poseHoriz(pb, yawb, flip, pitch = 0) {
   return [x[0], y[0], z[0], pb.x, x[1], y[1], z[1], pb.y, x[2], y[2], z[2], pb.z, 0, 0, 0, 1];
 }
 function qValida(q, minZ = 0.02) {
-  const Ls = KIN.fkLinks(q);
+  const Ls = CIN.fkLinks(q);
   for (let i = 2; i < 7; i++) { const z = Ls[i][11]; if (z < minZ) return false; if (i >= 3 && z < 0.30 && Math.hypot(Ls[i][3], Ls[i][7]) < 0.085) return false; }
   return true;
 }
-function mundoABase(p) { return p.clone().applyMatrix4(robot.root.matrixWorld.clone().invert()); }
-// IK del TCP en el mundo. opts: horiz (pinza horizontal), flip (fijo si se lleva el plato), sym, w (apertura), minZ
-function ikTCP(pw, yaw, qNear, opts = {}) {
+// Poses de tool0 en base_link que piden ikTCP para un TCP en el mundo (pw, yaw): una por cada variante (flip o yaw + 180°)
+function posesTCP(pw, yaw, opts = {}) {
   const w = opts.w ?? pinza.w; const tz = pinza.tcpZ(w);
   const tool = opts.horiz ? pw.clone().addScaledVector(ejeHoriz(yaw, opts.pitch || 0), -tz) : new THREE.Vector3(pw.x, pw.y, pw.z + tz);
-  const pb = mundoABase(tool); const yb = yaw - robot.root.rotation.z;
+  const pb = mundoABase(tool); const yb = yawABase(yaw);
   const cands = opts.horiz ? (opts.flip ? [[yb, opts.flip]] : [[yb, 1], [yb, -1]]) : (opts.sym === false ? [[yb]] : [[yb], [yb + PI]]);
+  return cands.map(cd => opts.horiz ? poseHoriz(pb, cd[0], cd[1], opts.pitch || 0) : poseVertical(pb, cd[0]));
+}
+// IK del TCP en el mundo. opts: horiz (pinza horizontal), flip (fijo si se lleva el plato), sym, w (apertura), minZ
+function ikTCP(pw, yaw, qNear, opts = {}) {
   let best = null, bestC = Infinity;
-  for (const cd of cands) for (const s of KIN.ik(opts.horiz ? poseHoriz(pb, cd[0], cd[1], opts.pitch || 0) : poseVertical(pb, cd[0]))) {
+  for (const T of posesTCP(pw, yaw, opts)) for (const s of CIN.ik(T)) {
     if (!qValida(s, opts.minZ ?? 0.02)) continue;
     const q = enLimites(qNear ? s.map((v, i) => qNear[i] + angDiff(v, qNear[i])) : s.slice()); if (!q) continue; // límites del UR3e (codo ±180°)
     if (!opts.sinColision && choqueEn(q, ctxDe(opts))) continue; // ni autocolisión ni choque con el entorno
@@ -483,17 +565,25 @@ function ikTCP(pw, yaw, qNear, opts = {}) {
   }
   return best;
 }
+// ¿Tiene el TCP (pw, yaw) ramas de la IK analítica nominal y ninguna converge en la IK calibrada? (T1.4-5). Es lo que
+// distingue «IK calibrada no converge» de «fuera de alcance» (sin ninguna rama). Con el nominal no hay refinado: nunca.
+function ikNoConverge(pw, yaw, opts = {}) {
+  if (!CIN.calibrada) return false; let semillas = 0, sols = 0;
+  for (const T of posesTCP(pw, yaw, opts)) { const d = CIN.ikDetalle(T); semillas += d.semillas; sols += d.sols.length; }
+  return semillas > 0 && sols === 0;
+}
+const causaSinIK = (pw, yaw, opts) => ikNoConverge(pw, yaw, opts) ? 'ik_calibrada' : 'alcance';
 function tcpMundo() { pinza.tcp.updateMatrixWorld(true); return pinza.tcp.getWorldPosition(new THREE.Vector3()); }
 function ejesHerramienta() { const m = new THREE.Matrix4().extractRotation(robot.tool0.matrixWorld); return { x: new THREE.Vector3(1, 0, 0).applyMatrix4(m), z: new THREE.Vector3(0, 0, 1).applyMatrix4(m) }; }
 function yawHerramienta() { const e = ejesHerramienta(); return Math.atan2(e.x.y, e.x.x); }
 
 // Alcance con la pinza vertical en un punto (mundo) a una altura h sobre la mesa
 function alcance(xw, yw, h) {
-  const b = BASES[L.robot]; const tz = pinza.tcpZ(0.02);
-  const pb = { x: xw - b.x, y: yw - b.y, z: h + tz };
+  const tz = pinza.tcpZ(0.02); const b = marco().aBase(xw, yw, MESA.h);
+  const pb = { x: b[0], y: b[1], z: h + tz };
   let feas = 0, m = 0;
   for (let k = 0; k < 6; k++) {
-    let ok = false; for (const q of KIN.ik(poseVertical(pb, k * PI / 6))) { if (qValida(q)) { ok = true; m = Math.max(m, KIN.manip(q) / REF_MANIP); if (m > 0.6) break; } }
+    let ok = false; for (const q of CIN.ik(poseVertical(pb, k * PI / 6))) { if (qValida(q)) { ok = true; m = Math.max(m, CIN.manip(q) / REF_MANIP); if (m > 0.6) break; } }
     if (ok) feas++;
   }
   return { feas, m, cls: feas === 0 ? 0 : (feas >= 4 && m >= 0.35 ? 2 : 1) };
@@ -503,7 +593,7 @@ function calcularPerfil() {
   const out = [];
   for (let h = 0; h <= 0.40001; h += 0.01) {
     let rmin = null, rmax = null;
-    for (let r = 0; r <= 0.62; r += 0.005) { const tz = pinza.tcpZ(0.02); let ok = false; for (let k = 0; k < 3 && !ok; k++) for (const q of KIN.ik(poseVertical({ x: r, y: 0, z: h + tz }, k * PI / 3))) if (qValida(q)) { ok = true; break; } if (ok) { if (rmin === null) rmin = r; rmax = r; } }
+    for (let r = 0; r <= 0.62; r += 0.005) { const tz = pinza.tcpZ(0.02); let ok = false; for (let k = 0; k < 3 && !ok; k++) for (const q of CIN.ik(poseVertical({ x: r, y: 0, z: h + tz }, k * PI / 3))) if (qValida(q)) { ok = true; break; } if (ok) { if (rmin === null) rmin = r; rmax = r; } }
     out.push({ h, rmin, rmax });
   }
   perfilAlc = out;
@@ -565,7 +655,7 @@ function planAgarrePlato(pc, qRef, o = {}) { // o.pk: plato; o.forzar: ignora el
     if (caja) { caja.rotation.z = yaw; caja.updateMatrixWorld(true); VERSION_ESCENA++; } // la caja se orienta con una cara hacia la pinza
     const base = { horiz: true, pitch, w: 0.03, minZ: -0.3, carga: null, sinEntorno: !!o.forzar };
     const qPre = ikTCP(pre, yaw, qRef, base); if (!qPre) continue;
-    const flip = Math.sign(KIN.fk(qPre)[8]) || 1;
+    const flip = Math.sign(CIN.fk(qPre)[8]) || 1;
     const q = ikTCP(tcp, yaw, qPre, { ...base, flip, permitir: ['plato:' + o.pk] }); if (!q) continue;
     const arriba = tcp.clone(); arriba.z += 0.08; if (!o.forzar && !ikTCP(arriba, yaw, q, { ...base, w: 0.006, flip, permitir: ['caja:' + o.pk] })) continue; // tiene que poder levantarlo
     const hol = holguraEn(q, 0.03); const hp = holguraEn(qPre, 0.03); const hmin = Math.min(hol.min, hp.min);
@@ -589,13 +679,17 @@ function planColocar(zw, qRef, flip, carga = null, pitch = 0, todos = false) {
     const qPre = ikTCP(pre, yaw, qRef, o); if (!qPre) continue;
     const q = ikTCP(tcp, yaw, qPre, { ...o, permitir: ['bandeja'] }); if (!q) continue;
     const salida = tcp.clone().addScaledVector(eje, -0.08); const qS = ikTCP(salida, yaw, q, { ...o, w: 0.03, carga: null, permitir: ['bandeja'] }); if (!qS) continue;
-    const c = { yaw, pitch, d, eje, tcp, pre, salida, q, qPre, k, flip: Math.sign(KIN.fk(q)[8]) || flip || 1 }; if (!todos) return c; lista.push(c);
+    // la subida tras la salida (T1.9, decisión 3): tiene que tener IK y acabar libre con el contexto del movimiento
+    // siguiente (sin nada permitido); si no, la entrada se descarta y el fallo sale en la comprobación previa
+    const subida = salida.clone(); subida.z += H_SALIDA; const qU = ikTCP(subida, yaw, qS, { ...o, w: 0.03, carga: null, permitir: ['bandeja'] });
+    if (!qU || choqueEn(qU, ctxDe({ w: 0.03, carga: null }))) continue;
+    const c = { yaw, pitch, d, eje, tcp, pre, salida, subida, q, qPre, qS, qU, k, flip: Math.sign(CIN.fk(q)[8]) || flip || 1 }; if (!todos) return c; lista.push(c);
   }
   return todos ? lista : null;
 }
 // Elige la colocación cuyo transporte nivelado es posible (prueba las entradas en orden)
-function colocacionConTransporte(zw, q0, pl, carga) {
-  const o = { horiz: true, pitch: pl.pitch, flip: pl.flip, minZ: -0.3, w: 0.006, carga }; let ult = { fallo: 'no hay ninguna entrada válida a la zona', pct: 0 };
+function colocacionConTransporte(zw, q0, pl, carga, perfil) {
+  const o = { horiz: true, pitch: pl.pitch, flip: pl.flip, minZ: -0.3, w: 0.006, carga, perfil: PERFIL.de(perfil).nombre }; let ult = { fallo: 'no hay ninguna entrada válida a la zona', pct: 0 };
   const cands = planColocar(zw, q0, pl.flip, carga, pl.pitch, true); // primero las de más margen: la bandeja se mueve y conviene no colocar al límite
   for (const c of cands) { // robustez: ¿sigue habiendo postura cercana y libre si la bandeja se desplaza 3 cm o sube y baja 2 cm?
     let ok = 0, tot = 0; for (const dx of [-0.03, 0, 0.03]) for (const dy of [-0.03, 0, 0.03]) for (const dz of [-0.02, 0.02]) { tot++; const qq = ikTCP(c.tcp.clone().add(new THREE.Vector3(dx, dy, dz)), c.yaw, c.q, { ...o, permitir: ['bandeja', 'manos'] }); if (qq && Math.max(...qq.map((v, i) => Math.abs(v - c.q[i]))) < 0.35) ok++; }
@@ -638,17 +732,97 @@ function recalcular() { actualizarPlatos(); evaluar(); pintarCalc(); vigilarEsce
 // Mover algo con la demo a medias la deja incoherente: se reinicia antes del primer movimiento
 function prepararEdicion() { if (D.activo && !D.playing) { D.activo = false; reiniciarDemo(); toast('Demo reiniciada para mover objetos'); } }
 const CALC = { activo: false };
+// La barra dice si las trayectorias de explorar («gemelo») están al día; debajo, la de validar (pintarVal, T1.8).
+// El texto de progreso se conserva hasta que acaba el cálculo (el repintado periódico no lo borra).
 function pintarCalc(txt) {
-  const el = $('#calcBar'); const ver = !!robot && !D.activo && (CALC.activo || !planesAlDia()); el.hidden = !ver; if (!ver) return;
-  $('#calcTxt').textContent = CALC.activo ? (txt || 'Calculando…') : 'Hay cambios sin calcular'; $('#calcSpin').hidden = !CALC.activo; $('#btnCalc').disabled = CALC.activo;
+  if (txt) CALC.txt = txt; pintarVal();
+  const el = $('#calcBar'); const ver = !!robot && (VAL.activo || !D.activo) && (CALC.activo || !planesAlDia(PERFIL_EXPLORA)); el.hidden = !ver; if (!ver) return;
+  $('#calcTxt').textContent = CALC.activo ? (CALC.txt || 'Calculando…') : 'Hay cambios sin calcular'; $('#calcSpin').hidden = !CALC.activo; $('#btnCalc').disabled = CALC.activo;
 }
-async function calcularPlanes() {
-  if (CALC.activo || !robot) return; CALC.activo = true; pintarCalc('Calculando…'); await new Promise(r => setTimeout(r, 30));
-  try { for (const [pk] of platosActivos()) { const n = pk === 'plato1' ? '1º' : '2º'; await planPlatoAsync(pk, p => pintarCalc(`Calculando el plato ${n}: agarre ${p.i + 1} de ${p.n}`)); } }
-  finally { CALC.activo = false; }
-  actualizarPlatos(); evaluar(); pintarCalc(); if (planesAlDia()) toast('Trayectorias calculadas');
+// Calcula las trayectorias de los platos con un perfil (T1.6). Sin argumento, el de explorar: la barra «Calcular»,
+// soltar un objeto y el primer cálculo al cargar usan siempre «gemelo» (decisión 2 del brief). La demo, guardar y validar
+// piden el suyo.
+async function calcularPlanes(perfil = PERFIL_EXPLORA) {
+  if (CALC.activo || !robot) return; PERFIL.de(perfil); CALC.activo = true; pintarCalc('Calculando…'); await new Promise(r => setTimeout(r, 30));
+  const tp = perfil === PERFIL_EXPLORA ? '' : ` con el perfil «${perfil}»`;
+  // sobre la escena de partida (H3, DT24): tras una demo terminada, fallida o en pausa, la fruta y los platos están en otro
+  // sitio. El repintado también: actualizarPlatos orienta las cajas con el plan de explorar y una demo en pausa con otro
+  // perfil necesita las suyas (se devuelven al salir)
+  await enEscenaDePartidaAsync(async () => {
+    try { for (const [pk] of platosActivos()) { const n = pk === 'plato1' ? '1º' : '2º'; await planPlatoAsync(pk, perfil, p => pintarCalc(`Calculando el plato ${n}${tp}: agarre ${p.i + 1} de ${p.n}`)); } }
+    finally { CALC.activo = false; CALC.txt = ''; }
+    actualizarPlatos(); evaluar(); pintarCalc();
+  });
+  if (planesAlDia(perfil)) toast(`Trayectorias calculadas${tp}`);
 }
-$('#btnCalc').addEventListener('click', calcularPlanes);
+$('#btnCalc').addEventListener('click', () => calcularPlanes(PERFIL_EXPLORA));
+// ======================= Validar con los dos perfiles (T1.8, D6) =======================
+// «Validar con perfil curso»: calcula las trayectorias y la comprobación previa con «gemelo» y con «curso» y ensaya la demo
+// con los dos, con los ajustes de la demo (modo, balanceo y velocidad) y la bandeja en la fase 0, como la matriz de casos.
+// El resultado vale para la escena tal como está: su firma es la disposición (sin el perfil ni el sensor, que no mueven
+// nada), el robot calibrado y los ajustes de la demo; cualquier otro cambio la deja «sin validar».
+const VAL = { activo: false, res: null };
+const FASE_VALIDAR = 0;
+function firmaVal() { const { perfil, sensor, ...l } = L; return JSON.stringify([ROB.id, D.modo, D.amp, D.vel, l, otroVisible()]); } // y el robot del otro puesto, que es un obstáculo (H4)
+const valAlDia = () => !!VAL.res && VAL.res.firma === firmaVal();
+// Comprobación previa resumida como la guarda la escena (txt ≤ 300) y la causa del primer problema grave
+function resumenPrevia(chk) {
+  const g = chk.filter(c => c.grave); const i = g[0];
+  return { ok: !g.length, n: g.length, txt: (i ? i.txt : 'La comprobación previa no encuentra problemas.').slice(0, 300), fallo: i ? { causa: i.info.causa || null, pct: i.info.pct, txt: i.txt } : null };
+}
+// Causa del fallo de una demo (D.falloDemo): si no llegó a empezar, la del primer problema de la comprobación previa
+function falloDeDemo(f) {
+  if (!f) return null; const info = f.info || {};
+  if (info.causa === 'previo' && info.items && info.items.length) { const i = info.items[0]; return { causa: (i.info && i.info.causa) || null, pct: i.info && i.info.pct, txt: i.txt }; }
+  return { causa: info.causa || null, pct: info.pct, txt: f.msg };
+}
+const veredictoOk = v => !!v && v.previa.ok && v.demo.fin === 'ok';
+async function validar() {
+  if (!robot) return; const oc = ocupado('validar'); if (oc) { toast(oc); return; }
+  if (soloLectura()) { toast('Disposición de solo lectura (versión más nueva): no se valida'); return; }
+  const firma = firmaVal(), fase0 = D.fase, t0 = performance.now(), cfg = { modo: D.modo, amp: D.amp, vel: D.vel, fase: FASE_VALIDAR, sinRender: true };
+  VAL.activo = true; CALC.activo = true; D.validando = true; D.mantenerFallo = true; tctl.detach(); sel = null; pintarCalc('Validando…');
+  D.activo = false; reiniciarDemo(); // la comprobación previa mira la escena de partida (fruta en su zona, platos en su sitio)
+  let res = null;
+  try {
+    await new Promise(r => setTimeout(r, 30));
+    for (const pf of ['gemelo', 'curso']) for (const [pk] of platosActivos()) { const n = pk === 'plato1' ? '1º' : '2º'; await planPlatoAsync(pk, pf, p => pintarCalc(`Validando: trayectorias del plato ${n} con «${pf}», agarre ${p.i + 1} de ${p.n}`)); }
+    const per = {};
+    for (const pf of ['gemelo', 'curso']) per[pf] = { previa: resumenPrevia(comprobarPlan({ perfil: pf })) };
+    for (const pf of ['gemelo', 'curso']) {
+      pintarCalc(`Validando: demo con «${pf}» (${cfg.modo}, balanceo ${fmt(cfg.amp * 100, 1)} cm${pf === 'gemelo' ? `, ${Math.round(cfg.vel * 100)} %` : ', escala 0,1'})`); await new Promise(r => setTimeout(r, 30));
+      const r = await ensayo({ ...cfg, perfil: pf });
+      per[pf].demo = { fin: r.fin, t_ciclo_s: r.t_mov, paso: r.paso, fallo: r.fin === 'ok' ? null : falloDeDemo(D.falloDemo), detalle: r.fin === 'ok' ? '' : (D.falloDemo ? D.falloDemo.msg : r.fallo) };
+    }
+    const t = { gemelo: per.gemelo.demo.t_ciclo_s, curso: per.curso.demo.t_ciclo_s };
+    for (const pf of ['gemelo', 'curso']) { const d = per[pf].demo; d.motivo = d.fin === 'ok' ? null : PERFIL.motivo(d.fallo, t); per[pf].previa.motivo = per[pf].previa.ok ? null : PERFIL.motivo(per[pf].previa.fallo, t); }
+    res = { firma, per, ms: Math.round(performance.now() - t0) };
+  } catch (e) { console.error(e); } // un error interno no deja la página ocupada: se avisa y la escena sigue «sin validar»
+  finally {
+    D.activo = false; reiniciarDemo(); D.fase = fase0; VAL.activo = false; CALC.activo = false; CALC.txt = ''; D.validando = false; D.mantenerFallo = false;
+  }
+  if (res) VAL.res = res; actualizarPlatos(); evaluar(); pintarCalc();
+  toast(!res ? 'La validación ha fallado por un error interno' : `Validado con los dos perfiles: gemelo ${veredictoOk(res.per.gemelo) ? 'pasa' : 'falla'}, curso ${veredictoOk(res.per.curso) ? 'pasa' : 'falla'}`);
+}
+// Barra de validación, siempre a la vista (salvo con la demo en marcha): los dos veredictos (comprobación previa y demo),
+// los dos tiempos de ciclo y, si difieren, el motivo concreto
+function pintarVal() {
+  const el = $('#valBar'); if (!el) return; const ver = !!robot && (VAL.activo || !D.activo); el.hidden = !ver; if (!ver) return;
+  $('#btnValidar').disabled = VAL.activo || CALC.activo || D.buscando;
+  const r = valAlDia() ? VAL.res : null; let h;
+  if (VAL.activo) h = '<span class="spin"></span><span>Validando con «gemelo» y con «curso»…</span>';
+  else if (!r) h = `<span><b>Perfil «curso»: sin validar.</b> ${VAL.res ? 'La escena ha cambiado desde la última validación.' : 'Explorar usa «gemelo»: valida antes de guardar o de programar contra la simulación.'}</span>`;
+  else {
+    const fila = pf => { const v = r.per[pf], ok = veredictoOk(v), d = v.demo;
+      const demo = d.fin === 'ok' ? 'completa' : d.fin === 'previo' ? 'no empieza' : `${d.fin === 'abort' ? 'abortada' : 'parada'} en el paso ${d.paso}`;
+      return `<div class="valFila" data-perfil="${pf}"><span class="dot ${ok ? 'ok' : 'bad'}"></span><b>${pf === 'curso' ? 'Curso' : 'Gemelo'}</b> <span>previa: ${v.previa.ok ? 'sin problemas' : `${v.previa.n} ${v.previa.n === 1 ? 'problema' : 'problemas'}`} · demo: ${demo} · ciclo ${fmt(d.t_ciclo_s, 1)} s${d.fin === 'ok' ? '' : ' hasta el fallo'}</span></div>`; };
+    const vg = veredictoOk(r.per.gemelo), vc = veredictoOk(r.per.curso), falla = !vg ? 'gemelo' : 'curso';
+    const mot = vg === vc ? '' : (() => { const v = r.per[falla]; const m = v.previa.ok ? v.demo.motivo : v.previa.motivo; const det = v.previa.ok ? v.demo.detalle : v.previa.txt; return `<div class="valMotivo" title="${esc(det || '')}"><b>Solo pasa en ${falla === 'curso' ? '«gemelo»' : '«curso»'}. Motivo:</b> ${esc(m || '')}</div>${det && det !== m ? `<small class="valDet">${esc(det.slice(0, 300))}</small>` : ''}`; })();
+    h = `<div class="valFilas">${fila('gemelo')}${fila('curso')}${mot}<small>Tiempos aproximados (no TOTG, DT4) · ${r.per.gemelo.demo.fin === 'ok' && r.per.curso.demo.fin === 'ok' ? `curso ${fmt(r.per.curso.demo.t_ciclo_s - r.per.gemelo.demo.t_ciclo_s, 1)} s frente a gemelo` : 'validado'} · ${D.modo}, balanceo ${fmt(D.amp * 100, 1)} cm, ${Math.round(D.vel * 100)} %</small></div>`;
+  }
+  if (el._h !== h) { $('#valTxt').innerHTML = h; el._h = h; } $('#btnValidar').textContent = r ? 'Validar otra vez' : 'Validar con perfil curso'; // solo se reescribe si cambia (se repinta cada 18 fotogramas)
+}
+$('#btnValidar').addEventListener('click', () => validar());
 let sel = null;
 const objetivo = new THREE.Group(); scene.add(objetivo); objetivo.visible = false;
 { const r = new THREE.Mesh(new THREE.TorusGeometry(0.03, 0.004, 8, 32), new THREE.MeshBasicMaterial({ color: '#e6b422' })); objetivo.add(r); objetivo.add(new THREE.AxesHelper(0.06)); objetivo.userData.anillo = r; }
@@ -683,7 +857,7 @@ function moverAObjetivo() {
   const p = objetivo.position; const q = ikTCP(p, objetivo.rotation.z, robot.q);
   objetivo.userData.anillo.material.color.set(q ? '#e6b422' : css('--bad'));
   if (q) { robot.setQ(q); sincronizarSliders(); }
-  const n = KIN.ik(poseVertical(mundoABase(new THREE.Vector3(p.x, p.y, p.z + pinza.tcpZ())), objetivo.rotation.z - robot.root.rotation.z)).filter(s => qValida(s)).length;
+  const n = CIN.ik(poseVertical(mundoABase(new THREE.Vector3(p.x, p.y, p.z + pinza.tcpZ())), yawABase(objetivo.rotation.z))).filter(s => qValida(s)).length;
   $('#ikInfo').textContent = q ? `Posturas válidas para este punto: ${n} de 8. Se elige la más cercana a la actual.` : 'Ese punto queda fuera del alcance con la pinza vertical.';
 }
 // Selección y arrastre directo: pulsar un objeto lo selecciona y arrastrarlo lo mueve sobre el plano horizontal
@@ -880,13 +1054,19 @@ function pintarPasos(i, fallo = false) { $('#dSteps').innerHTML = PASOS.map(([t,
 function paso(i) { D.paso = i; pintarPasos(i); }
 
 // ======================= Comprobación previa del plan =======================
-// opts.parar: para en el primer fallo grave (lo usa la búsqueda de disposiciones, que solo necesita saber si pasa)
+// opts.perfil: el perfil de los planes que se comprueban (T1.6; obligatorio: el de la demo, el de explorar o el de validar).
+// opts.parar: para en el primer fallo grave (lo usa la búsqueda de disposiciones, que solo necesita saber si pasa).
+// Las cajas se orientan con los planes de ese perfil mientras dura y vuelven a los de explorar al acabar.
 const PARAR_CHK = { out: null };
-function comprobarPlan(opts = {}) {
-  const q0 = robot ? robot.q.slice() : null;
-  try { return comprobarPlan0(opts); } catch (e) { if (e !== PARAR_CHK) throw e; robot.setQ(q0); return PARAR_CHK.out; }
+// La comprobación previa mira siempre la escena de partida (H3, DT24: enEscenaDePartida)
+function comprobarPlan(opts = {}) { return enEscenaDePartida(() => comprobarPlan1(opts)); }
+function comprobarPlan1(opts) {
+  const pf = PERFIL.de(opts.perfil).nombre; const q0 = robot ? robot.q.slice() : null;
+  if (robot) orientarCajas(pf);
+  try { return comprobarPlan0(opts, pf); } catch (e) { if (e !== PARAR_CHK) throw e; robot.setQ(q0); return PARAR_CHK.out; }
+  finally { if (robot && pf !== PERFIL_EXPLORA) orientarCajas(PERFIL_EXPLORA); }
 }
-function comprobarPlan0(opts) {
+function comprobarPlan0(opts, pf) {
   const out = []; if (!robot) return out;
   const q0 = robot.q.slice(); let ctxI = {}; const add = (cls, txt, grave = false) => { out.push({ cls, txt, grave, info: { ...ctxI } }); if (grave && opts.parar) { PARAR_CHK.out = out; throw PARAR_CHK; } };
   const zTr = MESA.h + H_TR;
@@ -897,7 +1077,13 @@ function comprobarPlan0(opts) {
     ctxI = { fase: 'fruta' }; const pz = piezas.find(p => p.tipo === tipo); const c = pz.obj.getWorldPosition(new THREE.Vector3());
     const okA = ikTCP(new THREE.Vector3(c.x, c.y, zTr), 0, q0) || ikTCP(new THREE.Vector3(c.x, c.y, zTr), PI / 2, q0);
     const okG = llegaVertical(new THREE.Vector3(c.x, c.y, MESA.h + alturaAgarre(pz.F)), q0);
-    if (okA && okG) add('ok', `Coger ${pz.F.nombre.toLowerCase()} en la zona de fruta`); else add('bad', `${pz.F.nombre}: fuera de alcance para cogerla en vertical`, true);
+    if (okA && okG) add('ok', `Coger ${pz.F.nombre.toLowerCase()} en la zona de fruta`);
+    else { // T1.4-5: si en las poses que fallan hay ramas analíticas y ninguna converge, no es «fuera de alcance»
+      const pA = new THREE.Vector3(c.x, c.y, zTr), pG = new THREE.Vector3(c.x, c.y, MESA.h + alturaAgarre(pz.F));
+      const poses = !okA ? [[pA, 0], [pA, PI / 2]] : [0, PI / 4, PI / 2, -PI / 4].map(y => [pG, y]);
+      ctxI.causa = poses.every(([p, y]) => causaSinIK(p, y, {}) === 'ik_calibrada') ? 'ik_calibrada' : 'alcance';
+      add('bad', ctxI.causa === 'ik_calibrada' ? `${pz.F.nombre}: IK calibrada no converge para cogerla en vertical (la IK analítica nominal tiene ramas, pero ninguna converge con la calibración del ${ROB.id})` : `${pz.F.nombre}: fuera de alcance para cogerla en vertical`, true);
+    }
   }
   // platos: soltar la fruta y coger en horizontal
   for (const [pk] of platosActivos()) {
@@ -905,8 +1091,8 @@ function comprobarPlan0(opts) {
     const F = pk === 'plato1' ? FRUTAS.manzana : FRUTAS.uvas, nP = pk === 'plato1' ? 2 : 1; const pts = puntosSoltar(pc, F, nP); const zMax = pts[0].arr.z; ctxI.h = zMax - MESA.h;
     const ok = pts.every(p => llegaVertical(p.arr, q0) && llegaVertical(p.sol, q0));
     if (ok) add('ok', `Soltar ${nP} ${nP > 1 ? 'piezas' : 'pieza'} en el plato ${n} (pasando a ${fmt((zMax - MESA.h) * 100, 0)} cm)`); else add('bad', `Plato ${n}: no llego a soltar la fruta encima (hay que pasar a ${fmt((zMax - MESA.h) * 100, 0)} cm sobre la mesa). Acércalo a la base o baja la caja.`, true);
-    ctxI = { fase: 'plato', pk }; const pl = planPlatoCache(pk);
-    if (!pl) { const f = planForzado(pk); if (f) D.posturaImposible = { q: f.q, w: 0.03, c: f.choque, pk };
+    ctxI = { fase: 'plato', pk }; const pl = planPlatoCache(pk, pf);
+    if (!pl) { const f = planForzado(pk, pf); if (f) D.posturaImposible = { q: f.q, w: 0.03, c: f.choque, pk };
       add('bad', f && f.choque ? `Plato ${n}: el robot real no puede cogerlo en horizontal por el borde: chocaría ${textoChoque(f.choque)}${f.hol.min < 0 ? ` (${mm(-f.hol.min)} mm)` : ''}. ${L.caja.on ? 'Sube la caja o mueve el plato.' : 'Ponlo sobre la caja.'}` : `Plato ${n}: no hay ninguna dirección para cogerlo en horizontal por el borde`, true); }
     else if (pl.hol.min < -0.002) add('warn', `Plato ${n}: al cogerlo en horizontal, ${pl.hol.contra === 'caja' ? 'la pinza entra en la caja' : 'la muñeca o la pinza bajan por debajo de la mesa'} (${mm(pl.hol.min)} mm). ${L.caja.on ? 'Sube la caja.' : 'Ponlo sobre la caja.'}`);
     else add('ok', `Coger el plato ${n} en horizontal (holgura ${mm(pl.hol.min)} mm, entrada ${pl.k ? (pl.k > 0 ? '+' : '') + pl.k * 15 + '°' : 'radial'}${pl.pitch ? `, muñeca inclinada ${Math.round(pl.pitch * R2D)}°` : ''})`);
@@ -914,11 +1100,11 @@ function comprobarPlan0(opts) {
   // bandeja
   const bp = poseBandeja(simT); bandeja.updateMatrixWorld(true);
   for (const [pk, zk] of platosActivos()) { // ensayo en seco: levantar, llevar nivelado y dejar
-    ctxI = { fase: 'transporte', pk, zona: zk }; const pl = planPlatoCache(pk); const n = pk === 'plato1' ? '1º' : '2º'; const hB = fmt((bp.z - MESA.h) * 100, 0);
+    ctxI = { fase: 'transporte', pk, zona: zk }; const pl = planPlatoCache(pk, pf); const n = pk === 'plato1' ? '1º' : '2º'; const hB = fmt((bp.z - MESA.h) * 100, 0);
     if (!pl) { add('bad', `Plato ${n} → ${zk}: sin agarre no se puede comprobar el transporte`); continue; }
     if (pl.cadena && pl.cadena.pc2) add('ok', `Llevar el plato ${n} nivelado hasta ${zk} y dejarlo (bandeja a ${hB} cm)`);
-    else if (pl.cadena.fallo.fase === 'plato') { ctxI = { fase: 'plato', pk }; add('bad', `Plato ${n}: no puedo cogerlo y levantarlo en línea recta: ${pl.cadena.fallo.fallo} (llega al ${pl.cadena.fallo.pct} %).`, true); }
-    else add('bad', `Plato ${n} → ${zk}: no puedo llevarlo nivelado y dejarlo sin chocar: ${pl.cadena.fallo.fallo} (llega al ${pl.cadena.fallo.pct} %). Bandeja a ${hB} cm sobre la mesa.`, true);
+    else if (pl.cadena.fallo.fase === 'plato') { ctxI = { fase: 'plato', pk, causa: pl.cadena.fallo.causa, pct: pl.cadena.fallo.pct }; add('bad', `Plato ${n}: no puedo cogerlo y levantarlo en línea recta: ${pl.cadena.fallo.fallo} (llega al ${pl.cadena.fallo.pct} %).`, true); }
+    else { ctxI.causa = pl.cadena.fallo.causa; ctxI.pct = pl.cadena.fallo.pct; add('bad', `Plato ${n} → ${zk}: no puedo llevarlo nivelado y dejarlo sin chocar: ${pl.cadena.fallo.fallo} (llega al ${pl.cadena.fallo.pct} %). Bandeja a ${hB} cm sobre la mesa.`, true); }
   }
   robot.setQ(q0);
   return out;
@@ -926,17 +1112,20 @@ function comprobarPlan0(opts) {
 function pintarCheck(lista) { $('#dCheck').innerHTML = lista.map(c => `<li class="${c.cls}">${c.txt}</li>`).join(''); }
 function verPosturaImposible() {
   const P = D.posturaImposible; if (!P) return; D.activo = false; robot.setQ(P.q); pinza.setApertura(P.w); sincronizarSliders(); actualizarHUD(); // modo manual: el HUD dice con qué choca
-  if (P.c) { const b = BASES[L.robot]; marcaChoque.position.set(P.c.p[0] + b.x, P.c.p[1] + b.y, P.c.p[2] + MESA.h); marcaChoque.visible = true; D.marcaHasta = simT + 1e9; }
+  if (P.c) { marcaChoque.position.copy(baseAMundo(P.c.p[0], P.c.p[1], P.c.p[2])); marcaChoque.visible = true; D.marcaHasta = simT + 1e9; }
   const pc = OBJ[P.pk].getWorldPosition(new THREE.Vector3()); animarCam(new THREE.Vector3(pc.x - 0.45, pc.y - 0.55, pc.z + 0.35), pc);
 }
-function mostrarFallo(titulo, txt, tipo = 'fallo') { if (D.buscando) return; const f = $('#dFallo'); f.hidden = false; f.className = 'card fallo' + (tipo === 'abort' ? ' abort' : ''); f.innerHTML = `<div><b>${titulo}</b>${txt}</div>`; }
+function mostrarFallo(titulo, txt, tipo = 'fallo') { if (D.buscando || D.validando) return; const f = $('#dFallo'); f.hidden = false; f.className = 'card fallo' + (tipo === 'abort' ? ' abort' : ''); f.innerHTML = `<div><b>${titulo}</b>${txt}</div>`; }
 
 // ======================= Guion de la demo =======================
 const MENU = { primeros: [{ plato: 'Manzanas', piezas: 2, alergenos: [] }, { plato: 'Frambuesas', piezas: 1, alergenos: ['frambuesa'] }], segundos: [{ plato: 'Uvas', piezas: 1, alergenos: [] }, { plato: 'Limón', piezas: 1, alergenos: [] }] };
-async function demo() {
-  const run = D.run; D.t0 = simT; D.fin = null; D.ctx = {};
+// pf: perfil de movimiento de toda la demo (T1.6): cada movimiento lo lleva en su petición
+async function demo(pf) {
+  // D.faseInicio: fase de la bandeja al arrancar (BALANCEO(simT + D.fase)), para que la búsqueda de disposiciones ensaye
+  // desde la misma (DT10). D.falloDemo: el fallo de esta demo, con su causa (la validación lo lee, T1.8).
+  PERFIL.de(pf); const run = D.run; D.t0 = simT; D.faseInicio = simT + D.fase; D.fin = null; D.ctx = {}; D.perfilDemo = pf; D.falloDemo = null;
   try {
-    const chk = comprobarPlan(); pintarCheck(chk);
+    const chk = comprobarPlan({ perfil: pf }); pintarCheck(chk); orientarCajas(pf);
     const graves = chk.filter(c => c.grave); if (graves.length) throw new FalloDemo(graves.map(g => g.txt).join(' '), 'previo', { causa: 'previo', items: graves });
     paso(0); estado('REPOSO'); publicar('/v1/dialog_state', ['ident'], { paso: 'reposo', mensaje: 'Haz el gesto de inicio' }); await esperar(1.2);
     paso(1); estado('IDENTIFICANDO');
@@ -953,21 +1142,22 @@ async function demo() {
     paso(4); estado('ESPERANDO_BANDEJA');
     await anim(1.6, s => { trayState.subida = smooth(s); }); trayState.balanceo = true; if (!uno) ladoZonas(); await esperar(0.8);
     publicar('/v1/tray_status', ['tstat'], { estado: 'lista', desviacion_mm: 0 });
-    const bp = poseBandeja(simT); publicar('/v1/tray_pose', ['tpose'], { marco: 'base_link', x: +(bp.x - BASES[L.robot].x).toFixed(3), y: +(bp.y - BASES[L.robot].y).toFixed(3), z: +(bp.z - MESA.h).toFixed(3), yaw_deg: +(bp.yaw * R2D).toFixed(1), marcadores_vistos: 3 }); await esperar(0.6);
+    const bp = poseBandeja(simT), tb = enBase(bp); publicar('/v1/tray_pose', ['tpose'], { marco: 'base_link', x: +tb.x.toFixed(3), y: +tb.y.toFixed(3), z: +tb.z.toFixed(3), yaw_deg: gradosBase(bp.yaw), marcadores_vistos: 3 }); await esperar(0.6);
     paso(5); publicar('/v2/fruits', ['img', 'det', 'fruits'], { marco: 'base_link', piezas: piezas.filter(p => !p.usada).map(p => `${p.id}: ${p.tipo}`) }); await esperar(0.5);
-    await servirPlato('plato1', 'manzana', 2, zonaDe('plato1'), 1);
-    if (!uno) { paso(6); await servirPlato('plato2', 'uvas', 1, 'zona_segundo', 2); }
+    await servirPlato('plato1', 'manzana', 2, zonaDe('plato1'), 1, pf);
+    if (!uno) { paso(6); await servirPlato('plato2', 'uvas', 1, 'zona_segundo', 2, pf); }
     paso(uno ? 6 : 7); D.ctx = { fase: 'reposo', accion: 'volver a la postura de reposo' }; estado('HECHO'); publicar('/service_state', ['svc'], { estado: 'hecho' });
-    await irA(posReposo(), PI / 2, {}, 'la postura de reposo'); trayState.balanceo = false;
+    await irA(posReposo(), PI / 2, { perfil: pf }, 'la postura de reposo'); trayState.balanceo = false;
     if (D.ep) cerrarChoque(); D.fin = 'ok'; D.playing = false; $('#dPlay').textContent = 'Reproducir demo';
-    if (!D.buscando) toast(`Servicio completo: ${fmt(D.motion, 1)} s de movimiento al ${Math.round(D.vel * 100)} %`);
+    if (!D.buscando && !D.validando) toast(`Servicio completo: ${fmt(D.motion, 1)} s de movimiento ${pf === 'curso' ? 'con el perfil «curso» (escala 0,1)' : `al ${Math.round(D.vel * 100)} %`}`);
   } catch (e) {
     if (run !== D.run) return; // reinicio pedido por el usuario
+    if (e instanceof FalloDemo) D.falloDemo = { causa: e.info.causa, info: e.info, msg: e.message, tipo: e.tipo, paso: D.paso };
     if (D.ep) cerrarChoque();
     if (e instanceof FalloDemo && e.tipo === 'abort') { // el coordinador publica el aborto y retira el brazo antes de terminar
       estado('ABORTADO'); pintarPasos(D.paso, true); mostrarFalloInfo(e, `Servicio abortado en el paso ${D.paso + 1} (${PASOS[D.paso][0]}).`, 'abort');
       publicar('/service_state', ['svc'], { estado: 'abortado', paso: PASOS[D.paso][0] }); D.platoEnPinza = null;
-      try { await retirarSeguro(); } catch (e2) { }
+      try { await retirarSeguro(pf); } catch (e2) { }
       if (run !== D.run) return;
       if (D.ep) cerrarChoque(); D.fin = 'abort'; D.playing = false; $('#dPlay').textContent = 'Reproducir demo'; actualizarHUD(); return;
     }
@@ -980,50 +1170,50 @@ async function demo() {
   }
 }
 // Retirada tras un aborto (DEC-04): sube y se aparta hacia la base sin cambiar la orientación (si lleva el plato, no lo vuelca)
-async function retirarSeguro() {
+async function retirarSeguro(pf) {
   const ax = ejesHerramienta(); const p = tcpMundo(); const arriba = p.clone().add(new THREE.Vector3(0, 0, 0.06));
   if (Math.abs(ax.z.z) < 0.7) {
-    const yaw = Math.atan2(ax.z.y, ax.z.x); const flip = Math.sign(KIN.fk(robot.q)[8]) || 1; const o = { horiz: true, flip, pitch: Math.asin(clamp(-ax.z.z, -1, 1)), minZ: -0.3, permitir: ['bandeja', 'plato:*'] };
+    const yaw = Math.atan2(ax.z.y, ax.z.x); const flip = Math.sign(CIN.fk(robot.q)[8]) || 1; const o = { horiz: true, flip, pitch: Math.asin(clamp(-ax.z.z, -1, 1)), minZ: -0.3, permitir: ['bandeja', 'plato:*'], perfil: pf };
     const b = BASES[L.robot]; const hacia = new THREE.Vector3(b.x - p.x, b.y - p.y, 0).normalize();
     await moveL(arriba, yaw, o, 'la retirada'); await moveL(arriba.clone().addScaledVector(hacia, 0.1), yaw, o, 'la retirada');
-  } else { await moveL(arriba, yawHerramienta(), {}, 'la retirada'); await irA(posReposo(), PI / 2, {}, 'la postura de reposo'); }
+  } else { await moveL(arriba, yawHerramienta(), { perfil: pf }, 'la retirada'); await irA(posReposo(), PI / 2, { perfil: pf }, 'la postura de reposo'); }
 }
-async function servirPlato(pk, tipo, n, zona, num) {
+async function servirPlato(pk, tipo, n, zona, num, pf) {
   const plato = OBJ[pk]; const pc = plato.getWorldPosition(new THREE.Vector3());
   const pts = puntosSoltar(pc, FRUTAS[tipo], n); const zTr = MESA.h + H_TR;
-  if (Math.abs(ejesHerramienta().z.z) < 0.7) { estado(`TRANSITO_${num}`); await irA(posReposo(), PI / 2, {}, 'la postura de tránsito'); } // de horizontal a vertical, lejos de la fruta
+  if (Math.abs(ejesHerramienta().z.z) < 0.7) { estado(`TRANSITO_${num}`); await irA(posReposo(), PI / 2, { perfil: pf }, 'la postura de tránsito'); } // de horizontal a vertical, lejos de la fruta
   for (let k = 0; k < n; k++) {
     const pz = piezas.find(p => !p.usada && p.tipo === tipo); if (!pz) throw new FalloDemo(`No queda ${FRUTAS[tipo].nombre.toLowerCase()} en la zona de fruta`); pz.usada = true;
     estado(`SIRVIENDO_${num} · ${k + 1}/${n}`); D.piezaObjetivo = pz; D.ctx = { fase: 'fruta', pk, accion: `coger ${pz.F.nombre.toLowerCase()} (pieza ${pz.id}) en la zona de fruta` };
     const wAb = Math.min(0.11, pz.F.w + 0.024); const ag = planAgarreFruta(pz, wAb, robot.q);
     if (!ag) throw new FalloDemo(`No hay ninguna orientación de la pinza para coger ${pz.F.nombre.toLowerCase()} (pieza ${pz.id})`, 'fallo', { causa: 'fruta', detalle: 'Ninguna orientación de la pinza vertical llega a la pieza sin chocar.' });
     const c = ag.c, yaw = ag.yaw;
-    publicar('servir_pieza [PROPUESTA]', ['accion'], { pieza: pz.id, tipo, plato: pk, agarre_z_m: +pz.F.h.toFixed(3), giro_pinza_deg: Math.round(angDiff(yaw, 0) * R2D), hueco_con_vecinas_mm: ag.hol === Infinity ? '—' : mm(ag.hol) });
+    publicar('servir_pieza [PROPUESTA]', ['accion'], { pieza: pz.id, tipo, plato: pk, agarre_z_m: +pz.F.h.toFixed(3), giro_pinza_deg: Math.round(gradosBase(yaw)), marco_giro: 'base_link', hueco_con_vecinas_mm: ag.hol === Infinity ? '—' : mm(ag.hol) });
     await pinzaA(wAb);
-    await irA(new THREE.Vector3(c.x, c.y, zTr), yaw, {}, `la vertical de ${pz.F.nombre.toLowerCase()}`);
+    await irA(new THREE.Vector3(c.x, c.y, zTr), yaw, { perfil: pf }, `la vertical de ${pz.F.nombre.toLowerCase()}`);
     const dz = alturaAgarre(pz.F) - pz.F.h, cierre = Math.max(0.01, Math.min(pz.F.w, 2 * Math.sqrt(Math.max(0, pz.F.r ** 2 - dz ** 2))) - 0.004); // ancho de la pieza a la altura de la yema
     const baja = pinza.tcpZ(cierre) - pinza.tcpZ(wAb); // al cerrar, las yemas de la RG2 avanzan: se baja menos para que acaben a la altura de agarre
-    await moveL(new THREE.Vector3(c.x, c.y, MESA.h + alturaAgarre(pz.F) + baja), yaw, { estricto: true }, `${pz.F.nombre.toLowerCase()}`);
+    await moveL(new THREE.Vector3(c.x, c.y, MESA.h + alturaAgarre(pz.F) + baja), yaw, { estricto: true, perfil: pf }, `${pz.F.nombre.toLowerCase()}`);
     publicar('/pinza/cerrar [PROPUESTA]', ['gripper'], { ancho_mm: mm(cierre), altura_agarre_mm: mm(alturaAgarre(pz.F)) }); await pinzaA(cierre); adjuntar(pz.obj, pinza.tcp); pz.enPinza = true; D.piezaObjetivo = null;
     const dest = pts[k].arr; D.ctx = { fase: 'soltar', pk, accion: `soltar ${pz.F.nombre.toLowerCase()} en el plato ${num}` };
-    await moveL(new THREE.Vector3(c.x, c.y, dest.z), yawHerramienta(), { permitir: ['mesa'] }, 'la altura de traslado'); // la pieza sale apoyada en la mesa
-    await irA(dest, yawHerramienta(), {}, `la vertical del plato ${num}`);
-    await moveL(pts[k].sol, yawHerramienta(), { permitir: ['plato:' + pk] }, `la altura de soltar en el plato ${num}`);
+    await moveL(new THREE.Vector3(c.x, c.y, dest.z), yawHerramienta(), { permitir: ['mesa'], perfil: pf }, 'la altura de traslado'); // la pieza sale apoyada en la mesa
+    await irA(dest, yawHerramienta(), { perfil: pf }, `la vertical del plato ${num}`);
+    await moveL(pts[k].sol, yawHerramienta(), { permitir: ['plato:' + pk], perfil: pf }, `la altura de soltar en el plato ${num}`);
     await pinzaA(wAb); adjuntar(pz.obj, scene); pz.enPinza = false;
     const z0 = pz.obj.position.z, zt = pc.z + 0.006 + pz.F.h; await anim(0.35, s => { pz.obj.position.z = z0 + (zt - z0) * s * s; }); adjuntar(pz.obj, plato);
     publicar('/v2/serve_check', ['fruits'], { plato: pk, cayo_en_plato: true, piezas: k + 1 });
-    await moveL(dest, yawHerramienta(), { permitir: ['plato:' + pk] }, 'la altura de traslado');
+    await moveL(dest, yawHerramienta(), { permitir: ['plato:' + pk], perfil: pf }, 'la altura de traslado');
   }
   // coger el plato en horizontal por el borde
   estado(`LLEVANDO_${num}`); D.ctx = { fase: 'plato', pk, accion: `coger el plato ${num} por el borde` };
-  const pl = planPlatoCache(pk) || planAgarrePlato(pc, robot.q, { pk }); if (!pl) throw new FalloDemo(`No hay ninguna dirección para coger el plato ${num} en horizontal sin chocar.`, 'fallo', { causa: 'sin_trayectoria' });
-  const oh = { horiz: true, flip: pl.flip, pitch: pl.pitch, minZ: -0.3 };
+  const pl = planPlatoCache(pk, pf) || planAgarrePlato(pc, robot.q, { pk }); if (!pl) throw new FalloDemo(`No hay ninguna dirección para coger el plato ${num} en horizontal sin chocar.`, 'fallo', { causa: 'sin_trayectoria' });
+  const oh = { horiz: true, flip: pl.flip, pitch: pl.pitch, minZ: -0.3, perfil: pf };
   publicar('coger_plato [PROPUESTA]', ['accion'], { plato: pk, agarre: 'horizontal por el borde', aproximacion_deg: pl.k * 15, inclinacion_deg: Math.round(pl.pitch * R2D), holgura_mm: mm(pl.hol.min) });
   await pinzaA(0.03);
   // postura de aproximación: la más cercana a la actual o la planificada en seco; se queda la primera con la que toda la cadena (acercarse, levantar, llevar y dejar) sale bien con la bandeja donde está ahora
   const qCerca = ikTCP(pl.pre, pl.yaw, robot.q, { ...oh, w: 0.03 }); const zAhora = zonasB[zona].getWorldPosition(new THREE.Vector3());
   const opciones = [qCerca, pl.qPre].filter((q, i, a) => q && (i === 0 || !a[0] || Math.max(...q.map((v, j) => Math.abs(v - a[0][j]))) > 0.05));
-  let qAprox = null; for (const qp of opciones) { const ch = cadenaPlato(pk, { ...pl, qPre: qp }, zAhora); if (ch.pc2) { qAprox = qp; break; } }
+  let qAprox = null; for (const qp of opciones) { const ch = cadenaPlato(pk, { ...pl, qPre: qp }, zAhora, pf); if (ch.pc2) { qAprox = qp; break; } }
   if (!qAprox) qAprox = qCerca || pl.qPre; // si ninguna pasa, se intenta igual: el paso que falle explicará por qué
   await moveJ(qAprox, factorPersona(pl.pre), { ...oh, w: 0.03 }, `la aproximación al plato ${num}`); // movimiento articular planificado hasta 7 cm del borde
   await moveL(pl.tcp, pl.yaw, { ...oh, permitir: ['plato:' + pk], estricto: true }, `el borde del plato ${num}`);
@@ -1033,17 +1223,17 @@ async function servirPlato(pk, tipo, n, zona, num) {
   // colocar en la bandeja
   estado(`COLOCANDO_${num}`); D.ctx = { fase: 'transporte', pk, zona, accion: `llevar el plato ${num} nivelado hasta ${zona}` }; publicar('/service_state', ['svc'], { estado: `colocando ${num}` });
   const zonaObj = zonasB[zona]; let zr = zonaObj.getWorldPosition(new THREE.Vector3()); // pose de recepción
-  let tr = colocacionConTransporte(zr, robot.q, pl, D.carga);
+  let tr = colocacionConTransporte(zr, robot.q, pl, D.carga, pf);
   for (let it = 1; !tr.pc2 && it < 4; it++) { // la bandeja se balancea: como MoveIt con replanificación, se espera un momento y se vuelve a planificar con su nueva pose
     publicar('/movimiento/aviso [PROPUESTA]', ['accion'], { tramo: `llevar el plato ${num}`, intento: it, motivo: tr.fallo.fallo, se_hace: 'esperar 0,6 s y replanificar con la bandeja en su pose nueva' });
-    await esperar(0.6); zr = zonaObj.getWorldPosition(new THREE.Vector3()); tr = colocacionConTransporte(zr, robot.q, pl, D.carga);
+    await esperar(0.6); zr = zonaObj.getWorldPosition(new THREE.Vector3()); tr = colocacionConTransporte(zr, robot.q, pl, D.carga, pf);
   }
   if (!tr.pc2) throw new FalloDemo(`No puedo llevar el plato ${num} nivelado hasta ${zona} y dejarlo sin chocar: ${tr.fallo.fallo} (llega al ${tr.fallo.pct} %). Bandeja a ${mm(zr.z - MESA.h)} mm sobre la mesa.`, 'fallo', { causa: tr.fallo.causa || 'choque', choque: tr.fallo.choque, q: tr.fallo.q, punto: tr.fallo.p, pct: tr.fallo.pct, horiz: true });
   const pc2 = tr.pc2; D.ctx = { fase: 'bandeja', pk, zona, accion: `dejar el plato ${num} en ${zona}` };
-  const ohP = { horiz: true, flip: pl.flip, pitch: pl.pitch, minZ: -0.3, w: 0.006, permitir: ['bandeja'] }; const ctxP = ctxDe(ohP);
+  const ohP = { horiz: true, flip: pl.flip, pitch: pl.pitch, minZ: -0.3, w: 0.006, permitir: ['bandeja'], perfil: pf }; const ctxP = ctxDe(ohP);
   const objetivoDe = z => new THREE.Vector3(z.x - pc2.d.x * R_AGARRE, z.y - pc2.d.y * R_AGARRE, z.z + H_BORDE + 0.004);
   publicar('/movimiento/transporte [PROPUESTA]', ['accion'], { destino: `encima de ${zona}`, restriccion: 'plato nivelado', largo_mm: mm(tr.r.largo) });
-  await ejecutar(tr.r.ruta, factorPersona(pc2.pre), 1.5 * tr.r.largo / (0.5 * D.vel * factorPersona(pc2.pre)));
+  await ejecutar(tr.r.ruta, factorPersona(pc2.pre), tMinCart(tr.r.largo, factorPersona(pc2.pre), pf), pf);
   const THR = 0.025, LAT = 0.12, T_ABORTO = 10;
   let z = pc2.pre.z, quieto = 0, pausado = false, tPausa = 0, tLoop = 0, sinIK = 0;
   if (D.modo === 'M0') {
@@ -1077,8 +1267,11 @@ async function servirPlato(pk, tipo, n, zona, num) {
   $('#dError').textContent = D.errores.map(e => `${mm(e)}`).join(' · ') + ' mm';
   await pinzaA(0.03);
   publicar('/service_state', ['svc'], { estado: `colocado ${num}`, error_colocacion_mm: mm(err) });
-  const p = tcpMundo(); const atras = p.clone().addScaledVector(pc2.eje, -0.08);
-  await moveL(atras, pc2.yaw, { ...ohP, w: 0.03, carga: null, permitir: ['bandeja', 'plato:' + pk] }, 'la salida de la bandeja'); // después, movimiento articular planificado
+  const p = tcpMundo(); const atras = p.clone().addScaledVector(pc2.eje, -0.08); const ohS = { ...ohP, w: 0.03, carga: null, permitir: ['bandeja', 'plato:' + pk] };
+  await moveL(atras, pc2.yaw, ohS, 'la salida de la bandeja');
+  // y sube en recta H_SALIDA con lo mismo permitido (T1.9, DT22): acaba libre, sin tocar nada con el contexto normal del
+  // movimiento siguiente (tránsito o reposo), que se planifica desde un estado libre, como con MoveIt
+  await moveL(atras.clone().add(new THREE.Vector3(0, 0, H_SALIDA)), pc2.yaw, ohS, 'la subida tras la salida de la bandeja'); // después, movimiento articular planificado
 }
 // IK para el servo: solo vale una solución de la misma rama (cerca de la postura actual); si no, el robot no puede seguir sin cambiar de postura
 function ikCercana(p, yaw, opts) { const q = ikTCP(p, yaw, robot.q, opts); return q && Math.max(...q.map((v, i) => Math.abs(v - robot.q[i]))) < 0.35 ? q : null; }
@@ -1093,33 +1286,71 @@ function reiniciarDemo() {
   D.carga = null; pintarCalidad(); $('#dLog').innerHTML = ''; $('#dMsg').textContent = 'Pulsa «Reproducir demo» para ver los mensajes del guion.'; if (!D.mantenerFallo) $('#dFallo').hidden = true;
   $('#dPlay').textContent = 'Reproducir demo'; D.minCam = {}; sincronizarSliders();
 }
+// La demo usa el perfil de la escena (L.perfil, T1.6): antes de empezar se calculan sus trayectorias si no están al día
 $('#dPlay').addEventListener('click', async () => {
-  if (!robot || CALC.activo) return;
-  if ((!D.activo || D.fin) && !planesAlDia()) { await calcularPlanes(); if (!planesAlDia()) return; }
-  if (!D.activo || D.fin) { reiniciarDemo(); D.activo = true; tctl.detach(); sel = null; pintarLista(); pintarSel(); D.playing = true; $('#dPlay').textContent = 'Pausar'; demo(); return; }
+  if (!robot || CALC.activo) return; const pf = perfilEscena();
+  if ((!D.activo || D.fin) && !planesAlDia(pf)) { await calcularPlanes(pf); if (!planesAlDia(pf)) return; }
+  if (!D.activo || D.fin) { reiniciarDemo(); D.activo = true; tctl.detach(); sel = null; pintarLista(); pintarSel(); D.playing = true; $('#dPlay').textContent = 'Pausar'; demo(pf); return; }
   D.playing = !D.playing; $('#dPlay').textContent = D.playing ? 'Pausar' : 'Continuar';
 });
-$('#dReset').addEventListener('click', () => { D.activo = false; reiniciarDemo(); actualizarCheck(); });
+// Con una validación, un cálculo o una búsqueda en marcha no se reinicia (revisión de F1, H1, y DT31): cortaría sus ensayos y
+// la validación quedaría «al día» con una demo atascada. Con la demo en marcha sí: es el uso normal del botón
+const ocupadoSinDemo = accion => VAL.activo || CALC.activo || D.buscando ? ocupado(accion) : null;
+$('#dReset').addEventListener('click', () => { const oc = ocupadoSinDemo('reiniciar la demo'); if (oc) { toast(oc); return; } D.activo = false; reiniciarDemo(); actualizarCheck(); });
 
 // ======================= Evaluación, HUD y paneles =======================
-function enBase(p) { const b = BASES[L.robot]; return { x: p.x - b.x, y: p.y - b.y, z: p.z - MESA.h }; }
-const CACHE_PLAN = {};
-// todo lo que entra en la escena de colisión o en la cadena: plato, el otro plato, caja (y su altura), zona de fruta, persona, bandeja, cámaras (posición y hacia dónde miran) y pedido
-function clavePlan(pk) {
+function enBase(p) { return mundoABase(p); } // punto del mundo en base_link: la misma conversión que la planificación (marco(), T1.5)
+// Planes de los platos por perfil (T1.6, decisión 3): CACHE_PLAN[perfil][plato]. Validar con «curso» no pisa lo calculado
+// con «gemelo» ni al revés. cachePlan crea la del perfil si no existe (un test puede vaciar CACHE_PLAN entero).
+const CACHE_PLAN = { gemelo: {}, curso: {} };
+const cachePlan = pf => CACHE_PLAN[PERFIL.de(pf).nombre] || (CACHE_PLAN[pf] = {});
+// todo lo que entra en la escena de colisión o en la cadena: robot (posición A/B y cinemática, T1.4), plato, el otro plato, caja (y su altura), zona de fruta, persona, bandeja, cámaras (posición y hacia dónde miran) y pedido, más el perfil (T1.6) y si se ve el robot del otro puesto (H4)
+function clavePlan(pk, pf) {
   const P = L.persona, B = L.bandeja; const r3 = v => (+v).toFixed(3), ps = o => `${r3(o.x)},${r3(o.y)}`;
-  return [L.robot, r3(L[pk].x), r3(L[pk].y), r3(zPlato()), L.caja.on, r3(L.caja.h), ps(L.plato1), ps(L.plato2), ps(L.zona), r3(L.zona.yaw), ps(P), r3(P.yaw), B.alt, B.ade, L.pedido, Object.values(L.cams).map(c => ps(c.pos) + ',' + r3(c.pos.z) + ',' + ps(c.mira) + ',' + r3(c.roll || 0)).join(';')].join('|');
+  return [PERFIL.de(pf).nombre, L.robot, ROB.id, r3(L[pk].x), r3(L[pk].y), r3(zPlato()), L.caja.on, r3(L.caja.h), ps(L.plato1), ps(L.plato2), ps(L.zona), r3(L.zona.yaw), ps(P), r3(P.yaw), B.alt, B.ade, L.pedido, Object.values(L.cams).map(c => ps(c.pos) + ',' + r3(c.pos.z) + ',' + ps(c.mira) + ',' + r3(c.roll || 0)).join(';'), otroVisible() ? 'otro' : 'sin otro'].join('|');
 }
-const planAlDia = pk => CACHE_PLAN[pk]?.key === clavePlan(pk);
-const planesAlDia = () => !robot || platosActivos().every(([pk]) => planAlDia(pk));
-const sinPlan = () => EDITANDO || !planesAlDia(); // hay cambios en la escena que aún no se han calculado
-// Planificar es lo caro: solo se hace al pulsar «Calcular trayectorias» o al reproducir la demo, nunca al mover un objeto
-function planPlatoCache(pk) { if (!planAlDia(pk)) { const it = pasosPlan(pk); while (!it.next().done); } return CACHE_PLAN[pk].pl; }
-async function planPlatoAsync(pk, prog) { // igual, pero cede el control entre candidatos para que la página no se congele
-  if (planAlDia(pk)) return; const it = pasosPlan(pk);
+const planAlDia = (pk, pf) => cachePlan(pf)[pk]?.key === clavePlan(pk, pf);
+// ======================= Escena de partida (H3, DT24) =======================
+// La comprobación previa y las trayectorias de los platos (lo que guarda Guardar y lo que ensaya en seco la búsqueda) se
+// calculan siempre sobre la escena de partida: fruta en su zona, platos en su sitio, brazo en reposo con la pinza abierta
+// 6 cm, sin carga y la bandeja en su pose de recepción, como la deja reiniciarDemo(). Si la demo ya ha movido algo
+// (terminada, fallida o en pausa: D.activo y D.paso ≥ 0), la escena animada se aparta mientras dura el cálculo y después se
+// devuelve tal cual (mismos padres y en el mismo orden, poses, estado de cada pieza, postura, apertura, carga, bandeja y
+// orientación de las cajas): así Guardar con la demo en pausa no la reinicia ni la pierde. Se eligió apartar la escena y no
+// reiniciarDemo() porque reiniciar crea piezas nuevas y la demo en pausa sigue esperando con las suyas. Sin demo a medias
+// no se toca nada (la matriz y las escenas v8 no pasan por aquí). Si la demo se reinicia durante un cálculo asíncrono, no
+// se devuelve nada: ya está en la escena de partida.
+const PARTIDA = { n: 0 };
+function apartarEscena() {
+  if (PARTIDA.n++ || !robot || !D.activo || D.paso < 0) return () => { PARTIDA.n--; };
+  const run = D.run, objs = [OBJ.plato1, OBJ.plato2, ...piezas.map(pz => pz.obj)].map(o => ({ o, padre: o.parent, i: o.parent ? o.parent.children.indexOf(o) : -1, p: o.position.clone(), r: o.quaternion.clone() }));
+  const est = { q: robot.q.slice(), w: pinza.w, carga: D.carga, sub: trayState.subida, bal: trayState.balanceo, flags: piezas.map(pz => [pz.usada, pz.enPinza]), cajas: [OBJ.caja1.rotation.z, OBJ.caja2.rotation.z], extra: OBS_EXTRA };
+  trayState.subida = 1; trayState.balanceo = false; aplicarBandeja(simT);
+  for (const k of ['plato1', 'plato2']) { scene.add(OBJ[k]); OBJ[k].rotation.set(0, 0, 0); }
+  piezas.forEach((pz, i) => { OBJ.zona.add(pz.obj); pz.obj.position.set(pz.u, pz.v, pz.F.h); pz.obj.rotation.set(0, 0, (i * 1.7) % PI); pz.usada = false; pz.enPinza = false; });
+  D.carga = null; OBS_EXTRA = []; pinza.setApertura(0.06); actualizarPlatos(); VERSION_ESCENA++; robot.setQ(qReposo());
+  return () => {
+    PARTIDA.n--; VERSION_ESCENA++; if (D.run !== run) return;
+    for (const x of objs.filter(x => x.padre).sort((a, b) => a.i - b.i)) { x.padre.add(x.o); x.o.position.copy(x.p); x.o.quaternion.copy(x.r); }
+    piezas.forEach((pz, i) => { [pz.usada, pz.enPinza] = est.flags[i]; });
+    trayState.subida = est.sub; trayState.balanceo = est.bal; aplicarBandeja(simT);
+    [OBJ.caja1, OBJ.caja2].forEach((c, i) => { c.rotation.z = est.cajas[i]; c.updateMatrixWorld(true); });
+    pinza.setApertura(est.w); robot.setQ(est.q); D.carga = est.carga; OBS_EXTRA = est.extra; scene.updateMatrixWorld(true);
+  };
+}
+function enEscenaDePartida(fn) { const volver = apartarEscena(); try { return fn(); } finally { volver(); } }
+async function enEscenaDePartidaAsync(fn) { const volver = apartarEscena(); try { return await fn(); } finally { volver(); } }
+const planesAlDia = (pf = PERFIL_EXPLORA) => !robot || platosActivos().every(([pk]) => planAlDia(pk, pf));
+const sinPlan = () => EDITANDO || !planesAlDia(PERFIL_EXPLORA); // hay cambios en la escena que aún no se han calculado (explorar)
+// Planificar es lo caro: solo se hace al pulsar «Calcular trayectorias», al reproducir la demo, al validar o al guardar,
+// nunca al mover un objeto
+function planPlatoCache(pk, pf) { if (!planAlDia(pk, pf)) { const it = pasosPlan(pk, pf); while (!it.next().done); } return cachePlan(pf)[pk].pl; }
+async function planPlatoAsync(pk, pf, prog) { // igual, pero cede el control entre candidatos para que la página no se congele
+  if (planAlDia(pk, pf)) return; const it = pasosPlan(pk, pf);
   for (let r = it.next(); !r.done; r = it.next()) { if (prog) prog(r.value); await new Promise(res => setTimeout(res, 0)); }
 }
-function* pasosPlan(pk) {
-  const pc = new THREE.Vector3(L[pk].x, L[pk].y, zPlato()); const key = clavePlan(pk);
+function* pasosPlan(pk, pf) {
+  const pc = new THREE.Vector3(L[pk].x, L[pk].y, zPlato()); const key = clavePlan(pk, pf);
   {
     const bal = trayState.balanceo, sub = trayState.subida; trayState.balanceo = false; trayState.subida = 1; aplicarBandeja(simT); VERSION_ESCENA++; // el plan se hace con la bandeja en su pose de recepción
     const conFruta = OBJ[pk].children.some(c => piezas.some(p => p.obj === c));
@@ -1127,24 +1358,24 @@ function* pasosPlan(pk) {
     const cands = planAgarrePlato(pc, qReposo(), { pk, todos: true }); let elegido = null, cadena = null;
     if (OBS_EXTRA.length) { OBS_EXTRA = []; VERSION_ESCENA++; } // la fruta prevista ya va en la carga del plato
     const zw = zonasB[zonaDe(pk)].getWorldPosition(new THREE.Vector3());
-    let i = 0; for (const c of cands) { yield { i: i++, n: cands.length }; c.carga = cargaPlan(pk, c); const ch = cadenaPlato(pk, c, zw); if (ch.pc2) { elegido = c; cadena = ch; break; } const rango = f => f ? (f.etapa ?? 0) * 1000 + (f.pct ?? 0) : -1; if (!cadena || rango(ch.fallo) > rango(cadena.fallo)) cadena = ch; } // se explica el fallo de la opción que llegó más lejos
+    let i = 0; for (const c of cands) { yield { i: i++, n: cands.length }; c.carga = cargaPlan(pk, c); const ch = cadenaPlato(pk, c, zw, pf); if (ch.pc2) { elegido = c; cadena = ch; break; } const rango = f => f ? (f.etapa ?? 0) * 1000 + (f.pct ?? 0) : -1; if (!cadena || rango(ch.fallo) > rango(cadena.fallo)) cadena = ch; } // se explica el fallo de la opción que llegó más lejos
     const pl = elegido || cands[0] || null; if (pl) { pl.cadena = elegido ? cadena : (cadena || { fallo: { fallo: 'sin datos', pct: 0 } }); const ca = [OBJ.caja1, OBJ.caja2][pk === 'plato1' ? 0 : 1]; if (L.caja.on) { ca.rotation.z = pl.yaw; ca.updateMatrixWorld(true); VERSION_ESCENA++; } }
-    CACHE_PLAN[pk] = { key, pl, forz: undefined };
+    cachePlan(pf)[pk] = { key, pl, forz: undefined };
     trayState.balanceo = bal; trayState.subida = sub; aplicarBandeja(simT); VERSION_ESCENA++;
   }
-  return CACHE_PLAN[pk].pl;
+  return cachePlan(pf)[pk].pl;
 }
-// Cadena completa en seco desde el agarre: levantar 8 cm, llevar nivelado y dejar en la zona
-function cadenaPlato(pk, pl, zw) {
-  const o = { horiz: true, pitch: pl.pitch, flip: pl.flip, minZ: -0.3, w: 0.006, carga: pl.carga };
+// Cadena completa en seco desde el agarre: levantar 8 cm, llevar nivelado y dejar en la zona, con el perfil pf
+function cadenaPlato(pk, pl, zw, pf) {
+  const o = { horiz: true, pitch: pl.pitch, flip: pl.flip, minZ: -0.3, w: 0.006, carga: pl.carga, perfil: PERFIL.de(pf).nombre };
   // acercamiento recto de 7 cm a lo largo de los dedos, desde la misma postura que usará la demo (pl.qPre)
-  const ra = rutaCartesiana(pl.qPre, [{ p: pl.pre, yaw: pl.yaw }, { p: pl.tcp, yaw: pl.yaw }], { horiz: true, pitch: pl.pitch, flip: pl.flip, minZ: -0.3, w: 0.03, permitir: ['plato:' + pk] });
+  const ra = rutaCartesiana(pl.qPre, [{ p: pl.pre, yaw: pl.yaw }, { p: pl.tcp, yaw: pl.yaw }], { horiz: true, pitch: pl.pitch, flip: pl.flip, minZ: -0.3, w: 0.03, permitir: ['plato:' + pk], perfil: pf });
   if (!ra.ruta) return { fallo: { ...ra, fallo: `al acercarse al borde del plato, ${ra.fallo}`, fase: 'plato', etapa: 0 } };
   // elevación recta de 8 cm con el plato agarrado (el plato va en la carga)
   const rl = rutaCartesiana(ra.ruta[ra.ruta.length - 1], [{ p: pl.tcp, yaw: pl.yaw }, { p: pl.tcp.clone().add(new THREE.Vector3(0, 0, 0.08)), yaw: pl.yaw }], { ...o, permitir: ['caja:' + pk, 'plato:' + pk] });
   if (!rl.ruta) return { fallo: { ...rl, fallo: `al levantarlo de la caja, ${rl.fallo}`, fase: 'plato', etapa: 1 } };
   const qL = rl.ruta[rl.ruta.length - 1];
-  const t = colocacionConTransporte(zw, qL, pl, pl.carga); return t.pc2 ? { ...t, qL } : { fallo: { ...t.fallo, etapa: 2 } };
+  const t = colocacionConTransporte(zw, qL, pl, pl.carga, pf); return t.pc2 ? { ...t, qL } : { fallo: { ...t.fallo, etapa: 2 } };
 }
 function cargaPlan(pk, pl) { // el plato y la fruta que llevará, en el marco de tool0 tal como quedará agarrado
   const q0 = robot.q.slice(), w0 = pinza.w; robot.setQ(pl.q); pinza.setApertura(0.006); const base = Array.from(cargaDe(OBJ[pk]));
@@ -1152,20 +1383,20 @@ function cargaPlan(pk, pl) { // el plato y la fruta que llevará, en el marco de
   if (!OBJ[pk].children.some(c => piezas.some(p => p.obj === c))) for (const p of puntosSoltar(pc, F, pk === 'plato1' ? 2 : 1)) { const v = new THREE.Vector3(p.sol.x, p.sol.y, pc.z + 0.006 + F.h).applyMatrix4(inv); base.push(v.x, v.y, v.z, F.r); }
   robot.setQ(q0); pinza.setApertura(w0); return new Float64Array(base);
 }
-function planForzado(pk) { // la mejor postura de agarre ignorando el entorno, para enseñar por qué no se puede
-  planPlatoCache(pk); const C = CACHE_PLAN[pk]; if (C.forz === undefined) { const pc = new THREE.Vector3(L[pk].x, L[pk].y, zPlato()); const f = planAgarrePlato(pc, qReposo(), { pk, forzar: true }); if (f) f.choque = choqueEn(f.q, { w: 0.03, carga: null, permitir: ['plato:' + pk] }); C.forz = f; } return C.forz;
+function planForzado(pk, pf) { // la mejor postura de agarre ignorando el entorno, para enseñar por qué no se puede
+  planPlatoCache(pk, pf); const C = cachePlan(pf)[pk]; if (C.forz === undefined) { const pc = new THREE.Vector3(L[pk].x, L[pk].y, zPlato()); const f = planAgarrePlato(pc, qReposo(), { pk, forzar: true }); if (f) f.choque = choqueEn(f.q, { w: 0.03, carga: null, permitir: ['plato:' + pk] }); C.forz = f; } return C.forz;
 }
 function estadoObjeto(k) {
   if (!robot) return null;
   if (k === 'zona') { const z = L.zona; const pts = []; for (const u of [-1, 0, 1]) for (const v of [-1, 0, 1]) { const lx = u * (z.w / 2 - 0.03), ly = v * (z.d / 2 - 0.03); pts.push([z.x + Math.cos(z.yaw) * lx - Math.sin(z.yaw) * ly, z.y + Math.sin(z.yaw) * lx + Math.cos(z.yaw) * ly]); } const r = pts.map(([x, y]) => alcance(x, y, 0.035).cls); const ok = r.filter(c => c > 0).length; return { cls: ok === pts.length ? Math.min(...r) : (ok ? 1 : 0), txt: `${ok}/${pts.length} puntos alcanzables` }; }
   if (['plato1', 'plato2', 'persona'].includes(k) && sinPlan()) return { cls: 1, pend: true, txt: 'sin calcular: pulsa «Calcular trayectorias»' };
   if (k === 'plato1' || k === 'plato2') {
-    const p = L[k]; const hS = zPlato() - MESA.h + 0.09; const a = alcance(p.x, p.y, hS).cls; const pl = planPlatoCache(k);
-    const g = !pl ? 0 : (pl.hol.min < -0.002 ? 0 : (pl.hol.min < 0.01 ? 1 : 2)); const f = !pl ? planForzado(k) : null;
+    const p = L[k]; const hS = zPlato() - MESA.h + 0.09; const a = alcance(p.x, p.y, hS).cls; const pl = planPlatoCache(k, PERFIL_EXPLORA);
+    const g = !pl ? 0 : (pl.hol.min < -0.002 ? 0 : (pl.hol.min < 0.01 ? 1 : 2)); const f = !pl ? planForzado(k, PERFIL_EXPLORA) : null;
     const gtxt = !pl ? (f && f.choque ? `imposible, chocaría ${textoChoque(f.choque)}` : 'no hay dirección') : (pl.hol.min < -0.002 ? `choca con la ${pl.hol.contra} (${mm(pl.hol.min)} mm)` : `holgura ${mm(pl.hol.min)} mm`);
     return { cls: Math.min(a, g), txt: `soltar fruta: ${['no', 'justo', 'sí'][a]} · coger en horizontal: ${gtxt}` };
   }
-  if (k === 'persona') { const pb = poseBandeja(simT); const r = platosActivos().map(([pk]) => planPlatoCache(pk)?.cadena?.pc2 ? 2 : 0); return { cls: Math.min(...r), txt: `llevar y dejar ${r.length > 1 ? 'los platos' : 'el plato'} en la bandeja (a ${fmt((pb.z - MESA.h) * 100, 0)} cm sobre la mesa): ${r.map(c => c ? 'sí' : 'no').join(' / ')}` }; }
+  if (k === 'persona') { const pb = poseBandeja(simT); const r = platosActivos().map(([pk]) => planPlatoCache(pk, PERFIL_EXPLORA)?.cadena?.pc2 ? 2 : 0); return { cls: Math.min(...r), txt: `llevar y dejar ${r.length > 1 ? 'los platos' : 'el plato'} en la bandeja (a ${fmt((pb.z - MESA.h) * 100, 0)} cm sobre la mesa): ${r.map(c => c ? 'sí' : 'no').join(' / ')}` }; }
   return null;
 }
 function pintarLista() {
@@ -1190,7 +1421,7 @@ function pintarSel() {
   const extra = sel.cam ? `<div class="seg" id="segParte">${['pos', 'mira', 'clamp'].map(pt => `<button data-v="${pt}" aria-pressed="${sel.parte === pt}">${{ pos: 'Cámara', mira: 'Punto de mira', clamp: 'Pinza de mesa' }[pt]}</button>`).join('')}</div>${slidersOrient(sel.cam, 'so')}
     <p class="hint">Con <b>Girar</b> activado, arrastra la cámara en la escena para apuntarla (derecha e izquierda giran, arriba y abajo inclinan) o usa sus anillos: rojo inclina, verde gira y azul gira la imagen.</p>` : '';
   c.innerHTML = `<header><h3>${sel.nombre}</h3><span class="pill ${gp}">${gt}</span></header>${extra}
-   <dl class="kv"><dt>Posición en base_link</dt><dd>${mm(b.x)}, ${mm(b.y)}, ${mm(b.z)} mm</dd>${['zona', 'persona', 'objetivo'].includes(sel.key) ? `<dt>Giro</dt><dd>${fmt(sel.obj.rotation.z * R2D, 0)}°</dd>` : ''}
+   <dl class="kv"><dt>Posición en base_link</dt><dd>${mm(b.x)}, ${mm(b.y)}, ${mm(b.z)} mm</dd>${['zona', 'persona', 'objetivo'].includes(sel.key) ? `<dt>Giro en base_link</dt><dd>${fmt(angDiff(yawABase(sel.obj.rotation.z), 0) * R2D, 0)}°</dd>` : ''}
    ${e ? `<dt>Alcance</dt><dd><span class="pill ${['bad', 'warn', 'ok'][e.cls]}">${e.pend ? 'sin calcular' : ['no llega', 'justo', 'holgado'][e.cls]}</span></dd><dt></dt><dd>${e.txt}</dd>` : ''}</dl>`;
   const sp = $('#segParte'); if (sp) sp.addEventListener('click', ev => { const bt = ev.target.closest('button'); if (!bt) return; const map = { pos: 'cam:', mira: 'mira:', clamp: 'clamp:' }; seleccionar(map[bt.dataset.v] + sel.cam); });
 }
@@ -1211,10 +1442,25 @@ function pintarCaja() {
   $$('#segCaja button').forEach(x => x.setAttribute('aria-pressed', (x.dataset.v === '1') === L.caja.on));
   $('#cajaH').value = Math.round(L.caja.h * 100); $('#cajaHOut').textContent = `${Math.round(L.caja.h * 100)} cm`; $('#cajaH').disabled = !L.caja.on;
   if (!robot) return; if (sinPlan()) { $('#cajaInfo').innerHTML = '<dt>Agarre de los platos</dt><dd><span class="pill warn">sin calcular</span> pulsa «Calcular trayectorias»</dd>'; return; }
-  $('#cajaInfo').innerHTML = platosActivos().map(([k]) => { const pl = planPlatoCache(k); const n = k === 'plato1' ? '1º' : '2º'; if (!pl) { const f = planForzado(k); return `<dt>Coger el plato ${n}</dt><dd><span class="pill bad">${f && f.choque ? `imposible: ${textoChoque(f.choque)}${f.hol.min < 0 ? `, ${mm(-f.hol.min)} mm` : ''}` : 'sin dirección posible'}</span></dd>`; } const h = pl.hol.min; return `<dt>Holgura al coger el plato ${n}</dt><dd><span class="pill ${h < -0.002 ? 'bad' : h < 0.01 ? 'warn' : 'ok'}">${h < -0.002 ? `choca con la ${pl.hol.contra}: ${mm(h)} mm` : `${mm(h)} mm`}</span></dd>`; }).join('');
+  $('#cajaInfo').innerHTML = platosActivos().map(([k]) => { const pl = planPlatoCache(k, PERFIL_EXPLORA); const n = k === 'plato1' ? '1º' : '2º'; if (!pl) { const f = planForzado(k, PERFIL_EXPLORA); return `<dt>Coger el plato ${n}</dt><dd><span class="pill bad">${f && f.choque ? `imposible: ${textoChoque(f.choque)}${f.hol.min < 0 ? `, ${mm(-f.hol.min)} mm` : ''}` : 'sin dirección posible'}</span></dd>`; } const h = pl.hol.min; return `<dt>Holgura al coger el plato ${n}</dt><dd><span class="pill ${h < -0.002 ? 'bad' : h < 0.01 ? 'warn' : 'ok'}">${h < -0.002 ? `choca con la ${pl.hol.contra}: ${mm(h)} mm` : `${mm(h)} mm`}</span></dd>`; }).join('');
 }
-function actualizarCheck() { if ($('[data-panel="demo"]').hidden || D.activo || !robot) return; if (sinPlan()) { pintarCheck([{ cls: 'warn', txt: 'Hay cambios sin calcular. Pulsa «Calcular trayectorias» o reproduce la demo, que calcula antes de mover el brazo.' }]); return; } pintarCheck(comprobarPlan()); }
-function toast(t) { const el = $('#toast'); el.textContent = t; el.classList.add('on'); clearTimeout(el._t); el._t = setTimeout(() => el.classList.remove('on'), 2800); }
+// Comprobación previa de la pestaña Demo: la del perfil de la escena si sus trayectorias están al día; si no, la de explorar
+function actualizarCheck() {
+  if ($('[data-panel="demo"]').hidden || D.activo || !robot) return; pintarPerfilDemo();
+  if (sinPlan()) { pintarCheck([{ cls: 'warn', txt: 'Hay cambios sin calcular. Pulsa «Calcular trayectorias» o reproduce la demo, que calcula antes de mover el brazo.' }]); return; }
+  const pf = planesAlDia(perfilEscena()) ? perfilEscena() : PERFIL_EXPLORA; pintarCheck(comprobarPlan({ perfil: pf }));
+  $('#dCheckPerfil').textContent = pf === perfilEscena() ? `Con el perfil de la escena («${pf}»).` : `Con el perfil de explorar («${pf}»): las trayectorias del perfil de la escena («${perfilEscena()}») se calculan al reproducir la demo, al validar o al guardar.`;
+}
+function toast(t) { if (AVISO_ROBOT) { t = t ? `${t} · ${AVISO_ROBOT}` : AVISO_ROBOT; AVISO_ROBOT = null; } const el = $('#toast'); el.textContent = t; el.classList.add('on'); clearTimeout(el._t); el._t = setTimeout(() => el.classList.remove('on'), 2800); }
+// Aviso visible de solo lectura (T1.1), junto a las etiquetas de la cabecera
+$('.chips').insertAdjacentHTML('afterbegin', '<span class="chip" id="chipSoloLectura" role="status" hidden style="border-color:var(--bad);color:var(--bad);font-weight:600"></span>');
+// Aviso de calibración sospechosa del robot elegido (T1.4-4), visible desde cualquier pestaña; el detalle va en Escena
+$('.chips').insertAdjacentHTML('afterbegin', '<span class="chip" id="chipRobot" role="status" hidden style="border-color:var(--bad);color:var(--bad);font-weight:600"></span>');
+function pintarSoloLectura() {
+  const el = $('#chipSoloLectura'), s = soloLectura(); el.hidden = !s;
+  el.textContent = s ? `SOLO LECTURA · disposición v${L.version}, esta página es la v${LAYOUT.VERSION}` : '';
+  el.title = s ? 'Esta disposición es de una versión más nueva del gemelo: se puede ver, pero no se guarda en Tu mesa ni en el grupo hasta que abras una compatible.' : '';
+}
 
 // Pestañas
 $$('.tabs button').forEach(b => b.addEventListener('click', () => {
@@ -1228,17 +1474,152 @@ $('#segRobot').addEventListener('click', e => {
   L = espejo(L); L.robot = b.dataset.v; $$('#segRobot button').forEach(x => x.setAttribute('aria-pressed', x === b));
   colocarRobots(); aplicarLayout(); toast(`Robot del grupo: ${b.dataset.v}. Distribución reflejada al otro lado.`);
 });
+// ----- Robot calibrado (T1.4 y T1.5) -----
+// Activa la cinemática de L.robotId (decisión 2 del brief): IK, colisión (esferas y pares permitidos, iniciarColision) y
+// dibujo del brazo. Lo que depende de ella se invalida: los planes (clavePlan lleva ROB.id), los obstáculos en base_link
+// (su clave también), el HUD (VERSION_ESCENA), el perfil y el mapa de alcance (aplicarLayout llama a calcularMapa).
+// Si el robot cambia porque se abre, se importa o se aplica una disposición con otro robotId, se avisa (corrección 9 de la
+// revisión). El selector (cambiarRobotId) avisa por su cuenta: ROBOT_PEDIDO.
+function aplicarCinematica() {
+  const id = idValido(L.robotId);
+  if (id !== ROB.id) {
+    const de = ROB; ROB = robotDe(id); CIN = ROB.cin; VERSION_ESCENA++;
+    if (robot) { robot.setCinematica(CIN); REF_MANIP = CIN.manip(Q_REF_MANIP); if (COL.listo) iniciarColision(); calcularPerfil(); }
+    if (robot && !ROBOT_PEDIDO) avisoRobot(L.robotId !== id ? `Esta escena usa el robot «${L.robotId}», que esta versión del gemelo no conoce: se usa la cinemática nominal`
+      : Math.abs(angDiff(ROB.yaw, de.yaw)) < 1e-9 ? `Esta escena usa el robot ${id}: cambia la cinemática (el giro de la base es el mismo)`
+      : `Esta escena usa el robot ${id}: cambian la cinemática y el giro de la base (${gradosTxt(ROB.yaw)})`);
+  }
+  pintarRobotId();
+}
+// El aviso del robot se suma al siguiente aviso de la página (abrir o importar ponen el suyo justo después) o sale solo
+function avisoRobot(t) { AVISO_ROBOT = t; setTimeout(() => { if (AVISO_ROBOT) toast(''); }, 0); }
+// Postura en la que arranca el hardware simulado de sim_<id> (initial_positions.yaml del curso; configuraciones[1] de
+// tests/fixtures/cinematica/<id>.json): es la del aviso de calibración sospechosa
+const Q_INICIAL_SIM = [0, -1.57, 0, -1.57, 0, 0];
+const gradosTxt = a => `${fmt(a * R2D, 1).replace('-', '−')}°`;
+// Giro del mundo pasado a base_link, en grados en (−180, 180] con 0,1° (topics simulados, corrección 7)
+function gradosBase(a) { let g = Math.round(angDiff(yawABase(a), 0) * R2D * 10) / 10; if (g <= -180) g += 360; return g; }
+// Campo del prefijo de frames (T1.5-4): '' siempre; '<id>_' solo si el robot tiene URDF doble en el curso
+function pintarPrefijo() {
+  const s = $('#prefijo'), d = ROB.datos.doble, id = ROB.id, pf = L.prefijoFrames ?? '';
+  const ops = [['', `Ninguno (sim_${id === 'nominal' ? '<id>' : id}, un robot)`]]; if (d) ops.push([`${id}_`, `${id}_ (URDF doble ${d.fichero.split('/').pop().replace('.urdf.xacro', '')})`]);
+  s.innerHTML = ops.map(([v, t]) => `<option value="${v}">${t}</option>`).join(''); s.value = ops.some(o => o[0] === pf) ? pf : ''; s.disabled = ops.length < 2 || soloLectura();
+}
+$('#prefijo').addEventListener('change', e => { if (soloLectura()) return; L.prefijoFrames = e.target.value; guardarLocal(); pintarDatos(); toast(L.prefijoFrames ? `Frames con el prefijo «${L.prefijoFrames}» (URDF doble)` : 'Frames sin prefijo (sim_<id>)'); });
+function pintarRobotId() {
+  const d = ROB.datos, id = ROB.id; pintarPrefijo();
+  $$('#segRobotId button').forEach(x => x.setAttribute('aria-pressed', x.dataset.v === id));
+  $('#robotNota').textContent = id !== 'nominal' ? `Cinemática calibrada del robot ${id} (calibration_${id}.yaml del curso) con la IK analítica refinada. Su base_link está girado ${gradosTxt(ROB.yaw)} respecto a world (los ejes de la mesa).`
+    : L.robotId === 'nominal' ? 'Robot sin identificar: cinemática nominal. Elige su id cuando lo sepáis.'
+      : `Robot «${L.robotId}» desconocido en esta versión del gemelo: se usa la cinemática nominal.`;
+  // Aviso permanente si los datos marcan la calibración como sospechosa (T1.4-4): sale del campo `sospechoso`, no del id
+  const av = $('#robotAviso'), chip = $('#chipRobot'); av.hidden = chip.hidden = !d.sospechoso;
+  if (!d.sospechoso) return;
+  const T = CIN.fk(Q_INICIAL_SIM), N = KIN.fk(Q_INICIAL_SIM), pos = M => `(${[M[3], M[7], M[11]].map(v => fmt(v * 1000, 1)).join('; ')}) mm`;
+  const txt = `Calibración ${id} sospechosa (SIN VALIDAR): compruébala en sim_${id} antes de usarla`;
+  chip.textContent = `CALIBRACIÓN ${id} SOSPECHOSA · SIN VALIDAR`; chip.title = txt;
+  av.innerHTML = `<b>${txt}.</b><span>Con esta calibración, tool0 queda a ${mm(Math.hypot(T[3] - N[3], T[7] - N[7], T[11] - N[11]))} mm de donde lo pone el UR3e nominal en la misma postura. El gemelo calcula con ella tal cual, sin corregirla.</span>
+    <ol class="falloLista"><li>En el contenedor del curso: <code>ros2 launch launcher_robots_lab_robotica sim_${id}.launch.py</code> (arranca en q = (${Q_INICIAL_SIM.map(v => fmt(v, 2)).join('; ')}) rad).</li>
+    <li>Sin mover el robot: <code>ros2 run tf2_ros tf2_echo base_link tool0</code>. Este gemelo predice ${pos(T)}; el nominal, ${pos(N)}.</li>
+    <li>Si tf2_echo da lo que predice el gemelo, ROS ve el mismo desplazamiento y la anomalía está en calibration_${id}.yaml: pregunta al profesor antes de usar el ${id}.</li></ol>`;
+}
+// Cambiar de robot nunca mueve nada sin avisar (T1.5-3). Si cambia el giro de base_link, se pregunta qué se mantiene:
+// la mesa (los objetos se quedan donde están, el brazo gira y cambian sus coordenadas en base_link) o la disposición
+// respecto al robot (los objetos giran alrededor de la base y conservan sus coordenadas en base_link). Si no cambia el
+// giro (nominal, 205 y 206), se cambia sin preguntar y se avisa.
+let PREG_ROBOT = null;
+// Mientras corre la demo, la validación (T1.8), el cálculo o la búsqueda de una disposición no se cambia de robot
+// (correcciones 1 y 2) ni de perfil de movimiento (T1.6), ni se valida. accion: «cambiar de robot», «validar»…
+const ocupado = accion => D.playing ? `Pausa la demo para ${accion}` : VAL.activo ? `Espera a que termine la validación para ${accion}` : CALC.activo ? `Espera a que termine el cálculo para ${accion}` : D.buscando ? `Espera a que termine la búsqueda de una disposición para ${accion}` : null;
+const ocupadoRobot = () => ocupado('cambiar de robot');
+function pedirRobotId(id) {
+  if (!robot || !LAYOUT.ROBOT_IDS.includes(id)) return;
+  const oc = ocupadoRobot(); if (oc) { toast(oc); return; }
+  if (soloLectura()) { toast('Disposición de solo lectura (versión más nueva): no se cambia el robot'); return; }
+  if (id === ROB.id && id === L.robotId) { cerrarPreguntaRobot(); return; }
+  const dy = angDiff(robotDe(id).yaw, ROB.yaw);
+  if (Math.abs(dy) < 1e-9) { cambiarRobotId(id, 'mesa'); return; }
+  PREG_ROBOT = id;
+  $('#robotPregTit').textContent = `Cambiar al robot ${id}: ¿qué se mantiene?`;
+  $('#robotPregTxt').innerHTML = `El base_link del ${id} está girado ${gradosTxt(robotDe(id).yaw)} respecto a world (los ejes de la mesa); el del ${ROB.id}, ${gradosTxt(ROB.yaw)}.<br>
+    <b>Mantener la mesa</b>: los objetos se quedan donde están; el brazo gira ${gradosTxt(dy)} y cambian sus coordenadas en base_link.<br>
+    <b>Mantener la disposición respecto al robot</b>: los objetos, la persona y las cámaras giran ${gradosTxt(dy)} alrededor de la base y conservan sus coordenadas en base_link (las pinzas de las cámaras se pegan al borde de la mesa más cercano). Pueden quedar fuera de la mesa.`;
+  $('#robotPregunta').hidden = false;
+}
+function cerrarPreguntaRobot() { PREG_ROBOT = null; $('#robotPregunta').hidden = true; }
+// Gira la disposición `d` rad alrededor de la base b: sus coordenadas en un base_link que gira lo mismo no cambian
+function girarDisposicion(l, b, d) {
+  const c = Math.cos(d), s = Math.sin(d); const g = o => { const x = o.x - b.x, y = o.y - b.y; o.x = b.x + c * x - s * y; o.y = b.y + s * x + c * y; };
+  [l.zona, l.plato1, l.plato2, l.persona, ...l.arucoE].forEach(g); l.zona.yaw = angDiff(l.zona.yaw + d, 0); l.persona.yaw = angDiff(l.persona.yaw + d, 0);
+  for (const k in l.cams) { g(l.cams[k].clamp); g(l.cams[k].pos); g(l.cams[k].mira); }
+}
+// modo: 'mesa' | 'robot' (ver pedirRobotId). El prefijo de frames, si lo había, pasa a ser el del robot nuevo (o '' si no
+// tiene URDF doble).
+function cambiarRobotId(id, modo) {
+  const de = ROB, a = robotDe(id), dy = angDiff(a.yaw, de.yaw), pre0 = L.prefijoFrames;
+  if (modo === 'robot' && dy) girarDisposicion(L, BASES[L.robot], dy);
+  L.robotId = id; L.prefijoFrames = pre0 && a.datos.doble ? `${id}_` : '';
+  cerrarPreguntaRobot(); D.activo = false; ROBOT_PEDIDO = true; try { aplicarLayout(); } finally { ROBOT_PEDIDO = false; }
+  const pre = pre0 !== L.prefijoFrames ? ` Prefijo de frames: ${L.prefijoFrames ? `«${L.prefijoFrames}»` : 'ninguno'}.` : '';
+  toast(!dy ? `Robot ${id}: base_link con el mismo giro que el ${de.id}; nada se mueve. Recalcula las trayectorias.${pre}`
+    : modo === 'mesa' ? `Robot ${id}: se mantiene la mesa. El brazo gira ${gradosTxt(dy)} y cambian las coordenadas en base_link.${pre}`
+      : `Robot ${id}: la disposición gira ${gradosTxt(dy)} alrededor de la base y conserva sus coordenadas en base_link.${pre}`);
+}
+$('#segRobotId').addEventListener('click', e => { const b = e.target.closest('button'); if (b) pedirRobotId(b.dataset.v); });
+// ----- Perfil de movimiento de la escena (T1.6, D6) -----
+// L.perfil es el de la demo y el del veredicto principal de la escena; explorar usa siempre «gemelo». Cambiarlo no mueve
+// nada ni recalcula la geometría.
+const TXT_PERFIL = {
+  curso: 'Perfil de la escena: «curso», como MoveIt 2 en la simulación del curso: escala de velocidad y aceleración 0,1 con 5 rad/s² (joint_limits.yaml del curso), ruta cartesiana de MoveIt 2.11+ (pasos de 1 cm y punto medio a 1 mm y 0,01 rad) y el arranque en contacto es un fallo (START_STATE_IN_COLLISION).',
+  gemelo: 'Perfil de la escena: «gemelo», el de la v8: rápido, con la velocidad de la demo, 3 rad/s² [SUPUESTO], rectas cada 4 mm y, si arranca tocando algo, se separa de ello (como FixStartStateCollision).',
+};
+function pintarPerfil() {
+  const pf = perfilEscena(); $$('#segPerfil button').forEach(x => x.setAttribute('aria-pressed', x.dataset.v === pf));
+  $('#perfilNota').innerHTML = `${TXT_PERFIL[pf]} Lo usan la demo y el veredicto que se guarda con la escena. Explorar (arrastrar objetos y «Calcular trayectorias») usa siempre «gemelo».<br><b>Tiempos aproximados</b>: trapecio por articulación sin paradas en los puntos de paso, no la parametrización TOTG de MoveIt [DT4, SIN VALIDAR].`;
+  pintarPerfilDemo();
+}
+function pintarPerfilDemo() {
+  const pf = perfilEscena();
+  $('#dPerfilNota').textContent = pf === 'curso' ? 'La demo usa el perfil de la escena, «curso»: la velocidad no cambia los movimientos planificados ni las rectas, que van a escala 0,1 como en MoveIt del curso; sí cambia el seguimiento de la bandeja (M0 y M1), que es código del grupo. Tiempos aproximados, no TOTG [DT4].'
+    : 'La demo usa el perfil de la escena, «gemelo»: la velocidad escala todos los movimientos. Tiempos aproximados, no TOTG [DT4].';
+}
+function pedirPerfil(pf) {
+  if (!robot || !LAYOUT.PERFILES.includes(pf) || pf === L.perfil) return;
+  const oc = ocupado('cambiar de perfil'); if (oc) { toast(oc); return; }
+  if (soloLectura()) { toast('Disposición de solo lectura (versión más nueva): no se cambia el perfil'); return; }
+  L.perfil = pf; guardarLocal(); pintarPerfil(); actualizarCheck(); pintarCalc();
+  toast(`Perfil de la escena: «${pf}». No se mueve nada; la demo y el veredicto que se guarda usan este perfil`);
+}
+$('#segPerfil').addEventListener('click', e => { const b = e.target.closest('button'); if (b) pedirPerfil(b.dataset.v); });
+function responderRobot(modo) {
+  if (!PREG_ROBOT) return; const oc = ocupadoRobot();
+  if (oc) { cerrarPreguntaRobot(); toast(`${oc}: el robot no cambia`); return; } // la pregunta se abrió antes de empezar: no vale
+  cambiarRobotId(PREG_ROBOT, modo);
+}
+$('#rpMesa').addEventListener('click', () => responderRobot('mesa'));
+$('#rpRobot').addEventListener('click', () => responderRobot('robot'));
+$('#rpCancel').addEventListener('click', () => { cerrarPreguntaRobot(); toast('El robot no cambia'); });
 $('#segCaja').addEventListener('click', e => { const b = e.target.closest('button'); if (!b || D.playing) return; L.caja.on = b.dataset.v === '1'; if (!D.activo) reiniciarDemo(); actualizarPlatos(); pintarCaja(); evaluar(); guardarLocal(); toast(L.caja.on ? 'Platos sobre la caja' : 'Platos sobre la mesa: mira la holgura al cogerlos'); });
 $('#cajaH').addEventListener('input', e => { if (D.playing) return; L.caja.h = e.target.value / 100; $('#cajaHOut').textContent = `${e.target.value} cm`; EDITANDO = true; actualizarPlatos(); clearTimeout(pintarCaja._t); pintarCaja._t = setTimeout(() => { EDITANDO = false; actualizarPlatos(); pintarCaja(); evaluar(); }, 300); guardarLocal(); });
 $('#apertura').addEventListener('input', e => { pinza.setApertura(e.target.value / 1000); $('#aperturaOut').textContent = `${e.target.value} mm`; actualizarHUD(); });
-$('#btnReset').addEventListener('click', () => { const r = L.robot; L = layoutDefecto(); if (r === 'A') { L = espejo(L); L.robot = 'A'; } aplicarLayout(); toast('Distribución de partida restaurada'); });
+// Restablecer devuelve los objetos a la disposición de partida; el robot (A/B y su id calibrado) no cambia (T1.4)
+$('#btnReset').addEventListener('click', () => { const r = L.robot, pf = L.prefijoFrames; L = layoutDefecto(); if (r === 'A') { L = espejo(L); L.robot = 'A'; } L.robotId = ROB.id; L.prefijoFrames = pf === `${ROB.id}_` ? pf : ''; aplicarLayout(); toast('Distribución de partida restaurada'); });
 $('#btnHome').addEventListener('click', () => { if (robot) { robot.setQ(qReposo()); sincronizarSliders(); actualizarHUD(); } });
 $('#btnObjetivo').addEventListener('click', () => { if (!robot) return; objetivo.visible = true; objetivo.position.copy(tcpMundo()); objetivo.rotation.set(0, 0, yawHerramienta()); seleccionar('objetivo'); toast('Arrastra el objetivo: el brazo lo sigue con cinemática inversa'); });
 const JN = ['Base', 'Hombro', 'Codo', 'Muñeca 1', 'Muñeca 2', 'Muñeca 3'];
 $('#jointSliders').innerHTML = JN.map((n, i) => `<div class="field"><label for="j${i}">${n}</label><output id="j${i}o">0°</output><input type="range" id="j${i}" min="-360" max="360" step="1" value="0"></div>`).join('');
 JN.forEach((n, i) => $('#j' + i).addEventListener('input', e => { if (!robot || D.playing) return; const q = robot.q.slice(); q[i] = e.target.value * D2R; robot.setQ(q); $('#j' + i + 'o').textContent = `${e.target.value}°`; actualizarHUD(); }));
 function sincronizarSliders() { if (!robot) return; robot.q.forEach((v, i) => { const d = Math.round(v * R2D); $('#j' + i).value = d; $('#j' + i + 'o').textContent = `${d}°`; }); }
-const capas = { lyCol: v => volCol.forEach(m => m.visible = v), lyFoto: v => foto.visible = v, lyOtro: v => { if (otro) otro.root.visible = v; }, lyTF: v => TF.forEach(t => { t.visible = v; t.userData.lbl.visible = v; }), lyEtq: v => labels.domElement.style.display = v ? '' : 'none', lyCirc: v => circ.visible = v, lyFrus: v => Object.values(CAMS).forEach(R => { R.frus.visible = R.huella.visible = v; }) };
+// «Robot del otro puesto» (H4, DT25): mostrarlo u ocultarlo pone o quita un obstáculo. Invalida los planes de los dos perfiles
+// (clavePlan), la caché de obstáculos (su clave) y la validación (firmaVal), y, como mover un objeto, reinicia una demo en
+// pausa o terminada. Con la demo en marcha o con un cálculo, una validación o una búsqueda a medias no se cambia.
+function otroVisible() { return !!(otro && otro.root.visible); } // declaración (no const): clavePlan y firmaVal están antes en el fichero
+function cambiarOtro(v) {
+  if (!otro) return;
+  if (D.playing || CALC.activo || VAL.activo || D.buscando) { $('#lyOtro').checked = otro.root.visible; toast('Espera a que termine la demo o el cálculo para cambiar el robot del otro puesto'); return; }
+  prepararEdicion(); otro.root.visible = v; VERSION_ESCENA++; actualizarPlatos(); evaluar(); pintarCalc();
+}
+const capas = { lyCol: v => volCol.forEach(m => m.visible = v), lyFoto: v => foto.visible = v, lyOtro: v => cambiarOtro(v), lyTF: v => TF.forEach(t => { t.visible = v; t.userData.lbl.visible = v; }), lyEtq: v => labels.domElement.style.display = v ? '' : 'none', lyCirc: v => circ.visible = v, lyFrus: v => Object.values(CAMS).forEach(R => { R.frus.visible = R.huella.visible = v; }) };
 for (const id in capas) $('#' + id).addEventListener('change', e => capas[id](e.target.checked));
 const circ = new THREE.Mesh(new THREE.RingGeometry(0.497, 0.503, 128), new THREE.MeshBasicMaterial({ color: '#e6b422', side: THREE.DoubleSide, toneMapped: false })); circ.layers.set(1); scene.add(circ); circ.visible = false;
 const solape = new THREE.Mesh(new THREE.BufferGeometry(), new THREE.MeshBasicMaterial({ color: '#e6b422', transparent: true, opacity: 0.35, depthWrite: false, side: THREE.DoubleSide })); scene.add(solape); solape.visible = false; solape.renderOrder = 3;
@@ -1282,10 +1663,10 @@ function puntosObjetivo(k) {
 const rayO = new THREE.Raycaster();
 function metricasCam(k, soloLibre = false) {
   const c = L.cams[k], R = CAMS[k]; R.cam.updateMatrixWorld(true);
-  const M = MODOS[c.modo]; const hf = hfovDe(c), vf = vfovDe(c);
+  const M = MODOS[c.modo]; const hf = hfovDe(c), vf = vfovDe(c), ar = areaDe(c);
   const cp = R.cam.position.clone(); const aim = new THREE.Vector3(c.mira.x, c.mira.y, c.mira.z); const dist = cp.distanceTo(aim);
   const dir = aim.clone().sub(cp).normalize(); const inc = aim.z <= MESA.h + 0.01 ? Math.abs(dir.z) : 1;
-  const pix = (SENSOR.w / c.f) / M.w; const mmpx = dist * pix / Math.max(0.2, inc) * 1000;
+  const mmpx = SENSOR.mmPorPx(dist, ar.w, c.f, M.w, Math.max(0.2, inc)); // d·(w/f)/N ÷ cos θ (T1.7)
   let libre = Infinity; if (robot) { const P = robot.puntos(); P.push(tcpMundo()); for (let i = 1; i < P.length; i++) { if (P[i - 1].distanceTo(P[i]) < 1e-6) continue; const l = new THREE.Line3(P[i - 1], P[i]); const q = l.closestPointToPoint(cp, true, new THREE.Vector3()); libre = Math.min(libre, q.distanceTo(cp) - 0.05); } }
   if (soloLibre) return { libre };
   const pts = puntosObjetivo(k); let dentro = 0; const tapados = [], fuera = [];
@@ -1295,7 +1676,7 @@ function metricasCam(k, soloLibre = false) {
     if (!ok) { fuera.push(n); continue; } dentro++;
     rayO.set(cp, p.clone().sub(cp).normalize()); rayO.far = cp.distanceTo(p) - 0.02; if (robs.length && rayO.intersectObjects(robs, false).length) tapados.push(n);
   }
-  return { hf, vf, mmpx, dist, alt: cp.z - MESA.h, aruco: 50 / mmpx, dentro, total: pts.length, fuera, tapados, libre, brazoOK: R.brazoOK, brazoD: R.brazoD };
+  return { hf, vf, mmpx, dist, inc, alt: cp.z - MESA.h, aruco: 50 / mmpx, dentro, total: pts.length, fuera, tapados, libre, brazoOK: R.brazoOK, brazoD: R.brazoD, sensor: sensorEscena(), nota: ar.nota };
 }
 function pintarCamaras() {
   $('#camCards').innerHTML = Object.keys(L.cams).map(k => {
@@ -1306,14 +1687,27 @@ function pintarCamaras() {
     <div class="field"><label for="f_${k}">Focal (zoom de la lente)</label><output>${fmt(c.f, 1)} mm</output><input type="range" id="f_${k}" min="3.6" max="10" step="0.1" value="${c.f}"></div>
     ${slidersOrient(k, 'co')}
     <div class="row"><label class="hint" for="m_${k}" style="flex:none">Modo</label><select id="m_${k}" style="flex:1;width:auto">${Object.keys(MODOS).map(x => `<option ${x === c.modo ? 'selected' : ''} value="${x}">${x.replace('x', '×')} · ${MODOS[x].fps} fps${MODOS[x].w / MODOS[x].h < 1.5 ? ' · 4:3' : ''}</option>`).join('')}</select></div>
-    <dl class="kv"><dt>Campo de visión</dt><dd>${fmt(m.hf * R2D, 0)}° × ${fmt(m.vf * R2D, 0)}°</dd><dt>Altura sobre la mesa</dt><dd>${mm(m.alt)} mm</dd><dt>Resolución en el punto de mira</dt><dd>${fmt(m.mmpx, 2)} mm/px</dd>
+    <dl class="kv"><dt>Campo de visión <span class="tag s">SIN VALIDAR</span></dt><dd>${fmt(m.hf * R2D, 0)}° × ${fmt(m.vf * R2D, 0)}°</dd><dt>Altura sobre la mesa</dt><dd>${mm(m.alt)} mm</dd><dt>Resolución en el punto de mira <span class="tag s">SIN VALIDAR</span></dt><dd>${fmt(m.mmpx, 2)} mm/px</dd>
     <dt>ArUco de 50 mm</dt><dd><span class="pill ${m.aruco >= 30 ? 'ok' : m.aruco >= 18 ? 'warn' : 'bad'}">${Math.round(m.aruco)} px de lado</span></dd>
     <dt>Ve sus objetivos</dt><dd><span class="pill ${visCls}">${m.dentro}/${m.total}</span>${m.fuera.length ? ' fuera: ' + [...new Set(m.fuera)].join(', ') : ''}${m.tapados.length ? ' · tapados por el brazo: ' + [...new Set(m.tapados)].join(', ') : ''}</dd>
     <dt>Brazo Manfrotto 244</dt><dd><span class="pill ${m.brazoOK ? 'ok' : 'bad'}">${mm(m.brazoD)} de 530 mm</span></dd>
     <dt>Holgura con el UR3e</dt><dd><span class="pill ${libre > 0.08 ? 'ok' : libre > 0.02 ? 'warn' : 'bad'}">${libre === Infinity ? '—' : mm(Math.max(0, libre)) + ' mm'}</span>${minC !== undefined ? ' mínima en la demo' : ' ahora'}</dd></dl>
+    ${m.nota ? `<p class="hint">Modo ${c.modo.replace('x', '×')}: ${m.nota}.</p>` : ''}
     <div class="btns"><button class="btn" data-act="sel">Mover</button><button class="btn" data-act="ver">Ver por esta cámara</button></div></div>`;
-  }).join('') + `<p class="hint">Orientativo: el lado del marcador en píxeles sale de la resolución en el punto de mira; por debajo de unos 20 px la detección y la pose de ArUco se degradan. El campo de visión es de lente ideal: el real se mide en la calibración intrínseca.</p>`;
+  }).join('') + `<p class="hint">Orientativo: el lado del marcador en píxeles sale de la resolución en el punto de mira; por debajo de unos 20 px la detección y la pose de ArUco se degradan. El campo de visión y los mm/px son de lente ideal con el sensor «${SENSOR.de(sensorEscena()).nombre}» [SIN VALIDAR]: el real se mide en la calibración intrínseca (camera_info, F4).</p>`;
+  pintarSensor();
 }
+// Selector del modelo de sensor (T1.7): cambia el campo de visión, el frustum, las miniaturas y las métricas; no mueve nada
+function pintarSensor() {
+  const s = sensorEscena(), m = SENSOR.de(s); $$('#segSensor button').forEach(x => x.setAttribute('aria-pressed', x.dataset.v === s));
+  $('#sensorNota').textContent = `Sensor de la escena: ${m.nombre}, ${fmt(m.w, 3)} × ${fmt(m.h, 3)} mm (${m.origen}). Ancho completo en todos los modos (Sony); el alto, el que deja la relación de aspecto del modo. Las escenas nuevas usan la ficha de la ELP y las v8, el de la v8.`;
+}
+$('#segSensor').addEventListener('click', e => {
+  const b = e.target.closest('button'); if (!b || !SENSOR.NOMBRES.includes(b.dataset.v) || b.dataset.v === L.sensor) return;
+  if (soloLectura()) { toast('Disposición de solo lectura (versión más nueva): no se cambia el sensor'); return; }
+  L.sensor = b.dataset.v; for (const k in L.cams) actualizarCam(k); guardarLocal(); pintarCamaras(); if (!$('[data-panel="datos"]').hidden) pintarDatos();
+  toast(`Sensor: ${SENSOR.de(L.sensor).nombre}. Cambian el campo de visión y los mm/px; no se mueve nada`);
+});
 $('#camCards').addEventListener('input', e => {
   const id = e.target.id; if (!id || /^(so|co)(pan|tilt|roll)_/.test(id)) return; const [t, k] = id.split('_'); if (!L.cams[k]) return;
   if (t === 'f') L.cams[k].f = +e.target.value; if (t === 'm') L.cams[k].modo = e.target.value;
@@ -1350,21 +1744,39 @@ $$('[data-h]').forEach(b => b.addEventListener('click', () => { let h = b.datase
 
 // ======================= Datos: YAML, importar, propuestas =======================
 function r3(v) { return (Math.round(v * 1000) / 1000).toFixed(3); }
+const rad3 = a => r3(angDiff(a, 0)); // ángulo en [−π, π], redondeado a 0,001 rad (I7)
+// posiciones.yaml (T1.5, I7): todo en el base_link del robot elegido con la conversión de la planificación (enBase), en
+// metros y radianes, con redondeo fijo de 1 mm y 0,001 rad y el origen de cada valor al final de su línea
 function generarYaml() {
-  const b = BASES[L.robot]; const P = o => `{x: ${r3(o.x - b.x)}, y: ${r3(o.y - b.y)}, z: ${r3((o.z ?? MESA.h) - MESA.h)}}`;
+  const B = o => enBase({ x: o.x, y: o.y, z: o.z ?? MESA.h }), P = o => { const b = B(o); return `{x: ${r3(b.x)}, y: ${r3(b.y)}, z: ${r3(b.z)}}`; };
   const tp = poseBandeja(0); bandeja.updateMatrixWorld(true); const zw = k => zonasB[k].getWorldPosition(new THREE.Vector3());
-  let y = `# posiciones.yaml · gemelo de la celda UR3e · BORRADOR\n# Marco: base_link del robot ${L.robot} (${L.robot === 'B' ? 'derecha' : 'izquierda'} en la foto cenital). Metros y grados.\n# Distribución de partida [PROPUESTA]; ninguna posición está medida todavía salvo mesa y base.\n`;
-  y += `fecha: ${new Date().toISOString().slice(0, 10)}\nrobot: ${L.robot}\npinza: {modelo: OnRobot RG2, tcp_z_m: ${r3(pinza.tcpZ(0))}, carrera_m: 0.110}\n`;
-  y += `mesa: {ancho_m: 1.180, fondo_m: 0.830, alto_m: 0.760, centro_en_base_link: {x: ${r3(-b.x)}, y: ${r3(-b.y)}}}\n`;
-  y += `pedido: ${L.pedido === 1 ? 'un_plato  # al centro de la bandeja' : 'dos_platos  # primero y segundo'}\n`;
-  y += `platos: {sobre_caja: ${L.caja.on}, caja_alto_m: ${r3(L.caja.h)}, caja_lado_m: ${r3(CAJA_LADO)}, agarre: horizontal_por_el_borde, radio_agarre_m: ${r3(R_AGARRE)}}\n`;
-  y += `objetos:\n  zona_fruta: {x: ${r3(L.zona.x - b.x)}, y: ${r3(L.zona.y - b.y)}, z: 0.000, yaw_deg: ${(L.zona.yaw * R2D).toFixed(1)}, ancho_m: ${r3(L.zona.w)}, fondo_m: ${r3(L.zona.d)}}\n`;
-  for (const pk of ['plato1', 'plato2']) y += `  ${pk.replace('plato', 'plato_')}: {x: ${r3(L[pk].x - b.x)}, y: ${r3(L[pk].y - b.y)}, z: ${r3(zPlato() - MESA.h)}}\n`;
-  L.arucoE.forEach((a, i) => y += `  marcador_entrega_${i + 1}: {id: ${4 + i}, diccionario: DICT_4X4_50, x: ${r3(a.x - b.x)}, y: ${r3(a.y - b.y)}, z: 0.000}\n`);
-  y += `  bandeja_recepcion: {x: ${r3(tp.x - b.x)}, y: ${r3(tp.y - b.y)}, z: ${r3(tp.z - MESA.h)}, yaw_deg: ${(tp.yaw * R2D).toFixed(1)}}\n`;
-  y += `  zona_primero: ${P(zw('zona_primero'))}\n  zona_segundo: ${P(zw('zona_segundo'))}\n`;
-  y += `  persona: {x: ${r3(L.persona.x - b.x)}, y: ${r3(L.persona.y - b.y)}, yaw_deg: ${(L.persona.yaw * R2D).toFixed(1)}}\ncamaras:\n`;
-  for (const k in L.cams) { const c = L.cams[k]; y += `  camara_${k}: {grupo: ${c.grupo}, modelo: ELP-USB12MP01-UFV, focal_mm: ${c.f.toFixed(1)}, modo: ${c.modo}, hfov_deg: ${(hfovDe(c) * R2D).toFixed(1)}, posicion: ${P(c.pos)}, mira: ${P(c.mira)}, orientacion_deg: {giro: ${(orientDe(c).pan * R2D).toFixed(1)}, inclinacion: ${(orientDe(c).tilt * R2D).toFixed(1)}, alabeo: ${(orientDe(c).roll * R2D).toFixed(1)}}, pinza_mesa: ${P(c.clamp)}}\n`; }
+  const id = ROB.id, d = ROB.datos, pf = L.prefijoFrames || '', frame = `${pf}base_link`, sup = '# SUPUESTO (disposición propuesta, sin medir)';
+  // Una disposición de solo lectura puede traer un robot que esta versión no conoce: se dice y se usa el nominal (corrección 5)
+  const desconocido = L.robotId !== id, doble = pf && d.doble ? d.doble.fichero.split('/').pop().replace('.urdf.xacro', '') : null;
+  // Lo que depende del giro world → base_link (mount_yaw − π) es SUPUESTO mientras no se valide en ROS (corrección 6)
+  const conGiro = ROB.yaw !== 0, giroSup = 'SUPUESTO (giro world→base_link sin validar en ROS)';
+  let y = `# posiciones.yaml · gemelo de la celda UR3e · BORRADOR (generado por IA)\n`;
+  y += `# Robot: ${desconocido ? `«${L.robotId}» (desconocido para esta versión del gemelo: se usa la cinemática nominal)` : id === 'nominal' ? 'nominal (sin identificar: cinemática nominal del UR3e)' : `${id} (calibration_${id}.yaml del curso${d.sospechoso ? '; calibración sospechosa, SIN VALIDAR' : ''})`}, en la posición ${L.robot} de la celda (${L.robot === 'B' ? 'derecha' : 'izquierda'} en la foto cenital).\n`;
+  y += `# Frame: ${frame}${doble ? ` (prefijo «${pf}» del URDF doble ${doble}.urdf.xacro)` : pf ? ` (prefijo «${pf}» de la disposición; esta versión del gemelo no conoce su URDF doble)` : ' (sin prefijo, como en sim_<id>)'}. Metros y radianes (REP-103), redondeo a 1 mm y 0,001 rad.\n`;
+  y += `# world: el world del gemelo, con los ejes de la mesa y el origen en el centro de la base sobre el tablero [SUPUESTO hasta comprobarlo en el laboratorio].\n`;
+  y += `# ${frame} está girado ${rad3(ROB.yaw)} rad (${gradosTxt(ROB.yaw)}) respecto a ese world: mount_yaw − π del xacro del curso [SIN VALIDAR en ROS; docs/estado/frames.md].\n`;
+  y += `# Origen de cada valor, al final de su línea: MEDIDO, FABRICANTE o SUPUESTO. Las cámaras dan el giro desde +y de ${frame} hacia +x.\n`;
+  y += `fecha: ${new Date().toISOString().slice(0, 10)}\nrobot: ${L.robot}  # MEDIDO (posición de la base en la celda)\nrobot_id: ${desconocido ? `${L.robotId}  # de la disposición; el gemelo no lo conoce y usa la cinemática nominal` : `${id}  # elegido en el gemelo`}\n`;
+  y += `frame: ${frame}\nprefijo_frames: '${pf}'\nworld_a_base_link: {x: 0.000, y: 0.000, z: 0.000, yaw_rad: ${rad3(ROB.yaw)}}  # world del gemelo (ejes de la mesa): SUPUESTO · giro: mount_yaw − π del xacro del curso, SUPUESTO (sin validar en ROS)\n`;
+  if (doble) y += `pose_en_world_doble: {frame: ${frame}, x: ${r3(d.doble.x)}, y: ${r3(d.doble.y)}, z: 0.000, yaw_rad: ${rad3(d.doble.yaw - PI)}}  # xacro del curso, ${doble}: SUPUESTO (sin validar en ROS)\n`;
+  y += `pinza: {modelo: OnRobot RG2, tcp_z_m: ${r3(pinza.tcpZ(0))}, carrera_m: 0.110}  # tcp_z: SUPUESTO (modelo simplificado) · carrera: MEDIDO\n`;
+  const mc = B({ x: 0, y: 0 });
+  y += `mesa: {ancho_m: 1.180, fondo_m: 0.830, alto_m: 0.760, centro_en_base_link: {x: ${r3(mc.x)}, y: ${r3(mc.y)}}, yaw_rad: ${rad3(yawABase(0))}}  # ${conGiro ? `medidas: MEDIDO · centro_en_base_link y yaw_rad: ${giroSup}` : 'MEDIDO'}\n`;
+  y += `pedido: ${L.pedido === 1 ? 'un_plato  # al centro de la bandeja' : 'dos_platos  # primero y segundo'} · elegido en el gemelo\n`;
+  y += `platos: {sobre_caja: ${L.caja.on}, caja_alto_m: ${r3(L.caja.h)}, caja_lado_m: ${r3(CAJA_LADO)}, agarre: horizontal_por_el_borde, radio_agarre_m: ${r3(R_AGARRE)}}  # SUPUESTO\n`;
+  const zf = B(L.zona);
+  y += `objetos:\n  zona_fruta: {x: ${r3(zf.x)}, y: ${r3(zf.y)}, z: ${r3(zf.z)}, yaw_rad: ${rad3(yawABase(L.zona.yaw))}, ancho_m: ${r3(L.zona.w)}, fondo_m: ${r3(L.zona.d)}}  ${sup}\n`;
+  for (const pk of ['plato1', 'plato2']) y += `  ${pk.replace('plato', 'plato_')}: ${P({ x: L[pk].x, y: L[pk].y, z: zPlato() })}  ${sup}\n`;
+  L.arucoE.forEach((a, i) => { const m = B(a); y += `  marcador_entrega_${i + 1}: {id: ${4 + i}, diccionario: DICT_4X4_50, x: ${r3(m.x)}, y: ${r3(m.y)}, z: ${r3(m.z)}}  ${sup}\n`; });
+  const bt = B(tp); y += `  bandeja_recepcion: {x: ${r3(bt.x)}, y: ${r3(bt.y)}, z: ${r3(bt.z)}, yaw_rad: ${rad3(yawABase(tp.yaw))}}  ${sup}\n`;
+  y += `  zona_primero: ${P(zw('zona_primero'))}  ${sup}\n  zona_segundo: ${P(zw('zona_segundo'))}  ${sup}\n`;
+  const pe = B(L.persona); y += `  persona: {x: ${r3(pe.x)}, y: ${r3(pe.y)}, yaw_rad: ${rad3(yawABase(L.persona.yaw))}}  ${sup}\ncamaras:\n`;
+  for (const k in L.cams) { const c = L.cams[k], o = orientDe({ pos: B(c.pos), mira: B(c.mira), roll: c.roll }); y += `  camara_${k}: {grupo: ${c.grupo}, modelo: ELP-USB12MP01-UFV, focal_mm: ${c.f.toFixed(1)}, modo: ${c.modo}, hfov_rad: ${r3(hfovDe(c))}, posicion: ${P(c.pos)}, mira: ${P(c.mira)}, orientacion_rad: {giro: ${rad3(o.pan)}, inclinacion: ${rad3(o.tilt)}, alabeo: ${rad3(o.roll)}}, pinza_mesa: ${P(c.clamp)}}  # pose: SUPUESTO · modelo: MEDIDO · focal y modo: elegidos · hfov: SUPUESTO (lente ideal, sensor ${sensorEscena()})\n`; }
   y += `# layout-json: ${JSON.stringify(L)}\n`;
   return y;
 }
@@ -1386,12 +1798,13 @@ $('#btnPng').addEventListener('click', () => { renderer.domElement.toBlob(b => b
 $('#btnImport').addEventListener('click', () => {
   const t = $('#yamlIn').value; const m = t.match(/#\s*layout-json:\s*(\{.*\})\s*$/m);
   if (!m) { toast('No encuentro la línea «# layout-json» del fichero exportado'); return; }
-  try { const n = JSON.parse(m[1]); if (!n.zona || !n.cams) throw 0; L = normalizar(n); aplicarLayout(); toast('Distribución aplicada'); } catch (e) { toast('El contenido no es una distribución válida'); }
+  const r = migrarLayout(m[1]); if (r.error) { toast(`El contenido no es una distribución válida: ${r.error}`); return; }
+  vaciarGuardado(); L = r.layout; aplicarLayout(); toast(r.soloLectura ? 'Distribución aplicada en solo lectura: es de una versión más nueva del gemelo' : 'Distribución aplicada');
 });
 function aplicarLayout() {
-  aplicarPedido(); $$('#segRobot button').forEach(x => x.setAttribute('aria-pressed', x.dataset.v === L.robot));
+  cerrarPreguntaRobot(); aplicarPedido(); $$('#segRobot button').forEach(x => x.setAttribute('aria-pressed', x.dataset.v === L.robot));
   colocarRobots(); actualizarZona(); actualizarPlatos(); actualizarAruco(); for (const k in L.cams) actualizarCam(k); aplicarBandeja(simT);
-  reiniciarDemo(); pintarCaja(); evaluar(); calcularMapa(); guardarLocal(); if (!$('[data-panel="datos"]').hidden) pintarDatos();
+  reiniciarDemo(); pintarCaja(); pintarPerfil(); pintarSensor(); evaluar(); calcularMapa(); pintarSoloLectura(); guardarLocal(); if (!$('[data-panel="datos"]').hidden) pintarDatos();
 }
 const FUENTES = [
   ['Mesa', '1180 × 830 mm, superficie a 760 mm', 'm', 'Cinta + foto (regla y A4, error < 2 %)'],
@@ -1405,28 +1818,36 @@ const FUENTES = [
   ['Caja bajo el plato', '10 × 10 cm, altura regulable', 's', 'Propuesta del grupo; tamaño sin medir'],
   ['Orientación de base_link', 'eje x paralelo al lado largo de la mesa', 's', 'Comprobar en PolyScope'],
   ['Cámaras', 'ELP-USB12MP01-UFV, IMX577, 3,6–10 mm, USB 2.0', 'm', 'Caja de la cámara + web del fabricante'],
-  ['Campo de visión', 'lente ideal sobre el ancho del sensor', 's', 'Medir en la calibración intrínseca'],
+  ['Campo de visión', 'lente ideal sobre el ancho del sensor', 's', 'Medir en la calibración intrínseca'], // la fila la completa fuentesRobot con el sensor de la escena (T1.7)
   ['Marcadores', 'ArUco DICT_4X4_50: zona 0–3, entrega 4–5, bandeja 6–9 (dibujados con su patrón real)', 's', 'Ids propuestos'],
   ['Soportes de cámara', 'Manfrotto 035 + brazo 244 de 53 cm', 'm', 'Foto + ficha'],
   ['Fruta', 'piezas de plástico de 4,5–7 cm', 's', 'Foto de referencia del grupo'],
   ['Plato, bandeja y persona', 'plato Ø160 mm · bandeja 450 × 330 mm a 1,00 m del suelo · persona en el lateral derecho, de frente, con la bandeja a la derecha del robot y fuera de la mesa', 's', 'Sin medir; posición elegida porque es donde el robot puede dejar los platos nivelados'],
   ['Modelo de colisión', '162 esferas ajustadas a las mallas de colisión oficiales del UR3e y a la RG2; límites articulares de joint_limits.yaml (codo ±180°)', 'f', 'ur_description (Universal Robots)'],
-  ['Planificación', 'RRT-Connect con atajos para movimientos libres; rectas cada 4 mm sin saltos; plato siempre nivelado', 'm', 'Equivalente a lo que hará MoveIt 2; sin validar en el robot'],
-  ['Aceleración articular', '3 rad/s² al 100 %', 's', 'El yaml del UR3e no fija aceleraciones'],
+  ['Planificación', 'RRT-Connect con atajos para movimientos libres; rectas cada 4 mm sin saltos (perfil «gemelo») o cada 1 cm con el punto medio a 1 mm y 0,01 rad (perfil «curso»); plato siempre nivelado', 'm', 'Equivalente a lo que hará MoveIt 2; sin validar en el robot'],
+  ['Aceleración articular (perfil «gemelo»)', '3 rad/s² al 100 %', 's', 'El yaml del UR3e no fija aceleraciones'],
+  ['Perfil «curso»', 'escala 0,1 de velocidad y aceleración, 5 rad/s², cartesiana de MoveIt 2.11+ y arranque en contacto = fallo', 's', 'config/joint_limits.yaml y el ejemplo del profesor (repo del curso); tiempos con un trapecio por articulación, no TOTG (DT4)'],
   ['Agarre del plato', 'muñeca inclinada hasta 45° respecto a la horizontal', 's', 'Probar con el plato real que no gira ni resbala'],
   ['Bandeja en M0 / M1', 'pausa a 25 mm, aborto a 10 s; latencia 120 ms', 's', 'DEC-04 sin cifras'],
   ['Velocidades', '180°/s (base, hombro, codo), 360°/s (muñecas)', 'f', 'Ficha del UR3e'],
   ['Nodos de Robótica', 'coordinador, pedidos, movimiento, pinza, seguridad', 's', 'Propuesta; D3 sin congelar'],
   ['Topics de Visión', '/v1/*, /v2/*, /menu, /service_state', 'm', 'Contexto de Visión del 7-11'],
 ];
-function pintarFuentes() { $('#srcTbl tbody').innerHTML = FUENTES.map(([a, b, t, c]) => `<tr><td>${a}<br><span class="hint">${c}</span></td><td>${b}</td><td><span class="tag ${t}">${{ m: 'MEDIDO', f: 'FABRICANTE', s: 'SUPUESTO' }[t]}</span></td></tr>`).join(''); }
+// Filas que dependen del robot elegido (T1.4 y T1.5): cinemática y orientación de base_link
+function fuentesRobot() {
+  const id = ROB.id, d = ROB.datos;
+  return FUENTES.map(f => f[0] === 'Cinemática del UR3e' && id !== 'nominal' ? [f[0], `calibración del robot ${id}; IK analítica nominal refinada con Levenberg–Marquardt (1e-6 m y 1e-6 rad)`, d.sospechoso ? 's' : 'm', `calibration_${id}.yaml del repo del curso (4e4e1a7)${d.sospechoso ? ', sospechosa' : ''}; SIN VALIDAR en ROS`]
+    : f[0] === 'Campo de visión' ? [f[0], `lente ideal sobre el ancho del sensor «${SENSOR.de(sensorEscena()).nombre}» (${fmt(SENSOR.de(sensorEscena()).w, 3)} mm), completo en todos los modos`, 's', `${SENSOR.de(sensorEscena()).origen}; medir en la calibración intrínseca (F4)`]
+    : f[0] === 'Orientación de base_link' ? [f[0], `girado ${gradosTxt(ROB.yaw)} respecto a world; world con los ejes de la mesa`, 's', 'Giro: mount_yaw − π del xacro del curso. Ejes de world: comprobar en el laboratorio (docs/estado/frames.md)'] : f);
+}
+function pintarFuentes() { $('#srcTbl tbody').innerHTML = fuentesRobot().map(([a, b, t, c]) => `<tr><td>${a}<br><span class="hint">${c}</span></td><td>${b}</td><td><span class="tag ${t}">${{ m: 'MEDIDO', f: 'FABRICANTE', s: 'SUPUESTO' }[t]}</span></td></tr>`).join(''); }
 
 // ======================= Colocación y evaluación =======================
 function colocarRobots() {
-  const o = L.robot === 'B' ? 'A' : 'B';
-  robot.place(BASES[L.robot].x, BASES[L.robot].y, 0); otro.place(BASES[o].x, BASES[o].y, 0);
+  const o = L.robot === 'B' ? 'A' : 'B'; aplicarCinematica();
+  robot.place(BASES[L.robot].x, BASES[L.robot].y, ROB.yaw); otro.place(BASES[o].x, BASES[o].y, 0); // base_link girado según su id (T1.4)
   circ.position.set(BASES[L.robot].x, BASES[L.robot].y, MESA.h + 0.003);
-  $('#chipConf').textContent = `UR3e ${L.robot} · RG2 · ELP IMX577`;
+  $('#chipConf').textContent = `UR3e ${L.robot} · ${ROB.id} · RG2 · ELP IMX577`;
   otro.setQ([L.robot === 'B' ? 0 : PI, -1.9, 1.75, -1.45, -1.57, 0]);
 }
 function evaluar() { pintarLista(); pintarSel(); pintarCaja(); actualizarHUD(); if (!$('[data-panel="alcance"]').hidden) actualizarTablaAlcance(); if (!$('[data-panel="camaras"]').hidden) pintarCamaras(); if (!$('[data-panel="datos"]').hidden) pintarDatos(); actualizarCheck(); }
@@ -1437,7 +1858,11 @@ function tamano() { const r = view.getBoundingClientRect(); renderer.setSize(r.w
 new ResizeObserver(tamano).observe(view);
 const CAL = { ema: 16, lento: 0, bajado: false };
 function bucle(now) {
-  requestAnimationFrame(bucle); const dtr = (now - last) / 1000; const dt = Math.min(0.1, dtr); last = now; frame++;
+  // Mientras corre ensayo() (banco de pruebas y búsqueda de alternativas) el fotograma no toca el gemelo ni dibuja: ensayo()
+  // avanza simT y la bandeja por su cuenta, y un fotograma que caía en una de sus pausas según el reloj cambiaba el resultado
+  // (T1.2, criterio 6: bajo carga, 2 de 5 páginas daban otro t_sim y otras pausas)
+  requestAnimationFrame(bucle); if (D.banco) { last = now; return; }
+  const dtr = (now - last) / 1000; const dt = Math.min(0.1, dtr); last = now; frame++;
   // calidad adaptativa: si el equipo va lento, menos píxeles y sombras más simples
   CAL.ema = CAL.ema * 0.95 + Math.min(dtr * 1000, 500) * 0.05; if (!CAL.bajado && frame > 120) { CAL.lento = CAL.ema > 45 ? CAL.lento + 1 : 0; if (CAL.lento > 90) { CAL.bajado = true; renderer.setPixelRatio(1); renderer.shadowMap.type = THREE.PCFShadowMap; tamano(); } }
   if (D.playing && !D.banco) { let tot = dt * D.rate; while (tot > 1e-9) { const h = Math.min(tot, 1 / 60); simT += h; aplicarBandeja(simT); tickDemo(h); tot -= h; } }
@@ -1468,44 +1893,54 @@ function render() {
 }
 
 // ======================= Banco de pruebas (solo con ?prueba) =======================
+// cfg.perfil: el de la demo ensayada (T1.6); sin él, el de la escena (L.perfil)
 async function ensayo(cfg = {}) {
-  D.sinRender = !!cfg.sinRender;
-  if (cfg.pedido) { L.pedido = cfg.pedido; aplicarPedido(); }
-  reiniciarDemo(); if (cfg.caja !== undefined) L.caja.on = cfg.caja; if (cfg.cajaH) L.caja.h = cfg.cajaH; actualizarPlatos(); pintarCaja();
-  D.modo = cfg.modo || 'M0'; D.amp = cfg.amp ?? 0.02; D.vel = cfg.vel ?? 0.25;
-  reiniciarDemo(); D.activo = true; D.playing = false; D.banco = true; D.fase = cfg.fase ?? Math.random() * 100;
-  const h = 1 / 60; const t0 = simT; const run = D.run; const pr = demo();
-  let n = 0;
-  while (!D.fin && simT - t0 < (cfg.limite || 600)) {
-    if (cfg.hasta && cfg.hasta(D)) { D.banco = false; D.sinRender = false; actualizarHUD(); return { parado: D.estado }; }
-    simT += h; aplicarBandeja(simT); tickDemo(h);
-    for (let k = 0; k < 4; k++) await Promise.resolve();
-    if (++n % 240 === 0) await new Promise(r => setTimeout(r, 0));
-  }
-  if (!D.fin) { D.run++; }
-  await new Promise(r => setTimeout(r, 0)); actualizarHUD();
-  D.banco = false; D.sinRender = false;
-  return { cfg, fin: D.fin || 'atascado', estado: D.estado, paso: D.paso + 1, t_sim: +(simT - t0).toFixed(1), t_mov: +D.motion.toFixed(1), errores_mm: D.errores.map(mm), choques: D.choques, roces: D.roces, pausas: D.pausas, autocol: D.autocol, planes: D.planes, sust: D.sustituidos, fallo: $('#dFallo').hidden ? '' : $('#dFallo').textContent.trim() };
+  // El ensayo empieza con simT = 0 (H3 y criterio 6 de T1.2). La bandeja se mueve con BALANCEO(simT + D.fase), así que
+  // cfg.fase es la fase de la bandeja al empezar. Y el resultado no depende de cuánto llevaba la página abierta (simT
+  // sigue al reloj mientras espera) ni de lo ensayado antes: con simT absoluto, el redondeo de simT + fase y de los
+  // tiempos de las animaciones cambiaba de un ensayo a otro (la matriz en orden inverso daba otros t_sim y planes).
+  simT = 0; D.sinRender = !!cfg.sinRender;
+  try {
+    if (cfg.pedido) { L.pedido = cfg.pedido; aplicarPedido(); }
+    reiniciarDemo(); if (cfg.caja !== undefined) L.caja.on = cfg.caja; if (cfg.cajaH) L.caja.h = cfg.cajaH; actualizarPlatos(); pintarCaja();
+    D.modo = cfg.modo || 'M0'; D.amp = cfg.amp ?? 0.02; D.vel = cfg.vel ?? 0.25;
+    reiniciarDemo(); D.activo = true; D.playing = false; D.banco = true; D.fase = cfg.fase ?? Math.random() * 100;
+    const pf = PERFIL.de(cfg.perfil ?? perfilEscena()).nombre;
+    const h = 1 / 60; const t0 = simT; const run = D.run; const pr = demo(pf);
+    let n = 0;
+    while (!D.fin && simT - t0 < (cfg.limite || 600)) {
+      if (cfg.hasta && cfg.hasta(D)) { D.banco = false; D.sinRender = false; actualizarHUD(); return { parado: D.estado }; }
+      simT += h; aplicarBandeja(simT); tickDemo(h);
+      for (let k = 0; k < 4; k++) await Promise.resolve();
+      if (++n % 240 === 0) await new Promise(r => setTimeout(r, 0));
+    }
+    if (!D.fin) { D.run++; }
+    await new Promise(r => setTimeout(r, 0)); actualizarHUD();
+    D.banco = false; D.sinRender = false;
+    return { cfg, fin: D.fin || 'atascado', estado: D.estado, paso: D.paso + 1, t_sim: +(simT - t0).toFixed(1), t_mov: +D.motion.toFixed(1), errores_mm: D.errores.map(mm), choques: D.choques, roces: D.roces, pausas: D.pausas, autocol: D.autocol, planes: D.planes, sust: D.sustituidos, fallo: $('#dFallo').hidden ? '' : $('#dFallo').textContent.trim() };
+  } catch (e) { // una excepción no deja la demo a medias: se cancela y la escena vuelve a la de partida; el error sigue hacia quien llamó
+    D.activo = false; reiniciarDemo(); throw e;
+  } finally { D.banco = false; D.sinRender = false; } // pase lo que pase, bucle() vuelve a avanzar y a dibujar (revisión de T1.2)
 }
 
 // ======================= Arranque =======================
 let D_ready = false;
 aplicarPedido(); dibujarGrafo(); pintarPasos(-1);
-actualizarZona(); actualizarPlatos(); actualizarAruco(); for (const k in L.cams) actualizarCam(k); aplicarTema(); pintarCaja();
+actualizarZona(); actualizarPlatos(); actualizarAruco(); for (const k in L.cams) actualizarCam(k); aplicarTema(); pintarCaja(); pintarSoloLectura(); pintarRobotId(); pintarPerfil(); pintarSensor();
 $$('#segRobot button').forEach(x => x.setAttribute('aria-pressed', x.dataset.v === L.robot));
-$('#segPedido').addEventListener('click', e => { const b = e.target.closest('button'); if (!b || D.playing) return; L.pedido = +b.dataset.v; D.activo = false; aplicarPedido(); reiniciarDemo(); actualizarPlatos(); evaluar(); guardarLocal(); toast(L.pedido === 1 ? 'Pide un solo plato: va al centro de la bandeja' : 'Pide primero y segundo'); });
+$('#segPedido').addEventListener('click', e => { const b = e.target.closest('button'); if (!b || D.playing) return; const oc = ocupadoSinDemo('cambiar el pedido'); if (oc) { toast(oc); return; } L.pedido = +b.dataset.v; D.activo = false; aplicarPedido(); reiniciarDemo(); actualizarPlatos(); evaluar(); guardarLocal(); toast(L.pedido === 1 ? 'Pide un solo plato: va al centro de la bandeja' : 'Pide primero y segundo'); });
 $('#segRate').addEventListener('click', e => { const b = e.target.closest('button'); if (!b) return; D.rate = +b.dataset.v; $$('#segRate button').forEach(x => x.setAttribute('aria-pressed', x === b)); });
 $('#segModoB').addEventListener('click', e => { const b = e.target.closest('button'); if (!b) return; D.modo = b.dataset.v; $$('#segModoB button').forEach(x => x.setAttribute('aria-pressed', x === b)); });
 $('#dVel').addEventListener('input', e => { D.vel = e.target.value / 100; $('#dVelOut').textContent = `${e.target.value} %`; });
 $('#dAmp').addEventListener('input', e => { D.amp = e.target.value / 100; $('#dAmpOut').textContent = `${fmt(+e.target.value, 1)} cm`; actualizarCheck(); });
 requestAnimationFrame(bucle);
-if (location.search.includes('prueba')) window.__g = { aplicarPedido, actualizarZona, esferasObjeto, cargaDe, BAND, bandeja, aplicarBandeja: t => aplicarBandeja(t), ladoZonas: () => ladoZonas(), comprobarPlan, llegaVertical, puntosSoltar, FRUTAS, CACHE_PLAN, poseHoriz, ejeHoriz, mundoABase, enLimites, qValida, rutaNivelada: (...a) => rutaNivelada(...a), colocacionConTransporte: (...a) => colocacionConTransporte(...a), planColocar: (...a) => planColocar(...a), zonasB, ikTCP, planAgarrePlato, planColocar, planPlatoCache, KIN_: KIN, BASES, consts: { R_AGARRE, H_BORDE }, COL: () => COL, choqueEn: (q, c) => choqueEn(q, c), obstaculos: () => obstaculos(), textoChoque: c => textoChoque(c), D, L: () => L, cam, orbit, scene, renderer, OBJ, piezas: () => piezas, simT: () => simT, CAMS, actualizarCam, actualizarAruco, actualizarPlatos, metricasCam, estadoObjeto, alcance, comprobarPlan, ensayo, planAgarrePlato, holguraActual, get robot() { return robot; }, KIN, pinza, tcpMundo, zPlato, setL: l => { L = l; }, ESC, ALM, abrirEscena, codigoEscena, abrirCodigo, guardarEscena, escCam: cam, orbit, vista, CALC, calcularPlanes, planesAlDia, recalcular, orientDe, fijarOrient, orientarDesdeQuat, CAMS, seleccionar, tctl, generarYaml, cadenaPlato, cargaPlan, rutaCartesiana: (...a) => rutaCartesiana(...a), zonasB_: () => zonasB, zonaDe, qReposo, aplicarLayout, buscarAlternativa, candidatos, explicar, mostrarFalloInfo, diagnosticarPunto };
+if (location.search.includes('prueba')) window.__g = { aplicarPedido, actualizarZona, esferasObjeto, cargaDe, BAND, bandeja, aplicarBandeja: t => aplicarBandeja(t), ladoZonas: () => ladoZonas(), comprobarPlan, llegaVertical, puntosSoltar, FRUTAS, CACHE_PLAN, poseHoriz, ejeHoriz, mundoABase, enLimites, qValida, rutaNivelada: (...a) => rutaNivelada(...a), colocacionConTransporte: (...a) => colocacionConTransporte(...a), planColocar: (...a) => planColocar(...a), zonasB, ikTCP, planAgarrePlato, planColocar, planPlatoCache, KIN_: KIN, BASES, consts: { R_AGARRE, H_BORDE }, COL: () => COL, choqueEn: (q, c) => choqueEn(q, c), obstaculos: () => obstaculos(), textoChoque: c => textoChoque(c), D, L: () => L, cam, orbit, scene, renderer, OBJ, piezas: () => piezas, simT: () => simT, CAMS, actualizarCam, actualizarAruco, actualizarPlatos, metricasCam, estadoObjeto, alcance, comprobarPlan, ensayo, planAgarrePlato, holguraActual, get robot() { return robot; }, KIN, pinza, tcpMundo, zPlato, setL: l => { L = l; }, ESC, ALM, abrirEscena, codigoEscena, abrirCodigo, guardarEscena, escCam: cam, orbit, vista, CALC, calcularPlanes, planesAlDia, recalcular, orientDe, fijarOrient, orientarDesdeQuat, CAMS, seleccionar, tctl, generarYaml, cadenaPlato, cargaPlan, rutaCartesiana: (...a) => rutaCartesiana(...a), zonasB_: () => zonasB, zonaDe, qReposo, aplicarLayout, buscarAlternativa, candidatos, explicar, mostrarFalloInfo, diagnosticarPunto, LAYOUT, ESQ_L, migrarLayout, soloLectura, RNG, planificar: (...a) => planificar(...a), get CIN() { return CIN; }, get ROB() { return ROB; }, CALIBRACION, marco: () => marco(), baseAMundo: (x, y, z) => baseAMundo(x, y, z), tcpDeQ: (q, w) => tcpDeQ(q, w), pedirRobotId: id => pedirRobotId(id), ikNoConverge: (p, y, o) => ikNoConverge(p, y, o), posesTCP, volCol, calcularPerfil, radioA, PERFIL, prepararMoveJ: (...a) => prepararMoveJ(...a), semillaDe: (...a) => semillaDe(...a), otroVisible: () => otroVisible(), apartarEscena: () => apartarEscena(), perfilEscena: () => perfilEscena(), planesAlDiaDe: pf => planesAlDia(pf), validar: () => validar(), VAL, SENSOR, areaDe: c => areaDe(c), hfovDe: c => hfovDe(c), vfovDe: c => vfovDe(c), firmaVal: () => firmaVal(), valAlDia: () => valAlDia(), perfilesDe: e => perfilesDe(e), estadoParaGuardar: () => estadoParaGuardar() }; // T1.4: robot activo, su cinemática y el marco de base_link (una sola línea: build_web.sh la quita entera)
 fetch('ur3e-malla.json').then(r => { if (!r.ok) throw new Error(r.status); return r.json(); }).then(j => { const bin = atob(j.glb); const u8 = new Uint8Array(bin.length); for (let i = 0; i < bin.length; i++) u8[i] = bin.charCodeAt(i); new GLTFLoader().parse(u8.buffer, '', cargado, fallo); }).catch(fallo);
 function fallo(err) { $('#loading').textContent = 'No se ha podido cargar el modelo del UR3e.'; console.error(err); }
 function cargado(g) {
   robot = new Robot(g, 'robot'); otro = new Robot(g, 'otro', true); scene.add(robot.root, otro.root);
   robot.tool0.add(pinza.g);
-  REF_MANIP = KIN.manip([0, -1.9, 1.9, -1.57, -1.57, 0]);
+  robot.setCinematica(CIN); REF_MANIP = CIN.manip(Q_REF_MANIP); // el robot de la disposición abierta (T1.4)
   colocarRobots(); aplicarBandeja(simT); iniciarColision(); crearVolumenes(); pintarCalidad(); robot.setQ(qReposo()); sincronizarSliders();
   marcoTF('mesa', scene).position.set(0, 0, MESA.h + 0.002); marcoTF('base_link', robot.root); marcoTF('tool0', robot.tool0); marcoTF('tcp', pinza.tcp);
   for (const k in CAMS) marcoTF('camara_' + k, CAMS[k].optical);

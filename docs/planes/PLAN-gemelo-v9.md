@@ -68,7 +68,7 @@ Todo con pruebas automáticas y sin perder las escenas guardadas.
 | D3 | Arnés de pruebas: Node (`node:test`) para el código puro y Playwright + Chromium con SwiftShader para la página. three@0.160.0 (y roslib en F3) se sirven desde `node_modules`. Firestore y claude.ai, siempre simulados. Cualquier petición externa no interceptada hace fallar el test | Vitest con jsdom | jsdom no tiene WebGL; el patrón ya está probado en `tests/legacy/shot2.js` | sí |
 | D4 | Refactor mínimo: se extrae a ficheros nuevos de `src/` solo lo que hace falta probar o aislar (RNG, cinemática por robot, exportadores, cliente ROS, métricas de cámara). Se concatenan con el mismo mecanismo de marcadores `@@…@@` del build. Sin módulos ES ni bundler | Migrar a ESM con bundler | El artefacto tiene que ser un único HTML; reescribir 156 KB generados es el mayor riesgo de regresión | sí (deuda DT1) |
 | D5 | Semilla por petición: se deriva de un hash de la entrada del plan (q inicial, objetivo, obstáculos, perfil). Se elimina `SEMILLA` global | Reiniciar `SEMILLA` en cada caso | El veredicto de una escena no debe depender de qué se calculó antes | sí |
-| D6 | Dos perfiles de movimiento que conviven en un flujo «explorar → validar». «Gemelo» (el actual) es rápido y se usa al arrastrar objetos y en la búsqueda de disposiciones. «Curso» usa aceleración 5 rad/s², escala 0,1, cartesiano con `max_step` 0,01 m y trata el arranque en contacto como fallo; valida antes de guardar y para el desarrollo contra la simulación del curso. Cada escena guarda el veredicto de los dos perfiles (en `estado`, sin cambiar las reglas). Las escenas v8 conservan su veredicto «gemelo» y calculan el de «curso» al abrirlas (decidido 2026-11-15) | Un único perfil por defecto | El usuario necesita los dos: explorar rápido y saber si funcionará en la simulación | sí |
+| D6 | Dos perfiles de movimiento que conviven en un flujo «explorar → validar». «Gemelo» (el actual) es rápido y se usa al arrastrar objetos y en la búsqueda de disposiciones. «Curso» usa aceleración 5 rad/s², escala 0,1, cartesiano con `max_step` 0,01 m y trata el arranque en contacto como fallo; valida antes de guardar y para el desarrollo contra la simulación del curso. Cada escena guarda el veredicto de los dos perfiles (en `estado`, sin cambiar las reglas). Las escenas v8 conservan su veredicto «gemelo»; el de «curso» aparece «sin validar» hasta pulsar **Validar** o guardar la escena: abrirla no calcula nada (decidido 2026-11-15; precisado el 2026-11-16 con T1.8-6) | Un único perfil por defecto | El usuario necesita los dos: explorar rápido y saber si funcionará en la simulación | sí |
 | D7 | Selector de robot (nominal, 203, 204, 205, 206). FK calibrada con los `calibration_<id>.yaml` del curso, guardados como datos con su atribución. IK: la analítica nominal más un refinamiento numérico sobre la FK calibrada (→ moveit «replicar MoveIt», INFERIDO). Con el 204, aviso visible de calibración sospechosa | Solo nominal; IK numérica pura | Así se replica de forma determinista lo que hace MoveIt (→ moveit) y se conservan las 8 ramas de la IK | sí |
 | D8 | Exportar solo **datos**: `ros__parameters`, `CollisionObject` en YAML, `.scene`, TF estáticas por YAML y comandos, `camera_info` nominal y parámetros de `usb_cam`. Cada valor lleva comentado su origen: MEDIDO, FABRICANTE o SUPUESTO. Formato determinista | Generar launch y nodos | Regla de código explicable (→ generacion-config) | sí |
 | D9 | Conexión con ROS por rosbridge con roslib 2.1.0, a través de un **adaptador único de solo lectura** (`rosEspejo`) que solo puede suscribirse. Import map a mano (roslib y eventemitter3 desde `dist/`, versión exacta) | foxglove_bridge (acciones solo como topics ocultos, cliente JS deprecado) | Es la vía en producción y la superficie de riesgo se reduce a leer (→ puente-ros) | sí |
@@ -134,14 +134,16 @@ Estados: pendiente · en curso · entregada · aceptada · correcciones · bloqu
 | T0.3 | 0 | Línea base medida (informe, sin cambiar código) | Claude Code | T0.2 | bajo | aceptada | 5d7ba13, dac4587 |
 | T0.4 | 0 | `CLAUDE.md`, `tools/check.sh` y plantilla de pull request | Claude Code | T0.2 | bajo | aceptada | e8940d3, dac4587 |
 | U3 | 0 | Responder Q1–Q5 | Usuario | — | — | aceptada | — |
-| T1.1 | 1 | Versionar el layout y migrarlo al cargar | Claude Code | T0.3 | medio | pendiente | |
-| T1.2 | 1 | Semilla por petición en el RRT | Claude Code | T1.1 | medio | pendiente | |
+| T1.1 | 1 | Versionar el layout y migrarlo al cargar | Claude Code | T0.3 | medio | aceptada | 4cabe6c, 69a6905 |
+| T1.2 | 1 | Semilla por petición en el RRT | Claude Code | T1.1 | medio | aceptada | 0cde036, 46bd547, 69a6905 |
 | T1.3 | 1 | Ficheros de referencia de cinemática generados con el xacro del curso | Claude Code | T0.2, Q4 | bajo | aceptada | cce7601 |
-| T1.4 | 1 | Selector de robot con FK calibrada e IK refinada | Claude Code | T1.1, T1.3 | alto | pendiente | |
-| T1.5 | 1 | `world`↔`base_link` por robot en la conversión y en la exportación | Claude Code | T1.4 | medio | pendiente | |
-| T1.6 | 1 | Perfil de movimiento «curso» | Claude Code | T1.2 | medio | pendiente | |
-| T1.7 | 1 | Modelo de sensor de la ELP por modo | Claude Code | T1.1 | bajo | pendiente | |
-| T1.8 | 1 | Flujo «explorar → validar» con los dos perfiles | Claude Code | T1.6 | medio | pendiente | |
+| T1.4 | 1 | Selector de robot con FK calibrada e IK refinada | Claude Code | T1.1, T1.3 | alto | aceptada | 83afa78, 3554b56 |
+| T1.5 | 1 | `world`↔`base_link` por robot en la conversión y en la exportación | Claude Code | T1.4 | medio | aceptada | dafd643, 3554b56 |
+| T1.6 | 1 | Perfil de movimiento «curso» | Claude Code | T1.2 | medio | aceptada | 3fe70b7 |
+| T1.7 | 1 | Modelo de sensor de la ELP por modo | Claude Code | T1.1 | bajo | aceptada | 9bcf739 |
+| T1.8 | 1 | Flujo «explorar → validar» con los dos perfiles | Claude Code | T1.6 | medio | aceptada | b44dff3, 4b80043 |
+| T1.9 | 1 | Salida de la bandeja sin contacto (DT22, DT23) | Claude Code | T1.8 | medio | aceptada | 07ce862, 8f9e0ca |
+| T2.0 | 2 | Arnés en dos niveles: `npm test` por tarea y suite completa en las puertas (DT32) | Claude Code | F1 | bajo | pendiente | |
 | T2.1 | 2 | Origen de cada valor (MEDIDO, FABRICANTE, SUPUESTO) unificado para exportar | Claude Code | F1 | bajo | pendiente | |
 | T2.2 | 2 | YAML `ros__parameters` de poses | Claude Code | T2.1 | medio | pendiente | |
 | T2.3 | 2 | Escena: `CollisionObject` en YAML y `.scene` | Claude Code | T2.1 | medio | pendiente | |
@@ -156,6 +158,7 @@ Estados: pendiente · en curso · entregada · aceptada · correcciones · bloqu
 | T3.4 | 3 | Escena de MoveIt superpuesta y diferencias con la del gemelo | Claude Code | T3.2 | medio | pendiente | |
 | T3.5 | 3 | Configuración personal de rosbridge (`ros/`): globs, 127.0.0.1 y compose | Claude Code | T3.0 | medio | pendiente | |
 | U5 | 3 | Arrancar rosbridge en el contenedor y conectar el espejo | Usuario | T3.5, T3.2 | — | pendiente | — |
+| U6 | 1 | Tras publicar F1, abrir la web con la clave del grupo y mirar «Ilegibles» en Escenas: si no está en 0, revisar los motivos antes de que nadie borre nada | Usuario | P1 de F1 | — | pendiente | — |
 | T4.1 | 4 | Métricas por tarea con umbrales con fuente | Claude Code | F1 | medio | pendiente | |
 | T4.2 | 4 | Oclusión a lo largo de las trayectorias calculadas | Claude Code | T4.1 | alto | pendiente | |
 | T4.3 | 4 | Estimador de ancho de banda USB | Claude Code | T4.1 | bajo | pendiente | |
@@ -330,7 +333,7 @@ Estados: pendiente · en curso · entregada · aceptada · correcciones · bloqu
 
 - **Objetivo:** planificar con la cinemática del robot elegido (D7).
 - **Alcance:**
-  - Toca `kin.js` (FK con los parámetros de cada robot e IK refinada), Ajustes (selector) y el layout (`robot`).
+  - Toca `kin.js` (FK con los parámetros de cada robot e IK refinada), el selector junto al de lado A/B y el layout (`robotId`; `robot` sigue siendo la posición A/B).
   - No toca la colisión ni el planificador, salvo para pasarles la cinemática.
 - **Reutiliza:** la IK analítica actual como semilla y `src/datos/calibracion.js`.
 - **Criterios de aceptación:**
@@ -365,7 +368,7 @@ Estados: pendiente · en curso · entregada · aceptada · correcciones · bloqu
      - arranque en contacto = fallo, con el texto «MoveIt rechazaría el arranque en contacto».
   2. En una ruta de prueba, la duración en «curso» frente a «gemelo» sigue la relación que predicen los parámetros (test con la ruta y la tolerancia escritas).
   3. Con el perfil «gemelo», la matriz queda idéntica (I8).
-  4. Las escenas nuevas usan «curso»; las v8 migradas, «gemelo» (D6).
+  4. Las escenas nuevas usan «curso»; las v8 migradas, «gemelo» (D6). La semilla del RRT usa hoy la constante `PERFIL_PLAN = 'gemelo'` (`src/colision.js`): pasa a ser el perfil de la petición, sin cambiar la matriz «gemelo».
   5. El panel deja claro que la temporización es una aproximación y no TOTG (deuda DT4).
 - **Verificación:** tests y captura del selector.
 - **Invariantes afectadas:** I1, I6 e I8.
@@ -395,10 +398,26 @@ Estados: pendiente · en curso · entregada · aceptada · correcciones · bloqu
 - **Verificación:** tests de las fórmulas.
 - **Invariantes afectadas:** I1.
 
+### T1.9 — Salida de la bandeja sin contacto (añadida al revisar T1.8)
+
+- **Objetivo:** que tras soltar el plato la pinza acabe libre, como tendría que hacerlo el nodo de movimiento con MoveIt, para que el perfil «curso» pueda completar la demo y la validación de T1.8 distinga disposiciones (DT22).
+- **Alcance:** la coreografía de la colocación (salida de la bandeja, `planColocar` y comprobación previa) y `rutaNivelada` (DT23), igual para los dos perfiles. No toca el arranque de «curso» ni lo permitido en el movimiento siguiente.
+- **Criterios de aceptación:**
+  1. Tras la salida, la postura final no toca nada con el contexto del movimiento siguiente, en la matriz y en las escenas v8.
+  2. La disposición por defecto completa la demo con «curso».
+  3. La matriz «gemelo» no empeora (I8) y las escenas v8 conservan posiciones, comprobación previa, fin, choques y roces (I1).
+  4. La matriz «curso» queda fijada en `tests/fixtures/matriz-curso.json` con su test.
+- **Verificación:** tests e2e de la salida y de las dos matrices; captura de Validar con «curso» en verde.
+- **Invariantes afectadas:** I1, I6 e I8.
+
 ### Fichas provisionales de F2–F5
 
 Estas fichas se revisan y se detallan al cerrar la fase anterior, con lo aprendido.
 
+- **T2.0** Arnés en dos niveles (DT32):
+  - `npm test` (cada tarea y `check.sh`) en menos de 15 min;
+  - la suite completa (orden inverso, barridos y matrices enteras), en un comando para las puertas de fase, que `check.sh --puerta` ejecuta;
+  - ningún test se borra ni se debilita: cada uno queda en un nivel, con la lista de qué nivel tiene cada test en `tests/README.md`.
 - **T2.1** Una sola fuente del origen de cada valor exportable (MEDIDO, FABRICANTE o SUPUESTO; hoy en la tabla FUENTES) que leen todos los exportadores.
 - **T2.2** `ros__parameters`:
   - solo escalares y arrays homogéneos, sin listas de mapas, con los mapas como nombres con punto (→ generacion-config «camera_info, parámetros y poses»);
@@ -483,19 +502,47 @@ Estas fichas se revisan y se detallan al cerrar la fase anterior, con lo aprendi
 |---|---|---|---|---|---|
 | DT1 | `app.js` es un monolito de 156 KB concatenado, sin módulos | `src/app.js` | Cambios con efectos lejanos | Se extrae por zonas en cada tarea (D4); un plan de modularización después de F4 | abierta |
 | DT2 | `firebase.js` (579 KB) se generó fuera del repo | raíz | No se puede actualizar Firebase de forma reproducible | Receta en `tools/firebase-bundle/` (T0.1); se prueba solo si hay P6 | abierta |
-| DT3 | 64 scripts de prueba sueltos | `tests/legacy/` | Duplican la suite | Se borran al cerrar F1 | abierta |
+| DT3 | 64 scripts de prueba sueltos | `tests/legacy/` | Duplican la suite | Pagada en la pasada de deuda de F1 (f8c98b0): `tests/legacy/` borrado; los dos simulacros, en `tests/mocks/` | pagada |
 | DT4 | La temporización no es TOTG | planificador | Duraciones aproximadas | F5 (TOTG portado) o se acepta | abierta |
 | DT5 | three r160 (la última es r187); la lectura de píxeles asíncrona llega en r165 | import map | Captura sintética lenta | Plan aparte con P6 | abierta |
 | DT6 | Colisión por esferas frente a mallas de MoveIt | `colision.js` | Una postura libre en el gemelo puede chocar en MoveIt | F3 mide la diferencia (T3.4); F5 decide | abierta |
-| DT7 | La matriz de 32 casos de la línea base no es estable entre ejecuciones (pausas 10 u 8 desde «caja M0 2 cm vel 50 %»); la de 8 casos de los tests sí lo es (5 ejecuciones, una con CPU cargada) | `docs/estado/linea-base-v8.md` §5 | Cifras de la línea base con ruido | T1.2 (semilla por petición) | abierta |
-| DT8 | Aún no hay tests de I4 (nada se envía a ROS) ni de I5 (HTML único, CDN con versión exacta) | `tests/` | Las dos invariantes solo se revisan a mano | I5 en la pasada de deuda de F1; I4 con el adaptador en T3.1 | abierta |
+| DT7 | La matriz de 32 casos de la línea base no es estable entre ejecuciones (pausas 10 u 8 desde «caja M0 2 cm vel 50 %»); la de 8 casos de los tests sí lo es (5 ejecuciones, una con CPU cargada) | `docs/estado/linea-base-v8.md` §5 | Cifras de la línea base con ruido | T1.2 (semilla por petición) | pagada en T1.2: 32 casos iguales en 3 páginas (`tests/medidas/repetibilidad.mjs`); falta regenerar el informe con `npm run medir` en la pasada de deuda de F1 |
+| DT8 | Aún no hay tests de I4 (nada se envía a ROS) ni de I5 (HTML único, CDN con versión exacta) | `tests/` | Las dos invariantes solo se revisan a mano | I5 pagada en la pasada de deuda de F1 (f8c98b0, `tests/unit/i5.test.mjs`, con muestras que deben fallar); I4 con el adaptador en T3.1 | abierta (I4) |
 | DT9 | Sin `clave_grupo.txt`, la búsqueda de la clave en `check.sh` es heurística | `tools/check.sh` | Una clave con un formato no previsto pasaría | La búsqueda exacta se hace en la sesión del coordinador (con la clave fuera del repo) en cada puerta de fase | aceptada |
+| DT10 | `buscarAlternativa` ensaya desde la fase `D.fase` y no desde la fase en que arrancó la demo que falló (ni antes ni ahora); la demo interactiva sigue con `simT` absoluto | `src/fallos.js:167`, `src/app.js` | La búsqueda es determinista, pero no reproduce el balanceo exacto del fallo | T1.8 (toca `buscarAlternativa`) | pagada en T1.8 (b44dff3): la búsqueda ensaya desde la fase en que arrancó la demo que falló |
+| DT11 | `validarLayout` es más estricto que `normalizar()` de la v8: una disposición antigua fuera de esa forma se oculta del listado o se sustituye por la de partida; I1 solo está demostrado con 3 escenas. Las escenas ilegibles no se pueden borrar desde la interfaz | `src/layout.js`, `src/escenas.js` | Escenas antiguas raras invisibles para el grupo | Pagada en la pasada de deuda de F1 (63de4b8): sección «Ilegibles» con motivo, papelera y borrado, sin tocar reglas ni campos (I2). Sigue en pie que `validarLayout` es más estricto que la v8: lo cubre la sección. Una Tu mesa ilegible se copia en `gemelo-ur3e-v4-ilegible` antes de sustituirla (revisión de F1, H2; 37a82e6) | pagada |
+| DT12 | `semillaPlan` serializa a precisión completa cualquier campo de obstáculo que sea array u objeto (hoy no hay ninguno). El contador de `tests/e2e/determinismo.test.mjs` no ve el `aleat` capturado en `src/app.js` | `src/rng.js`, tests | Un obstáculo nuevo con array rompería «+1e-7 no cambia la semilla»; test de «sin reintento» débil | Pagada en la pasada de deuda de F1 (0597afa): redondeo a cualquier profundidad (la semilla de referencia no cambia) y `aleat` de `app.js` delega en `RNG.aleat` | pagada |
+| DT13 | Latentes sin efecto medible: la caché de esferas de la pinza guarda la primera apertura de cada milímetro; `D.tick` no se reinicia entre ensayos; `fuente_src` de los fixtures es el último commit y no el árbol | `src/colision.js:28`, `src/app.js`, `tests/fixtures/generar.mjs` | Ninguno hoy (orden directo e inverso coinciden) | Se vigilan con `tests/medidas/repetibilidad.mjs`; F5 | aceptada |
+| DT14 | La IK refinada (`KIN.calibrada`) cuesta unas 4 veces la nominal: con 203–206 el cálculo y la búsqueda tardan más | `src/kin.js` | Esperas más largas fuera de `nominal` | Medida en la pasada de deuda de F1 (5aba8ac, `docs/estado/medida-f1.md`): `calcularPlanes` tarda 0,9 s con `nominal` y 2,8 s con el 203. Se optimiza en F5 si molesta | abierta (F5) |
+| DT15 | Los pares de colisión permitidos se derivan por robot en el gemelo; el curso usa un SRDF único | `src/colision.js` (`iniciarColision`) | Un par permitido en el gemelo puede no estarlo en MoveIt | Con DT6: F3 los compara (T3.4) | abierta |
+| DT16 | El brazo de la otra posición (A/B no elegida) es decorativo y se dibuja siempre con la cinemática nominal | `src/app.js:483` | Solo visual: no coincide con el robot real de esa posición | F2 lo revisa al exportar la escena doble; si no, F5 | abierta |
+| DT17 | `HOLGURA_SEMILLA` = 0,05 (semillas proyectadas al borde del alcance) es un valor elegido a mano y el criterio T1.4-2 (≥ 99,5 %) depende de él | `src/kin.js` | Cambiarlo puede bajar la cobertura de la IK refinada | Aceptado: está documentado en el código y lo cubre T1.4-2 | aceptada |
+| DT18 | Los campos de giro del tablero en `base_link` solo entran en el obstáculo (y en la semilla) cuando el giro no es cero, para no cambiar la semilla de `nominal` | `src/colision.js` | La forma de la entrada de la semilla depende del robot | Con DT12, en la pasada de deuda de F1 | aceptada (2026-11-16): es determinista y cambiarla movería la semilla de `nominal` sin ganar nada |
+| DT19 | `focal_mm` va en milímetros en `posiciones.yaml`; el resto, en metros (REP-103) | `src/app.js` (`generarYaml`) | Una unidad distinta en el mismo fichero | T2.1 (origen y unidades unificados para exportar) | abierta |
+| DT20 | Documentación desfasada: el generador escribe «Aún no entra en el build: se carga en T1.4» (`tools/fixtures/fk_desde_xacro.py:535`) y regenerar `calibracion.js` lo reintroduce; `CLAUDE.md` no lista `calibracion.js`, `layout.js` ni `rng.js` en `src/` | `tools/fixtures/`, `CLAUDE.md` | Un agente que lea solo `CLAUDE.md` no ve esos ficheros | Pagada en la pasada de deuda de F1 (0597afa) | pagada |
+| DT21 | No hay ningún caso real en el que la comprobación de la fruta dé «IK calibrada no converge» con las calibraciones del curso (rejilla de 5 mm): su test simula que ninguna rama converge | `tests/e2e/robot.test.mjs` (corrección 3) | El texto de la fruta solo se prueba con un simulacro | Aceptado: el camino de rutaCartesiana y la comprobación previa sí se prueban con un caso encontrado | aceptada |
+| DT22 | Tras «la salida de la bandeja» (8 cm hacia atrás en horizontal) la pinza sigue tocando la bandeja: con «curso» el movimiento siguiente falla (START_STATE_IN_COLLISION) en los 4 casos de caja; con «gemelo» se separa (hallazgo H2 de T1.8) | `src/app.js` (colocación) | «Validar» dice que «curso» falla en cualquier disposición | Pagada en T1.9 (07ce862): subida de `H_SALIDA` = 2 cm tras la salida, comprobada en `planColocar`; «curso» completa la demo por defecto. El margen frente al balanceo queda en DT30 | pagada |
+| DT23 | `rutaNivelada` calcula el primer punto con `pinza.w` y no con la apertura de la petición: 2,3 mm con w = 6 mm (H1 de T1.8) | `src/colision.js` (`rutaNivelada`) | Primer tramo de la ruta nivelada desplazado | Pagada en T1.9 (07ce862, test T1.9-6) | pagada |
+| DT24 | Tras una demo terminada o fallida, la comprobación previa de Guardar y el ensayo en seco de la búsqueda miran la fruta donde quedó (H3 de T1.8) | `src/escenas.js`, `src/fallos.js` | Veredicto guardado y búsqueda con una escena que no es la de partida | Pagada en la pasada de deuda de F1 (5b132b1): la comprobación previa y el cálculo de trayectorias apartan la escena animada y la devuelven tal cual | pagada |
+| DT25 | La capa «Robot del otro puesto» quita o pone un obstáculo sin invalidar planes, caché de obstáculos ni validación (H4 de T1.8) | `src/app.js`, `src/colision.js` | Planes y veredictos calculados con otros obstáculos | Pagada en la pasada de deuda de F1 (5b132b1): la capa entra en `clavePlan`, en la clave de `obstaculos()` y en `firmaVal` | pagada |
+| DT26 | La validación caduca con cualquier cambio del layout, también la focal o el modo de una cámara, que no cambian ningún obstáculo | `src/app.js` (`firmaVal`) | Hay que volver a validar sin necesidad | Aceptada: es conservadora | aceptada |
+| DT27 | La búsqueda recalcula en su fase 2 los planes de la fase 1 (caché de una sola entrada por perfil) | `src/fallos.js` | Búsqueda más lenta | F5, si molesta | abierta |
+| DT28 | Supuestos del perfil «curso» sin contrastar con MoveIt: 5 niveles de subdivisión, `floor(d/0,01)+1` pasos, la regla de los blandos y sin límite de velocidad del TCP | `src/perfil.js`, `src/colision.js` | El veredicto «curso» puede diferir del de la simulación | T3.3 los compara con el plan de MoveIt | abierta |
+| DT29 | Una escena v9 guardada antes de T1.8 con perfil «curso» atribuye a «curso» un estado que calculó «gemelo» | `src/escenas.js` (`perfilesDe`) | Ninguno hoy: `main` sigue en v8 y no hay escenas así | Aceptada | aceptada |
+| DT30 | `H_SALIDA` = 2 cm deja poco margen frente al balanceo de la bandeja: `planColocar` comprueba la subida con la bandeja en su pose de plan, pero la bandeja se mueve. En 6 de 33 disposiciones vecinas de la demo M0 2 cm, «curso» empieza el movimiento al reposo tocando la bandeja. La holgura no crece con H (con 3 cm falla un caso que pasa con 2 cm) | `src/app.js` (`planColocar`, `servirPlato`) | Un veredicto «curso» que depende de la fase de la bandeja en disposiciones cercanas a la de partida | Pasada de deuda de F2: comprobar la subida contra la bandeja en todo su balanceo y volver a medir `H_SALIDA` | abierta |
+| DT31 | «Reiniciar» (`#dReset`) no se bloquea durante un cálculo (ya pasaba en la v8). El aviso «Demo reiniciada para mover objetos» también sale al cambiar la capa del otro robot | `src/app.js` | Reiniciar a mitad de un cálculo deja planes de una escena que ya no está; aviso confuso | El bloqueo de «Reiniciar» se pagó en la puerta de F1 (H1, 37a82e6): con validación, cálculo o búsqueda en marcha, avisa y no actúa. El aviso de la capa, en la pasada de deuda de F2 | abierta (aviso) |
+| DT32 | `npm test` tarda unos 36 min en el contenedor; T0.2 pedía menos de 15. Lo alargan las demos completas (matriz «gemelo», matriz «curso» en los dos órdenes, barridos de Validar) | `tests/e2e/` | Cada comprobación de una tarea cuesta más de media hora | T2.0, al abrir F2: un nivel por tarea y otro para las puertas de fase, sin quitar ningún test | abierta |
 
 ## 12. Registro de cambios del plan
 
 | Fecha | Cambio | Motivo |
 |---|---|---|
 | 2026-11-15 | Creación del plan | Estudio gemelo-ros y petición del usuario de un plan para agentes autónomos |
+| 2026-11-16 | Fase 1 cerrada. Revisión independiente de toda la fase (`origin/main...t1d`), con 3 hallazgos: H1 (Validar se podía interrumpir) y H2 (Tu mesa ilegible sin copia) se corrigen en 37a82e6 y 741c0b3, comprobados por mutación; H3 era el registro de deuda, ya al día. Hito, I1–I9 y build sin cambios: cumplen. DT11 completa y DT31 pagada en parte. Se añade U6. P1: `v9-dev` se fusiona en `main` con `check.sh` limpio y la clave real | Puerta de calidad de F1 |
+| 2026-11-16 | T1.9 aceptada con la pasada de deuda de F1 (8f9e0ca) tras la revisión del coordinador y `check.sh` limpio con la clave real. Se aceptan sus 8 desviaciones; la principal es que el barrido de T1.8-1 llega a 6 cm (dx 0,04 y 0,06), porque desde T1.9 las cuatro primeras disposiciones pasan con «curso». DT3, DT11, DT12, DT20 y DT22–DT25 pagadas; DT8 (I5) pagada a medias; DT14 medida. Se añaden DT30–DT32 y T2.0 | Informe de T1.9: `H_SALIDA` = 2 cm es el menor valor que deja libres las 19 salidas medidas; el margen frente al balanceo y la duración de la suite pasan a F2 |
+| 2026-11-16 | T1.6, T1.7 y T1.8 aceptadas (2fa8fbc) tras la revisión del coordinador y `check.sh` limpio con la clave real. DT10 pagada; DT18 aceptada; DT22–DT29 añadidas. T1.9 añadida a F1 y brief `T1.9-deuda-F1.md` (T1.9 y pasada de deuda de F1) | Con «curso», la demo no se completa en ninguna disposición (H2): sin arreglarlo, la validación de T1.8 no distingue disposiciones |
+| 2026-11-16 | T1.4 y T1.5 aceptadas (3554b56 tras la revisión independiente del coordinador: 9 correcciones). Al abrir una escena con otro robot, el gemelo lo aplica y lo avisa. DT14–DT21 añadidas. D6 precisada: abrir una escena v8 no calcula «curso». Brief de T1.6+T1.8+T1.7 con las decisiones del coordinador (perfil en cada petición, cachés por perfil, Validar y Guardar con los dos perfiles) | Informe de T1.4+T1.5, revisión independiente y revisión del coordinador |
+| 2026-11-15 | T1.1 y T1.2 aceptadas (69a6905 tras la revisión independiente: 5 correcciones). DT7 pagada; DT10–DT13 añadidas. Ficha T1.4 con `robotId`; nota de `PERFIL_PLAN` en T1.6. Brief de T1.4+T1.5 con las decisiones del coordinador (giro de la base por `mount_yaw`, una sola conversión mundo↔base, IK refinada solo fuera de `nominal`) | Informe de T1.1+T1.2, revisión independiente y revisión del coordinador |
 | 2026-11-15 | Fase 0 cerrada: T0.2–T0.4 aceptadas tras revisión independiente (9 correcciones en dac4587). T1.1 usa `robotId` (el campo `robot` ya es A/B). H2 pasa a T1.1 y H3 y la variabilidad a T1.2; H1 («Ponlo sobre la caja») es comportamiento previsto. D12 reescrita para reflejar P1 delegada. DT7–DT9 añadidas | Informe de la fase 0, revisión independiente y revisión del coordinador |
 | 2026-11-15 | D6 reescrita y T1.8 añadida: los dos perfiles conviven en un flujo «explorar (gemelo) → validar (curso)» | Petición del usuario, 16:18 |
 | 2026-11-15 | Q1–Q5 respondidas: robot B desconocido (nominal), perfil «curso» para escenas nuevas y «gemelo» para las v8, web como herramienta principal, calibraciones del curso con atribución, agentes en la nube | Mensaje del usuario, 16:13 |

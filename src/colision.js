@@ -5,7 +5,6 @@ const ESF_UR = {"base":[[0.004,0.0001,0.048,0.071],[-0.012,0.0121,0.04,0.064],[-
 const ESLAB = ['base', 'shoulder', 'upperarm', 'forearm', 'wrist1', 'wrist2', 'wrist3'];
 const G_NOM = ['la base', 'el hombro', 'el brazo', 'el antebrazo', 'la muñeca 1', 'la muñeca 2', 'la muñeca 3', 'el cuerpo de la pinza', 'un dedo de la pinza', 'un dedo de la pinza', 'lo que lleva la pinza'];
 const LIM = [[-2 * PI, 2 * PI], [-2 * PI, 2 * PI], [-PI, PI], [-2 * PI, 2 * PI], [-2 * PI, 2 * PI], [-Infinity, Infinity]]; // joint_limits.yaml del UR3e
-const ACC_MAX = 3; // rad/s² a velocidad 100 % [SUPUESTO]: el yaml del UR3e no fija aceleraciones
 const PESO_J = [1, 1, 1, 0.7, 0.7, 0.4]; // las muñecas mueven menos masa: cuestan menos en el planificador
 const NC_MAX = 48; // esferas máximas del objeto que lleva la pinza
 const ADY = new Set(['0-1', '1-2', '2-3', '3-4', '4-5', '5-6', '6-7', '6-8', '6-9', '7-8', '7-9', '8-9', '7-10', '8-10', '9-10']);
@@ -74,8 +73,9 @@ function iniciarColision() {
   COL.listo = true;
 }
 // Coloca todas las esferas para una postura q (marco base_link). Devuelve cuántas hay activas.
-function colocar(q, w, carga) {
-  const Ls = KIN.fkLinks(q); COL.loc.set(esferasPinza(w), COL.n0 * 4);
+// kin: la cinemática del brazo (la del robot activo, CIN; el brazo «otro» usa la nominal, T1.4)
+function colocar(q, w, carga, kin = CIN) {
+  const Ls = kin.fkLinks(q); COL.loc.set(esferasPinza(w), COL.n0 * 4);
   let nC = 0; if (carga) { nC = Math.min(carga.length / 4, NC_MAX); COL.loc.set(carga.subarray(0, nC * 4), COL.N * 4); }
   const n = COL.N + nC, Lc = COL.loc, X = COL.X, G = COL.grp;
   for (let i = 0; i < n; i++) {
@@ -95,15 +95,20 @@ function colocar(q, w, carga) {
   COL.nAct = n; COL.nC = nC; return n;
 }
 
-// Obstáculos en el marco base_link: mesa, cajas, platos, fruta, bandeja, persona, cámaras y el otro robot
+// Obstáculos en el marco base_link: mesa, cajas, platos, fruta, bandeja, persona, cámaras y el otro robot.
+// Pasan del mundo a base_link con marco() (traslación y giro de la base, T1.4); con el nominal, la misma resta que antes.
+// La clave de la caché lleva si se ve el robot del otro puesto (H4): mostrarlo u ocultarlo cambia la lista.
 let _obsCache = { key: '', lista: null }, _otroCache = { key: '', lista: null };
 function obstaculos() {
-  const key = `${VERSION_ESCENA}|${L.robot}|${simT.toFixed(4)}`; if (_obsCache.key === key) return _obsCache.lista;
-  const b = BASES[L.robot], bx = b.x, by = b.y, bz = MESA.h, o = [];
-  const esf = (x, y, z, r, tag, m, blando) => o.push({ t: 1, x: x - bx, y: y - by, z: z - bz, r, tag, m, blando, R: r });
-  const cap = (a, c, r, tag, m) => { const ax = a.x - bx, ay = a.y - by, az = a.z - bz, cx = c.x - bx, cy = c.y - by, cz = c.z - bz; o.push({ t: 2, ax, ay, az, cx, cy, cz, r, tag, m, x: (ax + cx) / 2, y: (ay + cy) / 2, z: (az + cz) / 2, R: r + Math.hypot(cx - ax, cy - ay, cz - az) / 2 }); };
-  const obb = (cxw, cyw, czw, hx, hy, hz, yaw, tag, m) => o.push({ t: 3, x: cxw - bx, y: cyw - by, z: czw - bz, hx, hy, hz, c: Math.cos(yaw), s: Math.sin(yaw), tag, m, R: Math.hypot(hx, hy, hz) });
-  o.push({ t: 0, x: -bx, y: -by, z: 0, hx: MESA.w / 2, hy: MESA.d / 2, tag: 'mesa', m: 0.004, R: 9 });
+  const key = `${VERSION_ESCENA}|${L.robot}|${ROB.id}|${simT.toFixed(4)}|${otro && otro.root.visible ? 1 : 0}`; if (_obsCache.key === key) return _obsCache.lista;
+  const mb = marco(), o = [];
+  const esf = (x, y, z, r, tag, m, blando) => { const p = mb.aBase(x, y, z); o.push({ t: 1, x: p[0], y: p[1], z: p[2], r, tag, m, blando, R: r }); };
+  const cap = (a, c, r, tag, m) => { const pa = mb.aBase(a.x, a.y, a.z), pc = mb.aBase(c.x, c.y, c.z); const ax = pa[0], ay = pa[1], az = pa[2], cx = pc[0], cy = pc[1], cz = pc[2]; o.push({ t: 2, ax, ay, az, cx, cy, cz, r, tag, m, x: (ax + cx) / 2, y: (ay + cy) / 2, z: (az + cz) / 2, R: r + Math.hypot(cx - ax, cy - ay, cz - az) / 2 }); };
+  const obb = (cxw, cyw, czw, hx, hy, hz, yaw, tag, m) => { const p = mb.aBase(cxw, cyw, czw), yb = mb.yawABase(yaw); o.push({ t: 3, x: p[0], y: p[1], z: p[2], hx, hy, hz, c: Math.cos(yb), s: Math.sin(yb), tag, m, R: Math.hypot(hx, hy, hz) }); };
+  { // tablero: sus ejes son los del mundo; en base_link giran −yaw de la base. El giro solo se añade si lo hay: todos los
+    // campos de un obstáculo entran en la semilla del RRT (RNG.semillaPlan) y con el nominal no debe cambiar (I8)
+    const p = mb.aBase(0, 0, MESA.h), yb = mb.yawABase(0), mesa = { t: 0, x: p[0], y: p[1], z: p[2], hx: MESA.w / 2, hy: MESA.d / 2, tag: 'mesa', m: 0.004, R: 9 };
+    if (yb !== 0) Object.assign(mesa, { giro: true, c: Math.cos(yb), s: Math.sin(yb) }); o.push(mesa); }
   if (L.caja.on) for (const k of ['1', '2']) { const cj = OBJ['caja' + k]; if (!cj.visible) continue; obb(cj.position.x, cj.position.y, MESA.h + L.caja.h / 2, CAJA_LADO / 2, CAJA_LADO / 2, L.caja.h / 2, cj.rotation.z, 'caja:plato' + k, 0.002); }
   const v = new THREE.Vector3();
   for (const pk of ['plato1', 'plato2']) { const P = OBJ[pk]; if (P.parent === pinza.tcp || !P.visible) continue; const e = esferasObjeto(P, null); const enBandeja = P.parent === bandeja; for (let i = 0; i < e.length; i += 4) esf(e[i], e[i + 1], e[i + 2], e[i + 3], 'plato:' + pk, 0.002, enBandeja); }
@@ -115,7 +120,7 @@ function obstaculos() {
   cap(pw(0, 0, 0.97), pw(0, 0, 1.38), 0.17, 'persona', 0.03); { const h = pw(0, 0, 1.63); esf(h.x, h.y, h.z, 0.12, 'persona', 0.03); }
   for (let k = 0; k < 4; k++) { const m = brazos[k]; const d = new THREE.Vector3(0, 1, 0).applyQuaternion(m.quaternion); const l = m.scale.y / 2; const a = m.position.clone().addScaledVector(d, -l), c = m.position.clone().addScaledVector(d, l); if (k % 2) { c.addScaledVector(d, -0.03); cap(a, c, 0.03, 'manos', 0.005); } else cap(a, c, 0.035, 'persona', 0.03); }
   for (const k in CAMS) { const R = CAMS[k]; R.cam.updateMatrixWorld(true); for (const [z, r] of [[0.008, 0.032], [-0.02, 0.022]]) { const p = new THREE.Vector3(0, 0, z).applyMatrix4(R.cam.matrixWorld); esf(p.x, p.y, p.z, r, 'camara:' + k, 0.01); } for (const s of R.seg) { const d = new THREE.Vector3(0, 1, 0).applyQuaternion(s.quaternion); const l = s.scale.y / 2; cap(s.position.clone().addScaledVector(d, -l), s.position.clone().addScaledVector(d, l), 0.0115, 'camara:' + k, 0.01); } esf(R.codo.position.x, R.codo.position.y, R.codo.position.z, 0.03, 'camara:' + k, 0.01); esf(R.clamp.position.x, R.clamp.position.y, R.clamp.position.z, 0.045, 'camara:' + k, 0.005); }
-  if (otro && otro.root.visible) { const ob = otro.root.position; const kq = `${ob.x}|${ob.y}|${otro.q.join(',')}`; if (_otroCache.key !== kq) { colocar(otro.q, 0.06, null); const l = []; for (let i = 0; i < COL.N; i++) l.push(COL.X[i * 4] + ob.x, COL.X[i * 4 + 1] + ob.y, COL.X[i * 4 + 2] + MESA.h, COL.X[i * 4 + 3]); _otroCache = { key: kq, lista: l }; } const l = _otroCache.lista; for (let i = 0; i < l.length; i += 4) esf(l[i], l[i + 1], l[i + 2], l[i + 3], 'robot A', 0.01); }
+  if (otro && otro.root.visible) { const ob = otro.root.position; const kq = `${ob.x}|${ob.y}|${otro.q.join(',')}`; if (_otroCache.key !== kq) { colocar(otro.q, 0.06, null, KIN.nominal); const l = []; for (let i = 0; i < COL.N; i++) l.push(COL.X[i * 4] + ob.x, COL.X[i * 4 + 1] + ob.y, COL.X[i * 4 + 2] + MESA.h, COL.X[i * 4 + 3]); _otroCache = { key: kq, lista: l }; } const l = _otroCache.lista; for (let i = 0; i < l.length; i += 4) esf(l[i], l[i + 1], l[i + 2], l[i + 3], 'robot A', 0.01); }
   _obsCache = { key, lista: o }; return o;
 }
 const NOM_OBS = t => t === 'mesa' ? 'la mesa' : t.startsWith('caja') ? 'una caja' : t.startsWith('plato') ? 'un plato' : t.startsWith('pieza') ? 'una pieza de fruta' : t === 'bandeja' ? 'la bandeja' : t === 'manos' ? 'las manos de la persona' : t === 'persona' ? 'la persona' : t.startsWith('camara') ? `la cámara ${t.split(':')[1]} o su brazo` : 'el robot A';
@@ -147,7 +152,7 @@ function choqueEn(q, ctx = {}) {
         else if (B[g * 4 + 2] - B[g * 4 + 3] > o.m) continue;
       for (let i = ga; i < ge; i++) {
         const k = i * 4, x = X[k], y = X[k + 1], z = X[k + 2], r = X[k + 3];
-        if (o.t === 0) { if (Math.abs(x - o.x) < o.hx && Math.abs(y - o.y) < o.hy && z - r < o.m) return { tipo: 'entorno', a: G[i], b: o.tag, p: [x, y, z - r] }; continue; }
+        if (o.t === 0) { const dx = x - o.x, dy = y - o.y, lx = o.giro ? dx * o.c + dy * o.s : dx, ly = o.giro ? -dx * o.s + dy * o.c : dy; if (Math.abs(lx) < o.hx && Math.abs(ly) < o.hy && z - r < o.m) return { tipo: 'entorno', a: G[i], b: o.tag, p: [x, y, z - r] }; continue; }
         const dx = x - o.x, dy = y - o.y, dz = z - o.z, lim = o.R + r + o.m; if (dx * dx + dy * dy + dz * dz > lim * lim) continue; // descarte rápido
         if (distObs(o, x, y, z) < r + o.m) return { tipo: 'entorno', a: G[i], b: o.tag, p: [x, y, z] };
       }
@@ -164,7 +169,7 @@ function holguraTotal(q, ctx = {}) {
   return m;
 }
 function textoChoque(c) { return c.tipo === 'auto' ? `${G_NOM[c.a]} con ${G_NOM[c.b]}` : `${G_NOM[c.a]} con ${NOM_OBS(c.b)}`; }
-function ctxDe(o = {}) { return { w: o.w ?? pinza.w, carga: o.carga === undefined ? D.carga : o.carga, permitir: o.permitir, conBlandos: o.conBlandos, sinEntorno: o.sinEntorno, sinAuto: o.sinAuto }; }
+function ctxDe(o = {}) { return { w: o.w ?? pinza.w, carga: o.carga === undefined ? D.carga : o.carga, permitir: o.permitir, conBlandos: o.conBlandos, sinEntorno: o.sinEntorno, sinAuto: o.sinAuto, perfil: o.perfil }; } // perfil: el de la petición (T1.6); choqueEn no lo usa
 function enLimites(q) { for (let i = 0; i < 6; i++) { if (q[i] >= LIM[i][0] && q[i] <= LIM[i][1]) continue; const alt = q[i] - Math.sign(q[i]) * 2 * PI; if (alt >= LIM[i][0] && alt <= LIM[i][1]) q[i] = alt; else return null; } return q; }
 
 // Tramo articular libre: se comprueba cada 1,4° como máximo (a 0,5 m del eje son 12 mm, menos que cualquier obstáculo)
@@ -193,57 +198,94 @@ function atajar(ruta, ctx, rnd) {
   for (let it = 0; it < 80 && ruta.length > 2; it++) { const i = Math.floor(rnd() * (ruta.length - 2)), j = i + 2 + Math.floor(rnd() * (ruta.length - i - 2)); if (j < ruta.length && tramoLibre(ruta[i], ruta[j], ctx)) ruta.splice(i + 1, j - i - 1); }
   return ruta;
 }
-let SEMILLA = 1;
+// Semilla por petición (T1.2, D5, I6): hash de la entrada canónica del plan (src/rng.js) con los mismos valores por
+// defecto que choqueEn y el perfil de la petición (T1.6: ctx.perfil; sin perfil, la petición falla). La misma petición da
+// el mismo plan, se calcule en el orden que se calcule; con «gemelo», la entrada es la de antes (PERFIL.entradaSemilla).
+function semillaDe(qa, qb, ctx) {
+  return RNG.semillaPlan(PERFIL.entradaSemilla({ qa, qb, w: ctx.w ?? pinza.w, carga: ctx.carga === undefined ? D.carga : ctx.carga, obst: ctx.sinEntorno ? null : (ctx.obst || obstaculos()),
+    permitir: ctx.permitir, conBlandos: ctx.conBlandos, sinEntorno: ctx.sinEntorno, sinAuto: ctx.sinAuto, perfil: ctx.perfil }));
+}
 function planificar(qa, qb, ctx) {
+  PERFIL.de(ctx.perfil); // toda petición lleva su perfil (T1.6): también el camino recto, que no llega a la semilla
   if (D.sinPlanificador || tramoLibre(qa, qb, ctx)) return { ruta: [qa, qb], plan: false };
   if (choqueEn(qb, ctx)) return null;
-  const rnd = aleat(SEMILLA++ * 7919);
+  const rnd = RNG.aleat(semillaDe(qa, qb, ctx)); // una sola semilla: si con ella no hay camino, no hay plan (sin reintentos)
   for (const [h, it] of [[PI / 2, 1500], [PI, 3000]]) { const r = rrtConnect(qa, qb, ctx, rnd, h, it); if (r) return { ruta: atajar(r, ctx, rnd), plan: true }; }
   return null;
 }
-// Reparto del tiempo: perfil suave con la velocidad articular del UR3e (escalada) y aceleración limitada
-function duracion(ruta, factor) {
-  let S = 0, maxRec = 0; const acum = [0], rec = [0, 0, 0, 0, 0, 0];
-  for (let k = 1; k < ruta.length; k++) { let d = 0; for (let i = 0; i < 6; i++) { const dq = Math.abs(ruta[k][i] - ruta[k - 1][i]); d = Math.max(d, dq / VMAX[i]); rec[i] += dq; } S += d; acum.push(S); }
-  maxRec = Math.max(...rec); const v = D.vel * factor;
-  return { S, acum, T: Math.max(0.25, 1.5 * S / v, Math.sqrt(6 * maxRec / (ACC_MAX * v))) };
-}
-async function ejecutar(ruta, factor = 1, Tmin = 0) {
-  const { S, acum, T: T0 } = duracion(ruta, factor); const T = Math.max(T0, Tmin); D.motion += T;
+// Reparto del tiempo según el perfil de la petición (src/perfil.js, T1.6): «gemelo», perfil suave con la velocidad
+// articular del UR3e escalada por la de la demo y aceleración limitada; «curso», trapecio por articulación a escala 0,1
+// (aproximación, no TOTG: DT4)
+function duracion(ruta, factor, perfil) { return PERFIL.duracion(ruta, { perfil, vel: D.vel, factor, vmax: VMAX }); }
+// Tiempo mínimo de una recta cartesiana: en «gemelo», 0,5 m/s de TCP al 100 % de la velocidad de la demo; en «curso», ninguno
+// (MoveIt no limita la velocidad del TCP; la recta va a escala 0,1 como el resto [SUPUESTO: el grupo no la limita])
+function tMinCart(largo, f, perfil) { return PERFIL.de(perfil).escala === null ? 1.5 * largo / (0.5 * D.vel * f) : 0; }
+async function ejecutar(ruta, factor, Tmin, perfil) {
+  const { S, acum, T: T0 } = duracion(ruta, factor, perfil); const T = Math.max(T0, Tmin); D.motion += T;
   await anim(T, s => {
     const u = smooth(s) * S; let k = 1; while (k < acum.length - 1 && acum[k] < u) k++;
     const a = ruta[k - 1], b = ruta[k], f = acum[k] > acum[k - 1] ? clamp((u - acum[k - 1]) / (acum[k] - acum[k - 1]), 0, 1) : 1;
     robot.setQ(a.map((v, i) => v + (b[i] - v) * f));
   });
 }
-// Movimiento articular planificado (como move_group con OMPL)
-async function moveJ(qT, factor = 1, opts = {}, desc = 'el destino') {
-  const ctx = ctxDe({ ...opts, conBlandos: true }); const q0 = robot.q.slice();
-  if (choqueEn(q0, ctx) || choqueEn(qT, ctx)) ctx.conBlandos = false; // si sale o llega tocando fruta o un plato de la bandeja, esos no cuentan
-  // si sale en contacto (acaba de soltar algo), se permite separarse de eso, como el adaptador FixStartStateCollision de MoveIt
-  ctx.permitir = [...(ctx.permitir || [])]; for (let k = 0; k < 3; k++) { const c = choqueEn(q0, ctx); if (!c || c.tipo !== 'entorno') break; ctx.permitir.push(c.b); }
+// Petición de un movimiento articular planificado desde q0 (como move_group con OMPL), sin moverse. opts.perfil decide
+// qué pasa si la postura de partida ya toca algo (T1.6, decisión 5 del brief):
+//  · «gemelo»: se permite separarse de lo que toca (acaba de soltar algo), como el adaptador FixStartStateCollision;
+//  · «curso»: si toca algo que no está en opts.permitir, falla con START_STATE_IN_COLLISION (CheckStartStateCollision;
+//    en Jazzy no existe FixStartStateCollision).
+// En los dos, si sale o llega tocando fruta o un plato de la bandeja, esos no cuentan [en «curso», SUPUESTO: el grupo no los
+// mete en la escena de planificación]. Devuelve { ruta, plan } o lanza FalloDemo.
+function prepararMoveJ(q0, qT, opts = {}, desc = 'el destino') {
+  const pf = PERFIL.de(opts.perfil); const ctx = ctxDe({ ...opts, conBlandos: true });
+  if (choqueEn(q0, ctx) || choqueEn(qT, ctx)) ctx.conBlandos = false;
+  if (pf.arranque === 'separar') { ctx.permitir = [...(ctx.permitir || [])]; for (let k = 0; k < 3; k++) { const c = choqueEn(q0, ctx); if (!c || c.tipo !== 'entorno') break; ctx.permitir.push(c.b); } }
+  else { const c = choqueEn(q0, ctx); if (c) throw new FalloDemo(`MoveIt rechazaría el arranque en contacto (START_STATE_IN_COLLISION): ${textoChoque(c)}, al ir hacia ${desc}.`, 'fallo', { causa: 'arranque_contacto', choque: c, q: q0.slice() }); }
   const r = planificar(q0, qT, ctx);
   if (!r) throw new FalloDemo(`No encuentro una trayectoria sin colisiones hasta ${desc}.`, 'fallo', { causa: 'sin_trayectoria', q: qT });
-  if (r.plan) { D.planes++; $('#dPlanes').textContent = D.planes; publicar('/movimiento/plan [PROPUESTA]', ['accion'], { destino: desc, planificador: 'RRTConnect + atajos', puntos_de_paso: r.ruta.length - 2 }); }
-  await ejecutar(r.ruta, factor);
+  return r;
 }
-// Ruta cartesiana por puntos de paso {p, yaw} (computeCartesianPath): IK cada 4 mm sin saltos de configuración ni choques
+async function moveJ(qT, factor = 1, opts = {}, desc = 'el destino') {
+  const r = prepararMoveJ(robot.q.slice(), qT, opts, desc);
+  if (r.plan) { D.planes++; $('#dPlanes').textContent = D.planes; publicar('/movimiento/plan [PROPUESTA]', ['accion'], { destino: desc, planificador: 'RRTConnect + atajos', puntos_de_paso: r.ruta.length - 2 }); }
+  await ejecutar(r.ruta, factor, 0, opts.perfil);
+}
+// Ruta cartesiana por puntos de paso {p, yaw} (computeCartesianPath), según opts.perfil (T1.6):
+//  · «gemelo»: IK cada 4 mm sin saltos de configuración (0,15 rad) ni choques;
+//  · «curso» (MoveIt 2.11+): IK cada 0,01 m y, entre cada par de posturas, el punto medio articular frente al cartesiano
+//    (1 mm y 0,01 rad), subdividiendo hasta PERFIL.TABLA.curso.cart.maxNivel veces; si no se consigue, corta con
+//    causa «cartesiana_incompleta» y la fracción hecha (pct en %, fraccion de 0 a 1, como `fraction` de MoveIt).
+// La IK de cada paso, la comprobación de choques de cada tramo y lo que se hace cuando falla son las mismas en los dos.
 function rutaCartesiana(q0, puntos, opts) {
+  const pf = PERFIL.de(opts.perfil), curso = pf.escala !== null;
   const ctx = ctxDe(opts); const ruta = [q0.slice()]; let largo = 0; for (let k = 1; k < puntos.length; k++) largo += puntos[k].p.distanceTo(puntos[k - 1].p); let hecho = 0;
   const mal = (f, extra = {}) => ({ fallo: f, pct: Math.round(100 * hecho / Math.max(largo, 1e-6)), ...extra });
+  const tz = curso ? pinza.tcpZ(opts.w ?? pinza.w) : 0;
+  const desvio = (qa, qb) => PERFIL.desvioMedio(CIN.fk(qa), CIN.fk(qb), CIN.fk(qa.map((v, i) => (v + qb[i]) / 2)), tz);
   for (let s = 1; s < puntos.length; s++) {
-    const a = puntos[s - 1], b = puntos[s], d = a.p.distanceTo(b.p), dy = angDiff(b.yaw, a.yaw); const n = Math.max(1, Math.ceil(Math.max(d / 0.004, Math.abs(dy) / 0.02)));
+    const a = puntos[s - 1], b = puntos[s], d = a.p.distanceTo(b.p), dy = angDiff(b.yaw, a.yaw); const n = PERFIL.pasosTramo(pf.nombre, d, dy);
     for (let k = 1; k <= n; k++) {
       const prev = ruta[ruta.length - 1], t = k / n; const q = ikTCP(a.p.clone().lerp(b.p, t), a.yaw + dy * t, prev, opts);
-      if (!q) { const pp = a.p.clone().lerp(b.p, t); const q2 = ikTCP(pp, a.yaw + dy * t, prev, { ...opts, sinColision: true }); const c = q2 && choqueEn(q2, ctx); return mal(c ? `chocaría ${textoChoque(c)}` : 'se sale del alcance', { causa: causaDe(c) || 'alcance', choque: c || null, q: q2 || prev, p: pp }); }
-      if (Math.max(...q.map((v, i) => Math.abs(v - prev[i]))) > 0.15) { const q2 = ikTCP(a.p.clone().lerp(b.p, t), a.yaw + dy * t, prev, { ...opts, sinColision: true }); const c = q2 && Math.max(...q2.map((v, i) => Math.abs(v - prev[i]))) <= 0.15 && choqueEn(q2, ctx); const m = mal(c ? `chocaría ${textoChoque(c)}` : 'la postura salta (cerca de una singularidad)', { causa: causaDe(c) || 'singularidad', choque: c || null, q: q2 || q, p: a.p.clone().lerp(b.p, t) }); m.dbg = { prev: prev.map(v => +(v * R2D).toFixed(1)), q: q.map(v => +(v * R2D).toFixed(1)), p: a.p.clone().lerp(b.p, t), seg: s, n: puntos.length }; return m; }
+      if (!q) { const pp = a.p.clone().lerp(b.p, t); const q2 = ikTCP(pp, a.yaw + dy * t, prev, { ...opts, sinColision: true }); const c = q2 && choqueEn(q2, ctx); const causa = causaDe(c) || (q2 ? 'alcance' : causaSinIK(pp, a.yaw + dy * t, opts)); return mal(c ? `chocaría ${textoChoque(c)}` : causa === 'ik_calibrada' ? 'IK calibrada no converge' : 'se sale del alcance', { causa, choque: c || null, q: q2 || prev, p: pp }); }
+      if (curso) { // punto medio de MoveIt 2.11+ entre prev y q, con subdivisión; cada subtramo aceptado se comprueba como un paso
+        const t0 = (k - 1) / n, pt = tt => a.p.clone().lerp(b.p, tt);
+        const sub = PERFIL.subdividir(prev, t0, q, t, { desvio, ik: (tm, qc) => ikTCP(pt(tm), a.yaw + dy * tm, qc, opts) }, pf.cart);
+        let qp = prev, tp = t0;
+        for (const [ts, qs] of sub.qs) {
+          if (!tramoLibre(qp, qs, ctx)) { const c = choqueEn(qs, ctx) || choqueEn(qp.map((v, i) => (v + qs[i]) / 2), ctx); return mal(c ? `chocaría ${textoChoque(c)}` : 'chocaría en el camino', { causa: causaDe(c) || 'choque', choque: c, q: qs, p: pt(ts) }); }
+          ruta.push(qs); hecho += d * (ts - tp); qp = qs; tp = ts;
+        }
+        if (sub.fallo) { const fr = hecho / Math.max(largo, 1e-6), F = sub.fallo; return mal(`la ruta cartesiana queda incompleta: entre dos posturas, el punto medio articular se aparta ${fmt(F.dp * 1000, 1)} mm y ${fmt(F.dr, 3)} rad de la recta${F.sinIK ? ' y no hay IK para subdividir' : ` tras ${F.nivel} subdivisiones`} (MoveIt la corta en el ${Math.round(100 * fr)} %)`, { causa: 'cartesiana_incompleta', fraccion: fr, choque: null, q: qp, p: pt(F.t) }); }
+        continue;
+      }
+      if (Math.max(...q.map((v, i) => Math.abs(v - prev[i]))) > pf.cart.salto) { const q2 = ikTCP(a.p.clone().lerp(b.p, t), a.yaw + dy * t, prev, { ...opts, sinColision: true }); const c = q2 && Math.max(...q2.map((v, i) => Math.abs(v - prev[i]))) <= 0.15 && choqueEn(q2, ctx); const m = mal(c ? `chocaría ${textoChoque(c)}` : 'la postura salta (cerca de una singularidad)', { causa: causaDe(c) || 'singularidad', choque: c || null, q: q2 || q, p: a.p.clone().lerp(b.p, t) }); m.dbg = { prev: prev.map(v => +(v * R2D).toFixed(1)), q: q.map(v => +(v * R2D).toFixed(1)), p: a.p.clone().lerp(b.p, t), seg: s, n: puntos.length }; return m; }
       if (!tramoLibre(prev, q, ctx)) { const c = choqueEn(q, ctx) || choqueEn(prev.map((v, i) => (v + q[i]) / 2), ctx); return mal(c ? `chocaría ${textoChoque(c)}` : 'chocaría en el camino', { causa: causaDe(c) || 'choque', choque: c, q, p: a.p.clone().lerp(b.p, t) }); }
       ruta.push(q); hecho += d / n;
     }
   }
   return { ruta, largo };
 }
-function tcpDeQ(q, w = pinza.w) { const T = KIN.fk(q), tz = pinza.tcpZ(w), b = BASES[L.robot]; return { p: new THREE.Vector3(T[3] + T[2] * tz + b.x, T[7] + T[6] * tz + b.y, T[11] + T[10] * tz + MESA.h), ejeZ: new THREE.Vector3(T[2], T[6], T[10]), ejeX: new THREE.Vector3(T[0], T[4], T[8]) }; }
+// TCP (en el mundo) y ejes de la herramienta para una postura, con la cinemática activa y marco() (T1.4)
+function tcpDeQ(q, w = pinza.w) { const T = CIN.fk(q), tz = pinza.tcpZ(w), mb = marco(); const z = mb.vecAMundo(T[2], T[6], T[10]), x = mb.vecAMundo(T[0], T[4], T[8]); return { p: baseAMundo(T[3] + T[2] * tz, T[7] + T[6] * tz, T[11] + T[10] * tz), ejeZ: new THREE.Vector3(z[0], z[1], z[2]), ejeX: new THREE.Vector3(x[0], x[1], x[2]) }; }
 function yawDeQ(q, horiz) { const t = tcpDeQ(q); return horiz ? Math.atan2(t.ejeZ.y, t.ejeZ.x) : Math.atan2(t.ejeX.y, t.ejeX.x); }
 // Movimiento recto de la pinza; si no es posible, movimiento articular planificado (salvo opts.estricto)
 async function moveL(p, yaw, opts = {}, desc = 'un punto') {
@@ -255,11 +297,13 @@ async function moveL(p, yaw, opts = {}, desc = 'un punto') {
     D.sustituidos++; pintarCalidad(); publicar('/movimiento/aviso [PROPUESTA]', ['accion'], { tramo: desc, recta_hasta: `${r.pct} %`, motivo: r.fallo, se_usa: 'movimiento articular planificado' });
     return moveJ(qF, f, opts, desc);
   }
-  await ejecutar(r.ruta, f, 1.5 * r.largo / (0.5 * D.vel * f)); // 0,5 m/s de TCP al 100 %
+  await ejecutar(r.ruta, f, tMinCart(r.largo, f, opts.perfil), opts.perfil);
 }
 // Transporte del plato nivelado: sube, gira alrededor de la base a altura constante y baja, sin inclinar el plato
+// El primer punto es el TCP real de q0 con la apertura de la petición (opts.w; DT23): con pinza.w quedaba desplazado
+// (2,3 mm con w = 6 mm). Cada resultado lleva ese punto en `inicio`.
 function rutaNivelada(q0, p1, yaw1, opts) {
-  const t0 = tcpDeQ(q0); const p0 = t0.p, yaw0 = Math.atan2(t0.ejeZ.y, t0.ejeZ.x); const b = BASES[L.robot]; let ult = null;
+  const t0 = tcpDeQ(q0, opts.w ?? pinza.w); const p0 = t0.p, yaw0 = Math.atan2(t0.ejeZ.y, t0.ejeZ.x); const b = BASES[L.robot]; let ult = null;
   const pol = p => ({ r: Math.hypot(p.x - b.x, p.y - b.y), f: Math.atan2(p.y - b.y, p.x - b.x) });
   // Variantes, de la más simple a la más rebuscada: el giro de la pinza respecto al radio puede pasar por tangencial (aleja la muñeca
   // del eje de la base, donde está la singularidad del hombro) y el camino puede abrirse hacia fuera
@@ -270,7 +314,7 @@ function rutaNivelada(q0, p1, yaw1, opts) {
     const pts = [{ p: p0, yaw: yaw0 }]; const n = Math.max(4, Math.ceil(Math.abs(df) * Math.max(A.r, B.r) / 0.02));
     for (let k = 0; k <= n; k++) { const t = k / n, f = A.f + df * t, r = A.r + (B.r - A.r) * t + bulto * Math.sin(PI * t); pts.push({ p: new THREE.Vector3(b.x + r * Math.cos(f), b.y + r * Math.sin(f), zs), yaw: f + rel(t) }); }
     pts.push({ p: p1, yaw: yaw1 });
-    const r = rutaCartesiana(q0, pts, opts); if (r.ruta) return r; if (!ult || r.pct > ult.pct) ult = r;
+    const r = rutaCartesiana(q0, pts, opts); r.inicio = p0; if (r.ruta) return r; if (!ult || r.pct > ult.pct) ult = r;
   }
   return ult;
 }
@@ -278,7 +322,7 @@ async function moveNivelado(p1, yaw1, opts, desc) {
   const r = rutaNivelada(robot.q, p1, yaw1, opts);
   if (!r.ruta) throw new FalloDemo(`No puedo llevar el plato nivelado hasta ${desc}: ${r.fallo} (llega al ${r.pct} %).`);
   publicar('/movimiento/transporte [PROPUESTA]', ['accion'], { destino: desc, restriccion: 'plato nivelado', largo_mm: mm(r.largo) });
-  const f = factorPersona(p1); await ejecutar(r.ruta, f, 1.5 * r.largo / (0.5 * D.vel * f));
+  const f = factorPersona(p1); await ejecutar(r.ruta, f, tMinCart(r.largo, f, opts.perfil), opts.perfil);
 }
 // Servo para seguir la bandeja: cada paso limita la velocidad de cada articulación y comprueba choques (parada de protección)
 function servo(qObj, dt, ctx, desc) {
@@ -289,7 +333,7 @@ function servo(qObj, dt, ctx, desc) {
 // Vigilancia independiente de autocolisiones en lo que se ve (debe quedarse en 0)
 function vigilarAuto() {
   const c = choqueEn(robot.q, { sinEntorno: true });
-  if (c && !D.autoAhora) { D.autocol++; $('#dAuto').textContent = D.autocol; pintarCalidad(); const b = BASES[L.robot]; marcaChoque.position.set(c.p[0] + b.x, c.p[1] + b.y, c.p[2] + MESA.h); marcaChoque.visible = true; D.marcaHasta = simT + 2; publicar('/seguridad/autocolision [PROPUESTA]', ['segur'], { fase: D.estado, entre: textoChoque(c) }); }
+  if (c && !D.autoAhora) { D.autocol++; $('#dAuto').textContent = D.autocol; pintarCalidad(); marcaChoque.position.copy(baseAMundo(c.p[0], c.p[1], c.p[2])); marcaChoque.visible = true; D.marcaHasta = simT + 2; publicar('/seguridad/autocolision [PROPUESTA]', ['segur'], { fase: D.estado, entre: textoChoque(c) }); }
   D.autoAhora = !!c;
 }
 // Volúmenes de colisión visibles (capa de la escena)

@@ -1,7 +1,7 @@
 // Servidor HTTP local para las pruebas e2e. Sirve la raíz del repo en 127.0.0.1 con un puerto libre.
 // Rutas especiales (los dos destinos de D2):
 //   /artefacto.html         dist/gemelo-celda.html envuelto en un esqueleto con doctype, como lo muestra claude.ai
-//   /artefacto-claude.html  lo mismo, con tests/legacy/mock_claude.html delante (almacén de claude.ai simulado)
+//   /artefacto-claude.html  lo mismo, con tests/mocks/mock_claude.html delante (almacén de claude.ai simulado)
 //   /index.html             la versión web tal cual (config.js y firebase.js se sustituyen en el navegador, no aquí)
 import http from 'node:http';
 import fs from 'node:fs';
@@ -15,7 +15,7 @@ const ESQUELETO = '<!doctype html>\n<html lang="es"><head><meta charset="utf-8">
 function artefacto(conClaude) {
   const f = path.join(RAIZ, 'dist/gemelo-celda.html');
   if (!fs.existsSync(f)) throw new Error('Falta dist/gemelo-celda.html: ejecuta npm run build');
-  const mock = conClaude ? fs.readFileSync(path.join(RAIZ, 'tests/legacy/mock_claude.html'), 'utf8') + '\n' : '';
+  const mock = conClaude ? fs.readFileSync(path.join(RAIZ, 'tests/mocks/mock_claude.html'), 'utf8') + '\n' : '';
   return ESQUELETO + mock + fs.readFileSync(f, 'utf8') + '\n</html>\n';
 }
 

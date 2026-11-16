@@ -111,7 +111,12 @@
           },
           "roll": 0
         }
-      }
+      },
+      "version": 9,
+      "robotId": "nominal",
+      "perfil": "gemelo",
+      "sensor": "gemelo-v8",
+      "prefijoFrames": ""
     },
     "veredicto": {
       "ok": true,
@@ -126,5 +131,5 @@
       "pausas": 0
     }
   },
-  "esperado_fuente_src": "41dd4d5"
+  "esperado_fuente_src": "4b80043"
 }

@@ -99,6 +99,18 @@ details.escSec summary{cursor:pointer;font-weight:600;font-size:13px}
 .calcBar{display:flex;gap:10px;align-items:center;max-width:100%;background:var(--panel);border:1px solid var(--warn);border-radius:8px;padding:6px 6px 6px 12px;font-size:12.5px;font-weight:600;box-shadow:0 4px 14px rgba(0,0,0,.12)}
 .calcBar #calcTxt{min-width:0;overflow-wrap:anywhere}
 .calcBar .btn{flex:none}
+.valBar{display:flex;gap:10px;align-items:center;max-width:100%;background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:6px 6px 6px 12px;font-size:12.5px;box-shadow:0 4px 14px rgba(0,0,0,.12)}
+.valBar #valTxt{min-width:0;display:flex;gap:8px;align-items:center;overflow-wrap:anywhere}
+.valBar .btn{flex:none}
+.valFilas{display:flex;flex-direction:column;gap:3px}
+.valFila{display:flex;gap:6px;align-items:baseline}
+.valFila .dot{align-self:center}
+.valFila b{min-width:52px}
+.valMotivo{color:var(--bad);font-weight:600}
+.valFilas small{color:var(--muted);font-size:11px}
+.dots{display:inline-flex;gap:3px;flex:none}
+.ppf{display:inline-flex;gap:4px;align-items:center;margin-right:8px;font-size:11.5px;color:var(--muted)}
+.dot.none{background:transparent;border:1.5px solid var(--muted)}
 .camMode{position:absolute;top:52px;right:10px;z-index:4;display:flex;gap:8px;align-items:center;background:var(--panel);border:1px solid var(--line);border-radius:6px;padding:5px 8px;font-size:12.5px}
 .panel{min-height:0;overflow:auto;background:var(--panel);border:1px solid var(--line);border-radius:var(--r);display:flex;flex-direction:column}
 .tabs{position:sticky;top:0;z-index:2;display:grid;grid-template-columns:repeat(5,1fr);background:var(--panel);border-bottom:1px solid var(--line)}
@@ -224,7 +236,7 @@ textarea{width:100%;min-height:120px;border:1px solid var(--line);border-radius:
     </div>
     <nav class="escNav" id="escNav" aria-label="Escenas guardadas por el grupo">
       <button class="nb" id="escPrev" aria-label="Escena anterior">‹</button>
-      <button class="escCur" id="escCur" aria-expanded="false" aria-controls="escPop" title="Ver todas las escenas del grupo"><span class="dot none" id="escDot"></span><span class="escTxt"><b id="escNom">Tu mesa (sin guardar)</b><small id="escMeta">cargando escenas…</small></span><span class="car" aria-hidden="true">▾</span></button>
+      <button class="escCur" id="escCur" aria-expanded="false" aria-controls="escPop" title="Ver todas las escenas del grupo"><span class="dots" id="escDot" title="Veredicto de la escena con «gemelo» y con «curso»"><span class="dot none" data-perfil="gemelo"></span><span class="dot none" data-perfil="curso"></span></span><span class="escTxt"><b id="escNom">Tu mesa (sin guardar)</b><small id="escMeta">cargando escenas…</small></span><span class="car" aria-hidden="true">▾</span></button>
       <button class="nb" id="escNext" aria-label="Escena siguiente">›</button>
       <button class="btn pri" id="escGuardarBtn">Guardar escena</button>
     </nav>
@@ -237,7 +249,7 @@ textarea{width:100%;min-height:120px;border:1px solid var(--line);border-radius:
       <label class="field2">Nombre de la escena<input id="escNombre" maxlength="60" placeholder="Ej.: cámara de entrega 10 cm más alta"></label>
       <label class="field2">Qué quieres enseñar o que se valore<textarea id="escNota" rows="2" maxlength="500" placeholder="Ej.: con la persona más cerca, ¿sigue viendo la cámara V2 las manos?"></textarea></label>
       <div class="btns"><button class="btn pri" id="escNueva">Guardar como escena nueva</button><button class="btn" id="escCambios" hidden>Guardar cambios</button></div>
-      <p class="hint">Se guardan la disposición, el pedido, los ajustes de la demo y el punto de vista actual. Antes de guardar se hace la comprobación previa, para que el resto vea si es viable.</p>
+      <p class="hint">Se guardan la disposición, el pedido, los ajustes de la demo y el punto de vista actual. Antes de guardar se hace la comprobación previa con los dos perfiles («gemelo» y «curso»), para que el resto vea si es viable; la demo de cada perfil solo se guarda si la escena está validada tal como está.</p>
     </div>
     <p class="hint" id="escSoloLectura" hidden></p>
     <ul class="escLista" id="escLista"></ul>
@@ -260,6 +272,7 @@ textarea{width:100%;min-height:120px;border:1px solid var(--line);border-radius:
       </div>
       <div class="camMode" id="camMode" hidden><span id="camModeTxt">Vista de cámara</span><button class="btn" id="camModeExit">Volver</button></div>
       <div class="hudcol"><div class="calcBar" id="calcBar" role="status" hidden><span class="spin" id="calcSpin" hidden></span><span id="calcTxt">Hay cambios sin calcular</span><button class="btn pri" id="btnCalc">Calcular trayectorias</button></div>
+      <div class="valBar" id="valBar" role="status" hidden><span id="valTxt"></span><button class="btn" id="btnValidar">Validar con perfil curso</button></div>
       <div class="hud" id="hud"></div></div>
       <div class="pip" id="pip"></div>
       <div class="toast" id="toast" role="status" aria-live="polite"></div>
@@ -279,6 +292,16 @@ textarea{width:100%;min-height:120px;border:1px solid var(--line);border-radius:
           <h2>Robot del grupo</h2>
           <div class="seg" id="segRobot"><button data-v="A" aria-pressed="false">A · izquierda</button><button data-v="B" aria-pressed="true">B · derecha</button></div>
           <p class="hint">Izquierda y derecha según la foto cenital del 10-11. El otro robot queda como obstáculo de otro puesto.</p>
+          <div class="seg" id="segRobotId" role="group" aria-label="Robot calibrado"><button data-v="nominal" aria-pressed="true">Nominal</button><button data-v="203" aria-pressed="false">203</button><button data-v="204" aria-pressed="false">204</button><button data-v="205" aria-pressed="false">205</button><button data-v="206" aria-pressed="false">206</button></div>
+          <p class="hint" id="robotNota"></p>
+          <div class="seg" id="segPerfil" role="group" aria-label="Perfil de movimiento de la escena"><button data-v="curso" aria-pressed="false">Curso · MoveIt del curso</button><button data-v="gemelo" aria-pressed="false">Gemelo · rápido</button></div>
+          <p class="hint" id="perfilNota"></p>
+          <div class="card fallo" id="robotAviso" role="alert" hidden></div>
+          <div class="card" id="robotPregunta" role="alertdialog" aria-labelledby="robotPregTit" hidden>
+            <b id="robotPregTit"></b>
+            <p class="hint" id="robotPregTxt"></p>
+            <div class="btns"><button class="btn" id="rpMesa">Mantener la mesa</button><button class="btn" id="rpRobot">Mantener la disposición respecto al robot</button><button class="btn" id="rpCancel">Cancelar</button></div>
+          </div>
         </div>
         <div class="sec">
           <h2>Pinza OnRobot RG2</h2>
@@ -348,6 +371,8 @@ textarea{width:100%;min-height:120px;border:1px solid var(--line);border-radius:
         <div class="sec">
           <h2>ELP-USB12MP01-UFV · Sony IMX577 · 3,6–10 mm</h2>
           <p class="hint">Zoom y enfoque manuales: no hay autoenfoque que mueva la calibración, pero hay que fijar los anillos con cinta tras calibrar. La resolución de 1920×1080 a 120 fps es MJPEG por USB 2.0; que use todo el ancho del sensor está sin validar.</p>
+          <div class="seg" id="segSensor" role="group" aria-label="Modelo de sensor"><button data-v="elp-ficha" aria-pressed="false">ELP ficha · 5,952 mm · SIN VALIDAR</button><button data-v="gemelo-v8" aria-pressed="false">Gemelo v8 · 6,287 mm</button></div>
+          <p class="hint" id="sensorNota"></p>
         </div>
         <div id="camCards" class="sec"></div>
       </div>
@@ -361,6 +386,7 @@ textarea{width:100%;min-height:120px;border:1px solid var(--line);border-radius:
             <div class="field"><label for="dVel">Velocidad del robot</label><output id="dVelOut">25 %</output><input type="range" id="dVel" min="10" max="100" step="5" value="25"></div>
             <div class="field"><label for="dAmp">Balanceo de la bandeja</label><output id="dAmpOut">2,0 cm</output><input type="range" id="dAmp" min="0" max="6" step="0.5" value="2"></div>
           </div>
+          <p class="hint" id="dPerfilNota"></p>
           <div class="seg" id="segModoB"><button data-v="M0" aria-pressed="true">M0 · colocar con la pose de recepción</button><button data-v="M1" aria-pressed="false">M1 · seguir la bandeja</button></div>
           <p class="hint">M0 pausa si la bandeja se aparta más de 25 mm de la pose de recepción y coloca cuando vuelve. M1 sigue la pose con 120 ms de retraso entre la captura y el movimiento. Las dos cifras son supuestos: DEC-04 todavía no tiene números.</p>
         </div>
@@ -375,7 +401,7 @@ textarea{width:100%;min-height:120px;border:1px solid var(--line);border-radius:
         <dl class="kv" id="dCalidad"></dl>
         <p class="hint" style="margin:0">Los choques (pinza o muñeca contra la mesa o una caja) se vigilan en todo el recorrido y una esfera roja marca el punto. Un roce es la pinza, o el plato que lleva, pasando por una pieza que no se está cogiendo. Si algo impide seguir, la demo se para y dice por qué; si la bandeja no vuelve a su sitio en 10 s, aborta y retira el brazo (DEC-04).</p>
         <div class="card fallo" id="dFallo" hidden></div>
-        <div class="sec"><h2>Comprobación previa</h2><ul class="chkl" id="dCheck"><li>Se calcula al abrir esta pestaña.</li></ul></div>
+        <div class="sec"><h2>Comprobación previa</h2><p class="hint" id="dCheckPerfil"></p><ul class="chkl" id="dCheck"><li>Se calcula al abrir esta pestaña.</li></ul></div>
         <ol class="steps" id="dSteps"></ol>
         <div class="sec">
           <h2>Grafo ROS 2</h2>
@@ -389,7 +415,9 @@ textarea{width:100%;min-height:120px;border:1px solid var(--line);border-radius:
       <div class="tab" data-panel="datos" hidden>
         <div class="sec">
           <h2>posiciones.yaml</h2>
-          <p class="hint">Posiciones en el marco <code>base_link</code> del robot del grupo, en metros y grados. Es la tabla que alimenta la escena de colisión de MoveIt 2 y los fake_* mientras no haya calibración.</p>
+          <p class="hint">Posiciones en el marco <code>base_link</code> del robot elegido, en metros y radianes. Es la tabla que alimenta la escena de colisión de MoveIt 2 y los fake_* mientras no haya calibración.</p>
+          <div class="field2"><label for="prefijo">Prefijo de los frames</label><select id="prefijo"></select></div>
+          <p class="hint" id="prefijoTxt">Con <code>sim_&lt;id&gt;</code> (un robot) los frames van sin prefijo: <code>base_link</code>, <code>tool0</code>… Solo los URDF dobles del curso (<code>doble_ur3e_&lt;a&gt;_&lt;b&gt;</code>) añaden <code>&lt;id&gt;_</code> (<code>203_base_link</code>…), según la expansión de su xacro. SIN VALIDAR en ROS: se comprueba con <code>ros2 run tf2_tools view_frames</code> en <code>sim_&lt;id&gt;</code>. Más en <a id="prefijoDoc" href="https://github.com/Aimargg/gemelo-celda/blob/main/docs/estado/frames.md" target="_blank" rel="noopener">docs/estado/frames.md</a>.</p>
           <textarea id="yaml" readonly spellcheck="false"></textarea>
           <div class="btns"><button class="btn" id="btnCopy">Copiar</button><button class="btn" id="btnDlYaml">Descargar</button><button class="btn" id="btnPng">Captura PNG</button></div>
         </div>
