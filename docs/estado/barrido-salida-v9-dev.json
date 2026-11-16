@@ -1,0 +1,1744 @@
+{
+  "etiqueta": "código de hoy (v9-dev, fe366f5)",
+  "commit": "ebb6a8c",
+  "h_salida": "0.02",
+  "cfg": {
+    "modo": "M0",
+    "amp": 0.02,
+    "vel": 0.25,
+    "fase": 0,
+    "sinRender": true,
+    "perfil": "curso"
+  },
+  "rejilla": "persona.x ±2 cm, persona.y ±2 cm, persona.yaw ±5°, bandeja.ade ±2 cm, bandeja.alt ±2 cm (2^5 esquinas) + la de partida",
+  "duracion_s": 122,
+  "navegador": "153.0.8010.12",
+  "resumen": {
+    "disposiciones": 33,
+    "previa_ok": 29,
+    "viables": 21,
+    "tocan": 10,
+    "ultimo_contacto_por_tramo": {
+      "subida": 18,
+      "salida": 22,
+      "arranque": 10
+    }
+  },
+  "filas": [
+    {
+      "id": "partida",
+      "d": {
+        "px": 0,
+        "py": 0,
+        "pyaw": 0,
+        "ade": 0,
+        "alt": 0
+      },
+      "msPlan": 599,
+      "previa": {
+        "ok": true,
+        "txt": ""
+      },
+      "demo": {
+        "fin": "ok",
+        "paso": 8,
+        "t_mov": 109.3,
+        "pausas": 1,
+        "choques": 0,
+        "roces": 0,
+        "causa": null,
+        "contra": null,
+        "txt": ""
+      },
+      "salidas": [
+        {
+          "pk": "plato1",
+          "apertura_mm": -13.4,
+          "salida_mm": -20.2,
+          "subida_mm": -0.8,
+          "inicio_mm": 26.7,
+          "arranque_mm": 1.3,
+          "arranque_en": {
+            "tcp_mm": 50.1,
+            "t_s": 0.95
+          },
+          "ultimo": "subida",
+          "parada": false
+        },
+        {
+          "pk": "plato2",
+          "apertura_mm": -24.2,
+          "salida_mm": -28.3,
+          "subida_mm": -12.8,
+          "inicio_mm": 8.1,
+          "arranque_mm": 3.6,
+          "arranque_en": {
+            "tcp_mm": 39.5,
+            "t_s": 0.97
+          },
+          "ultimo": "subida",
+          "parada": false
+        }
+      ],
+      "toca": false,
+      "viable": true,
+      "ms": 3900
+    },
+    {
+      "id": "v01",
+      "d": {
+        "px": -0.02,
+        "py": -0.02,
+        "pyaw": -0.08726646259971647,
+        "ade": -0.02,
+        "alt": -0.02
+      },
+      "msPlan": 539,
+      "previa": {
+        "ok": true,
+        "txt": ""
+      },
+      "demo": {
+        "fin": "ok",
+        "paso": 8,
+        "t_mov": 110.1,
+        "pausas": 1,
+        "choques": 0,
+        "roces": 0,
+        "causa": null,
+        "contra": null,
+        "txt": ""
+      },
+      "salidas": [
+        {
+          "pk": "plato1",
+          "apertura_mm": -9.4,
+          "salida_mm": -10.2,
+          "subida_mm": 10.7,
+          "inicio_mm": 27.2,
+          "arranque_mm": 12.6,
+          "arranque_en": {
+            "tcp_mm": 42.5,
+            "t_s": 0.93
+          },
+          "ultimo": "salida",
+          "parada": false
+        },
+        {
+          "pk": "plato2",
+          "apertura_mm": -30.7,
+          "salida_mm": -25.2,
+          "subida_mm": -10,
+          "inicio_mm": 0.1,
+          "arranque_mm": 0.1,
+          "arranque_en": {
+            "tcp_mm": 0,
+            "t_s": 0
+          },
+          "ultimo": "subida",
+          "parada": false
+        }
+      ],
+      "toca": false,
+      "viable": true,
+      "ms": 3661
+    },
+    {
+      "id": "v02",
+      "d": {
+        "px": -0.02,
+        "py": -0.02,
+        "pyaw": -0.08726646259971647,
+        "ade": -0.02,
+        "alt": 0.02
+      },
+      "msPlan": 536,
+      "previa": {
+        "ok": true,
+        "txt": ""
+      },
+      "demo": {
+        "fin": "ok",
+        "paso": 8,
+        "t_mov": 116.2,
+        "pausas": 0,
+        "choques": 0,
+        "roces": 0,
+        "causa": null,
+        "contra": null,
+        "txt": ""
+      },
+      "salidas": [
+        {
+          "pk": "plato1",
+          "apertura_mm": -15.6,
+          "salida_mm": -19.4,
+          "subida_mm": 0.7,
+          "inicio_mm": 23.7,
+          "arranque_mm": 0.1,
+          "arranque_en": {
+            "tcp_mm": 51.3,
+            "t_s": 0.88
+          },
+          "ultimo": "salida",
+          "parada": false
+        },
+        {
+          "pk": "plato2",
+          "apertura_mm": -29.8,
+          "salida_mm": -29.7,
+          "subida_mm": -16.5,
+          "inicio_mm": 5.5,
+          "arranque_mm": 2.5,
+          "arranque_en": {
+            "tcp_mm": 1.5,
+            "t_s": 0.22
+          },
+          "ultimo": "subida",
+          "parada": false
+        }
+      ],
+      "toca": false,
+      "viable": true,
+      "ms": 4517
+    },
+    {
+      "id": "v03",
+      "d": {
+        "px": -0.02,
+        "py": -0.02,
+        "pyaw": -0.08726646259971647,
+        "ade": 0.02,
+        "alt": -0.02
+      },
+      "msPlan": 1765,
+      "previa": {
+        "ok": true,
+        "txt": ""
+      },
+      "demo": {
+        "fin": "ok",
+        "paso": 8,
+        "t_mov": 107.3,
+        "pausas": 1,
+        "choques": 0,
+        "roces": 0,
+        "causa": null,
+        "contra": null,
+        "txt": ""
+      },
+      "salidas": [
+        {
+          "pk": "plato1",
+          "apertura_mm": -18.3,
+          "salida_mm": -18,
+          "subida_mm": 12.1,
+          "inicio_mm": 36.7,
+          "arranque_mm": 29.4,
+          "arranque_en": {
+            "tcp_mm": 10.2,
+            "t_s": 0.43
+          },
+          "ultimo": "salida",
+          "parada": false
+        },
+        {
+          "pk": "plato2",
+          "apertura_mm": -17.6,
+          "salida_mm": -17,
+          "subida_mm": 10.4,
+          "inicio_mm": 22.4,
+          "arranque_mm": 15.3,
+          "arranque_en": {
+            "tcp_mm": 51.4,
+            "t_s": 0.98
+          },
+          "ultimo": "salida",
+          "parada": false
+        }
+      ],
+      "toca": false,
+      "viable": true,
+      "ms": 3900
+    },
+    {
+      "id": "v04",
+      "d": {
+        "px": -0.02,
+        "py": -0.02,
+        "pyaw": -0.08726646259971647,
+        "ade": 0.02,
+        "alt": 0.02
+      },
+      "msPlan": 2394,
+      "previa": {
+        "ok": true,
+        "txt": ""
+      },
+      "demo": {
+        "fin": "ok",
+        "paso": 8,
+        "t_mov": 112.3,
+        "pausas": 1,
+        "choques": 0,
+        "roces": 0,
+        "causa": null,
+        "contra": null,
+        "txt": ""
+      },
+      "salidas": [
+        {
+          "pk": "plato1",
+          "apertura_mm": -14.3,
+          "salida_mm": -17.2,
+          "subida_mm": 39.5,
+          "inicio_mm": 57.3,
+          "arranque_mm": 38.7,
+          "arranque_en": {
+            "tcp_mm": 37.5,
+            "t_s": 1.58
+          },
+          "ultimo": "salida",
+          "parada": false
+        },
+        {
+          "pk": "plato2",
+          "apertura_mm": -18.1,
+          "salida_mm": -24,
+          "subida_mm": 4.6,
+          "inicio_mm": 17.2,
+          "arranque_mm": 17.2,
+          "arranque_en": {
+            "tcp_mm": 0,
+            "t_s": 0
+          },
+          "ultimo": "salida",
+          "parada": false
+        }
+      ],
+      "toca": false,
+      "viable": true,
+      "ms": 5399
+    },
+    {
+      "id": "v05",
+      "d": {
+        "px": -0.02,
+        "py": -0.02,
+        "pyaw": 0.08726646259971647,
+        "ade": -0.02,
+        "alt": -0.02
+      },
+      "msPlan": 946,
+      "previa": {
+        "ok": true,
+        "txt": ""
+      },
+      "demo": {
+        "fin": "fallo",
+        "paso": 6,
+        "t_mov": 35.8,
+        "pausas": 0,
+        "choques": 0,
+        "roces": 0,
+        "causa": "sin_trayectoria",
+        "contra": null,
+        "txt": "No encuentro una trayectoria sin colisiones hasta la aproximación al plato 1."
+      },
+      "salidas": [],
+      "toca": false,
+      "viable": false,
+      "ms": 1540
+    },
+    {
+      "id": "v06",
+      "d": {
+        "px": -0.02,
+        "py": -0.02,
+        "pyaw": 0.08726646259971647,
+        "ade": -0.02,
+        "alt": 0.02
+      },
+      "msPlan": 553,
+      "previa": {
+        "ok": true,
+        "txt": ""
+      },
+      "demo": {
+        "fin": "fallo",
+        "paso": 8,
+        "t_mov": 106,
+        "pausas": 2,
+        "choques": 0,
+        "roces": 0,
+        "causa": "arranque_contacto",
+        "contra": "bandeja",
+        "txt": "MoveIt rechazaría el arranque en contacto (START_STATE_IN_COLLISION): un dedo de la pinza con la bandeja, al ir hacia la postura de reposo."
+      },
+      "salidas": [
+        {
+          "pk": "plato1",
+          "apertura_mm": -22.3,
+          "salida_mm": -22.3,
+          "subida_mm": 2.1,
+          "inicio_mm": 18.9,
+          "arranque_mm": 18.3,
+          "arranque_en": {
+            "tcp_mm": 0.8,
+            "t_s": 0.12
+          },
+          "ultimo": "salida",
+          "parada": false
+        },
+        {
+          "pk": "plato2",
+          "apertura_mm": -34.1,
+          "salida_mm": -35.2,
+          "subida_mm": -17.9,
+          "inicio_mm": -0.6,
+          "arranque_mm": -0.6,
+          "arranque_en": {
+            "tcp_mm": 0,
+            "t_s": 0
+          },
+          "ultimo": "arranque",
+          "parada": true
+        }
+      ],
+      "toca": true,
+      "viable": false,
+      "ms": 2721
+    },
+    {
+      "id": "v07",
+      "d": {
+        "px": -0.02,
+        "py": -0.02,
+        "pyaw": 0.08726646259971647,
+        "ade": 0.02,
+        "alt": -0.02
+      },
+      "msPlan": 1237,
+      "previa": {
+        "ok": true,
+        "txt": ""
+      },
+      "demo": {
+        "fin": "ok",
+        "paso": 8,
+        "t_mov": 104.8,
+        "pausas": 2,
+        "choques": 0,
+        "roces": 0,
+        "causa": null,
+        "contra": null,
+        "txt": ""
+      },
+      "salidas": [
+        {
+          "pk": "plato1",
+          "apertura_mm": -18.9,
+          "salida_mm": -18.6,
+          "subida_mm": 11,
+          "inicio_mm": 27.6,
+          "arranque_mm": 13.8,
+          "arranque_en": {
+            "tcp_mm": 8.6,
+            "t_s": 0.43
+          },
+          "ultimo": "salida",
+          "parada": false
+        },
+        {
+          "pk": "plato2",
+          "apertura_mm": -25,
+          "salida_mm": -25.9,
+          "subida_mm": -14.2,
+          "inicio_mm": 11.4,
+          "arranque_mm": 6.3,
+          "arranque_en": {
+            "tcp_mm": 8.5,
+            "t_s": 0.3
+          },
+          "ultimo": "subida",
+          "parada": false
+        }
+      ],
+      "toca": false,
+      "viable": true,
+      "ms": 3250
+    },
+    {
+      "id": "v08",
+      "d": {
+        "px": -0.02,
+        "py": -0.02,
+        "pyaw": 0.08726646259971647,
+        "ade": 0.02,
+        "alt": 0.02
+      },
+      "msPlan": 2712,
+      "previa": {
+        "ok": false,
+        "txt": "Plato 1º → zona_primero: no puedo llevarlo nivelado y dejarlo sin chocar: la ruta cartesiana queda incompleta: entre dos posturas, el punto medio articular se a"
+      },
+      "demo": {
+        "fin": "previo",
+        "paso": 0,
+        "t_mov": 0,
+        "pausas": 0,
+        "choques": 0,
+        "roces": 0,
+        "causa": "previo",
+        "contra": null,
+        "txt": "Plato 1º → zona_primero: no puedo llevarlo nivelado y dejarlo sin chocar: la ruta cartesiana queda incompleta: entre dos posturas, el punto medio articular se aparta 137,6 mm y 3,142 rad de la recta t"
+      },
+      "salidas": [],
+      "toca": false,
+      "viable": false,
+      "ms": 2798
+    },
+    {
+      "id": "v09",
+      "d": {
+        "px": -0.02,
+        "py": 0.02,
+        "pyaw": -0.08726646259971647,
+        "ade": -0.02,
+        "alt": -0.02
+      },
+      "msPlan": 982,
+      "previa": {
+        "ok": true,
+        "txt": ""
+      },
+      "demo": {
+        "fin": "ok",
+        "paso": 8,
+        "t_mov": 113.6,
+        "pausas": 2,
+        "choques": 0,
+        "roces": 0,
+        "causa": null,
+        "contra": null,
+        "txt": ""
+      },
+      "salidas": [
+        {
+          "pk": "plato1",
+          "apertura_mm": -23.8,
+          "salida_mm": -24,
+          "subida_mm": -8.3,
+          "inicio_mm": 16.3,
+          "arranque_mm": 9,
+          "arranque_en": {
+            "tcp_mm": 10.9,
+            "t_s": 0.43
+          },
+          "ultimo": "subida",
+          "parada": false
+        },
+        {
+          "pk": "plato2",
+          "apertura_mm": -18.1,
+          "salida_mm": -26.7,
+          "subida_mm": -7.5,
+          "inicio_mm": 10.3,
+          "arranque_mm": 10.3,
+          "arranque_en": {
+            "tcp_mm": 0,
+            "t_s": 0
+          },
+          "ultimo": "subida",
+          "parada": false
+        }
+      ],
+      "toca": false,
+      "viable": true,
+      "ms": 4328
+    },
+    {
+      "id": "v10",
+      "d": {
+        "px": -0.02,
+        "py": 0.02,
+        "pyaw": -0.08726646259971647,
+        "ade": -0.02,
+        "alt": 0.02
+      },
+      "msPlan": 969,
+      "previa": {
+        "ok": true,
+        "txt": ""
+      },
+      "demo": {
+        "fin": "ok",
+        "paso": 8,
+        "t_mov": 115.3,
+        "pausas": 1,
+        "choques": 0,
+        "roces": 0,
+        "causa": null,
+        "contra": null,
+        "txt": ""
+      },
+      "salidas": [
+        {
+          "pk": "plato1",
+          "apertura_mm": -15.4,
+          "salida_mm": -19.7,
+          "subida_mm": 0.3,
+          "inicio_mm": 24,
+          "arranque_mm": 15.3,
+          "arranque_en": {
+            "tcp_mm": 51.4,
+            "t_s": 1.63
+          },
+          "ultimo": "salida",
+          "parada": false
+        },
+        {
+          "pk": "plato2",
+          "apertura_mm": -22.8,
+          "salida_mm": -30.9,
+          "subida_mm": -17.2,
+          "inicio_mm": 11.2,
+          "arranque_mm": 11.2,
+          "arranque_en": {
+            "tcp_mm": 0,
+            "t_s": 0
+          },
+          "ultimo": "subida",
+          "parada": false
+        }
+      ],
+      "toca": false,
+      "viable": true,
+      "ms": 4375
+    },
+    {
+      "id": "v11",
+      "d": {
+        "px": -0.02,
+        "py": 0.02,
+        "pyaw": -0.08726646259971647,
+        "ade": 0.02,
+        "alt": -0.02
+      },
+      "msPlan": 523,
+      "previa": {
+        "ok": true,
+        "txt": ""
+      },
+      "demo": {
+        "fin": "ok",
+        "paso": 8,
+        "t_mov": 111.8,
+        "pausas": 1,
+        "choques": 0,
+        "roces": 0,
+        "causa": null,
+        "contra": null,
+        "txt": ""
+      },
+      "salidas": [
+        {
+          "pk": "plato1",
+          "apertura_mm": -16.3,
+          "salida_mm": -15.9,
+          "subida_mm": 5.6,
+          "inicio_mm": 16.7,
+          "arranque_mm": 8.7,
+          "arranque_en": {
+            "tcp_mm": 49.1,
+            "t_s": 0.98
+          },
+          "ultimo": "salida",
+          "parada": false
+        },
+        {
+          "pk": "plato2",
+          "apertura_mm": -24.8,
+          "salida_mm": -17.3,
+          "subida_mm": -3,
+          "inicio_mm": 8.2,
+          "arranque_mm": 8.2,
+          "arranque_en": {
+            "tcp_mm": 0,
+            "t_s": 0
+          },
+          "ultimo": "subida",
+          "parada": false
+        }
+      ],
+      "toca": false,
+      "viable": true,
+      "ms": 3427
+    },
+    {
+      "id": "v12",
+      "d": {
+        "px": -0.02,
+        "py": 0.02,
+        "pyaw": -0.08726646259971647,
+        "ade": 0.02,
+        "alt": 0.02
+      },
+      "msPlan": 2582,
+      "previa": {
+        "ok": false,
+        "txt": "Plato 1º → zona_primero: no puedo llevarlo nivelado y dejarlo sin chocar: la ruta cartesiana queda incompleta: entre dos posturas, el punto medio articular se a"
+      },
+      "demo": {
+        "fin": "previo",
+        "paso": 0,
+        "t_mov": 0,
+        "pausas": 0,
+        "choques": 0,
+        "roces": 0,
+        "causa": "previo",
+        "contra": null,
+        "txt": "Plato 1º → zona_primero: no puedo llevarlo nivelado y dejarlo sin chocar: la ruta cartesiana queda incompleta: entre dos posturas, el punto medio articular se aparta 335,4 mm y 1,078 rad de la recta t"
+      },
+      "salidas": [],
+      "toca": false,
+      "viable": false,
+      "ms": 2637
+    },
+    {
+      "id": "v13",
+      "d": {
+        "px": -0.02,
+        "py": 0.02,
+        "pyaw": 0.08726646259971647,
+        "ade": -0.02,
+        "alt": -0.02
+      },
+      "msPlan": 578,
+      "previa": {
+        "ok": true,
+        "txt": ""
+      },
+      "demo": {
+        "fin": "ok",
+        "paso": 8,
+        "t_mov": 111.9,
+        "pausas": 0,
+        "choques": 0,
+        "roces": 0,
+        "causa": null,
+        "contra": null,
+        "txt": ""
+      },
+      "salidas": [
+        {
+          "pk": "plato1",
+          "apertura_mm": -11.4,
+          "salida_mm": -12.2,
+          "subida_mm": 8.6,
+          "inicio_mm": 25.2,
+          "arranque_mm": 25.2,
+          "arranque_en": {
+            "tcp_mm": 0,
+            "t_s": 0
+          },
+          "ultimo": "salida",
+          "parada": false
+        },
+        {
+          "pk": "plato2",
+          "apertura_mm": -23,
+          "salida_mm": -25.7,
+          "subida_mm": -14.6,
+          "inicio_mm": 13.5,
+          "arranque_mm": 6.1,
+          "arranque_en": {
+            "tcp_mm": 9.9,
+            "t_s": 0.4
+          },
+          "ultimo": "subida",
+          "parada": false
+        }
+      ],
+      "toca": false,
+      "viable": true,
+      "ms": 3081
+    },
+    {
+      "id": "v14",
+      "d": {
+        "px": -0.02,
+        "py": 0.02,
+        "pyaw": 0.08726646259971647,
+        "ade": -0.02,
+        "alt": 0.02
+      },
+      "msPlan": 621,
+      "previa": {
+        "ok": true,
+        "txt": ""
+      },
+      "demo": {
+        "fin": "ok",
+        "paso": 8,
+        "t_mov": 110.8,
+        "pausas": 1,
+        "choques": 0,
+        "roces": 0,
+        "causa": null,
+        "contra": null,
+        "txt": ""
+      },
+      "salidas": [
+        {
+          "pk": "plato1",
+          "apertura_mm": -21.6,
+          "salida_mm": -22.2,
+          "subida_mm": 0.2,
+          "inicio_mm": 20.2,
+          "arranque_mm": 18.1,
+          "arranque_en": {
+            "tcp_mm": 2.2,
+            "t_s": 0.2
+          },
+          "ultimo": "salida",
+          "parada": false
+        },
+        {
+          "pk": "plato2",
+          "apertura_mm": -25.7,
+          "salida_mm": -33.3,
+          "subida_mm": -21.9,
+          "inicio_mm": 9.4,
+          "arranque_mm": 2.5,
+          "arranque_en": {
+            "tcp_mm": 15.3,
+            "t_s": 0.5
+          },
+          "ultimo": "subida",
+          "parada": false
+        }
+      ],
+      "toca": false,
+      "viable": true,
+      "ms": 3090
+    },
+    {
+      "id": "v15",
+      "d": {
+        "px": -0.02,
+        "py": 0.02,
+        "pyaw": 0.08726646259971647,
+        "ade": 0.02,
+        "alt": -0.02
+      },
+      "msPlan": 1267,
+      "previa": {
+        "ok": true,
+        "txt": ""
+      },
+      "demo": {
+        "fin": "ok",
+        "paso": 8,
+        "t_mov": 105.9,
+        "pausas": 1,
+        "choques": 0,
+        "roces": 0,
+        "causa": null,
+        "contra": null,
+        "txt": ""
+      },
+      "salidas": [
+        {
+          "pk": "plato1",
+          "apertura_mm": -23.8,
+          "salida_mm": -24,
+          "subida_mm": 15.7,
+          "inicio_mm": 32,
+          "arranque_mm": 27.2,
+          "arranque_en": {
+            "tcp_mm": 50.9,
+            "t_s": 1.02
+          },
+          "ultimo": "salida",
+          "parada": false
+        },
+        {
+          "pk": "plato2",
+          "apertura_mm": -25.5,
+          "salida_mm": -33.9,
+          "subida_mm": -22,
+          "inicio_mm": 9,
+          "arranque_mm": -4.5,
+          "arranque_en": {
+            "tcp_mm": 25.6,
+            "t_s": 0.72
+          },
+          "ultimo": "arranque",
+          "parada": false
+        }
+      ],
+      "toca": true,
+      "viable": true,
+      "ms": 4023
+    },
+    {
+      "id": "v16",
+      "d": {
+        "px": -0.02,
+        "py": 0.02,
+        "pyaw": 0.08726646259971647,
+        "ade": 0.02,
+        "alt": 0.02
+      },
+      "msPlan": 1340,
+      "previa": {
+        "ok": true,
+        "txt": ""
+      },
+      "demo": {
+        "fin": "ok",
+        "paso": 8,
+        "t_mov": 107.5,
+        "pausas": 0,
+        "choques": 0,
+        "roces": 0,
+        "causa": null,
+        "contra": null,
+        "txt": ""
+      },
+      "salidas": [
+        {
+          "pk": "plato1",
+          "apertura_mm": -17.6,
+          "salida_mm": -22.8,
+          "subida_mm": 10.5,
+          "inicio_mm": 28.1,
+          "arranque_mm": 24.6,
+          "arranque_en": {
+            "tcp_mm": 37.5,
+            "t_s": 0.8
+          },
+          "ultimo": "salida",
+          "parada": false
+        },
+        {
+          "pk": "plato2",
+          "apertura_mm": -29.6,
+          "salida_mm": -28.4,
+          "subida_mm": -12.1,
+          "inicio_mm": 2.3,
+          "arranque_mm": 1.5,
+          "arranque_en": {
+            "tcp_mm": 1.1,
+            "t_s": 0.12
+          },
+          "ultimo": "subida",
+          "parada": false
+        }
+      ],
+      "toca": false,
+      "viable": true,
+      "ms": 4778
+    },
+    {
+      "id": "v17",
+      "d": {
+        "px": 0.02,
+        "py": -0.02,
+        "pyaw": -0.08726646259971647,
+        "ade": -0.02,
+        "alt": -0.02
+      },
+      "msPlan": 744,
+      "previa": {
+        "ok": true,
+        "txt": ""
+      },
+      "demo": {
+        "fin": "fallo",
+        "paso": 6,
+        "t_mov": 35.8,
+        "pausas": 0,
+        "choques": 0,
+        "roces": 0,
+        "causa": "sin_trayectoria",
+        "contra": null,
+        "txt": "No encuentro una trayectoria sin colisiones hasta la aproximación al plato 1."
+      },
+      "salidas": [],
+      "toca": false,
+      "viable": false,
+      "ms": 1276
+    },
+    {
+      "id": "v18",
+      "d": {
+        "px": 0.02,
+        "py": -0.02,
+        "pyaw": -0.08726646259971647,
+        "ade": -0.02,
+        "alt": 0.02
+      },
+      "msPlan": 607,
+      "previa": {
+        "ok": true,
+        "txt": ""
+      },
+      "demo": {
+        "fin": "fallo",
+        "paso": 8,
+        "t_mov": 101.6,
+        "pausas": 1,
+        "choques": 0,
+        "roces": 0,
+        "causa": "arranque_contacto",
+        "contra": "bandeja",
+        "txt": "MoveIt rechazaría el arranque en contacto (START_STATE_IN_COLLISION): un dedo de la pinza con la bandeja, al ir hacia la postura de reposo."
+      },
+      "salidas": [
+        {
+          "pk": "plato1",
+          "apertura_mm": -23.9,
+          "salida_mm": -24,
+          "subida_mm": 4.8,
+          "inicio_mm": 19,
+          "arranque_mm": 9.8,
+          "arranque_en": {
+            "tcp_mm": 44.7,
+            "t_s": 1.2
+          },
+          "ultimo": "salida",
+          "parada": false
+        },
+        {
+          "pk": "plato2",
+          "apertura_mm": -28.3,
+          "salida_mm": -29.2,
+          "subida_mm": -12.1,
+          "inicio_mm": -0.3,
+          "arranque_mm": -0.3,
+          "arranque_en": {
+            "tcp_mm": 0,
+            "t_s": 0
+          },
+          "ultimo": "arranque",
+          "parada": true
+        }
+      ],
+      "toca": true,
+      "viable": false,
+      "ms": 2929
+    },
+    {
+      "id": "v19",
+      "d": {
+        "px": 0.02,
+        "py": -0.02,
+        "pyaw": -0.08726646259971647,
+        "ade": 0.02,
+        "alt": -0.02
+      },
+      "msPlan": 518,
+      "previa": {
+        "ok": true,
+        "txt": ""
+      },
+      "demo": {
+        "fin": "ok",
+        "paso": 8,
+        "t_mov": 113.6,
+        "pausas": 4,
+        "choques": 0,
+        "roces": 0,
+        "causa": null,
+        "contra": null,
+        "txt": ""
+      },
+      "salidas": [
+        {
+          "pk": "plato1",
+          "apertura_mm": -18.3,
+          "salida_mm": -17.7,
+          "subida_mm": 6.7,
+          "inicio_mm": 19,
+          "arranque_mm": 16.3,
+          "arranque_en": {
+            "tcp_mm": 50.2,
+            "t_s": 1.02
+          },
+          "ultimo": "salida",
+          "parada": false
+        },
+        {
+          "pk": "plato2",
+          "apertura_mm": -32.1,
+          "salida_mm": -37.3,
+          "subida_mm": -23.9,
+          "inicio_mm": 5.6,
+          "arranque_mm": 5.4,
+          "arranque_en": {
+            "tcp_mm": 6.1,
+            "t_s": 0.35
+          },
+          "ultimo": "subida",
+          "parada": false
+        }
+      ],
+      "toca": false,
+      "viable": true,
+      "ms": 3658
+    },
+    {
+      "id": "v20",
+      "d": {
+        "px": 0.02,
+        "py": -0.02,
+        "pyaw": -0.08726646259971647,
+        "ade": 0.02,
+        "alt": 0.02
+      },
+      "msPlan": 633,
+      "previa": {
+        "ok": true,
+        "txt": ""
+      },
+      "demo": {
+        "fin": "ok",
+        "paso": 8,
+        "t_mov": 120.9,
+        "pausas": 0,
+        "choques": 0,
+        "roces": 0,
+        "causa": null,
+        "contra": null,
+        "txt": ""
+      },
+      "salidas": [
+        {
+          "pk": "plato1",
+          "apertura_mm": -23.7,
+          "salida_mm": -24,
+          "subida_mm": -5.1,
+          "inicio_mm": 13.5,
+          "arranque_mm": 12.2,
+          "arranque_en": {
+            "tcp_mm": 3.1,
+            "t_s": 0.15
+          },
+          "ultimo": "subida",
+          "parada": false
+        },
+        {
+          "pk": "plato2",
+          "apertura_mm": -33.9,
+          "salida_mm": -33.8,
+          "subida_mm": -21.1,
+          "inicio_mm": 2.1,
+          "arranque_mm": -2.1,
+          "arranque_en": {
+            "tcp_mm": 1.6,
+            "t_s": 0.27
+          },
+          "ultimo": "arranque",
+          "parada": false
+        }
+      ],
+      "toca": true,
+      "viable": true,
+      "ms": 4453
+    },
+    {
+      "id": "v21",
+      "d": {
+        "px": 0.02,
+        "py": -0.02,
+        "pyaw": 0.08726646259971647,
+        "ade": -0.02,
+        "alt": -0.02
+      },
+      "msPlan": 1161,
+      "previa": {
+        "ok": true,
+        "txt": ""
+      },
+      "demo": {
+        "fin": "ok",
+        "paso": 8,
+        "t_mov": 109.8,
+        "pausas": 1,
+        "choques": 0,
+        "roces": 0,
+        "causa": null,
+        "contra": null,
+        "txt": ""
+      },
+      "salidas": [
+        {
+          "pk": "plato1",
+          "apertura_mm": -17,
+          "salida_mm": -23.9,
+          "subida_mm": -0.6,
+          "inicio_mm": 12.8,
+          "arranque_mm": 12.6,
+          "arranque_en": {
+            "tcp_mm": 0.2,
+            "t_s": 0.05
+          },
+          "ultimo": "subida",
+          "parada": false
+        },
+        {
+          "pk": "plato2",
+          "apertura_mm": -16,
+          "salida_mm": -15.5,
+          "subida_mm": 0.6,
+          "inicio_mm": 31.2,
+          "arranque_mm": 15.5,
+          "arranque_en": {
+            "tcp_mm": 28.5,
+            "t_s": 0.72
+          },
+          "ultimo": "salida",
+          "parada": false
+        }
+      ],
+      "toca": false,
+      "viable": true,
+      "ms": 3916
+    },
+    {
+      "id": "v22",
+      "d": {
+        "px": 0.02,
+        "py": -0.02,
+        "pyaw": 0.08726646259971647,
+        "ade": -0.02,
+        "alt": 0.02
+      },
+      "msPlan": 3630,
+      "previa": {
+        "ok": false,
+        "txt": "Plato 2º → zona_segundo: no puedo llevarlo nivelado y dejarlo sin chocar: chocaría lo que lleva la pinza con la cámara cenital o su brazo (llega al 29 %). Bande"
+      },
+      "demo": {
+        "fin": "previo",
+        "paso": 0,
+        "t_mov": 0,
+        "pausas": 0,
+        "choques": 0,
+        "roces": 0,
+        "causa": "previo",
+        "contra": null,
+        "txt": "Plato 2º → zona_segundo: no puedo llevarlo nivelado y dejarlo sin chocar: chocaría lo que lleva la pinza con la cámara cenital o su brazo (llega al 29 %). Bandeja a 26 cm sobre la mesa."
+      },
+      "salidas": [],
+      "toca": false,
+      "viable": false,
+      "ms": 3677
+    },
+    {
+      "id": "v23",
+      "d": {
+        "px": 0.02,
+        "py": -0.02,
+        "pyaw": 0.08726646259971647,
+        "ade": 0.02,
+        "alt": -0.02
+      },
+      "msPlan": 593,
+      "previa": {
+        "ok": true,
+        "txt": ""
+      },
+      "demo": {
+        "fin": "fallo",
+        "paso": 6,
+        "t_mov": 35.8,
+        "pausas": 0,
+        "choques": 0,
+        "roces": 0,
+        "causa": "sin_trayectoria",
+        "contra": null,
+        "txt": "No encuentro una trayectoria sin colisiones hasta la aproximación al plato 1."
+      },
+      "salidas": [],
+      "toca": false,
+      "viable": false,
+      "ms": 1075
+    },
+    {
+      "id": "v24",
+      "d": {
+        "px": 0.02,
+        "py": -0.02,
+        "pyaw": 0.08726646259971647,
+        "ade": 0.02,
+        "alt": 0.02
+      },
+      "msPlan": 521,
+      "previa": {
+        "ok": true,
+        "txt": ""
+      },
+      "demo": {
+        "fin": "fallo",
+        "paso": 6,
+        "t_mov": 35.8,
+        "pausas": 0,
+        "choques": 0,
+        "roces": 0,
+        "causa": "sin_trayectoria",
+        "contra": null,
+        "txt": "No encuentro una trayectoria sin colisiones hasta la aproximación al plato 1."
+      },
+      "salidas": [],
+      "toca": false,
+      "viable": false,
+      "ms": 1147
+    },
+    {
+      "id": "v25",
+      "d": {
+        "px": 0.02,
+        "py": 0.02,
+        "pyaw": -0.08726646259971647,
+        "ade": -0.02,
+        "alt": -0.02
+      },
+      "msPlan": 793,
+      "previa": {
+        "ok": true,
+        "txt": ""
+      },
+      "demo": {
+        "fin": "ok",
+        "paso": 8,
+        "t_mov": 113.1,
+        "pausas": 1,
+        "choques": 0,
+        "roces": 0,
+        "causa": null,
+        "contra": null,
+        "txt": ""
+      },
+      "salidas": [
+        {
+          "pk": "plato1",
+          "apertura_mm": -17.4,
+          "salida_mm": -23.7,
+          "subida_mm": -0.1,
+          "inicio_mm": 17.3,
+          "arranque_mm": 15.7,
+          "arranque_en": {
+            "tcp_mm": 1.9,
+            "t_s": 0.18
+          },
+          "ultimo": "subida",
+          "parada": false
+        },
+        {
+          "pk": "plato2",
+          "apertura_mm": -36.8,
+          "salida_mm": -36.4,
+          "subida_mm": -23.8,
+          "inicio_mm": 3,
+          "arranque_mm": -1.4,
+          "arranque_en": {
+            "tcp_mm": 4,
+            "t_s": 0.28
+          },
+          "ultimo": "arranque",
+          "parada": false
+        }
+      ],
+      "toca": true,
+      "viable": true,
+      "ms": 4199
+    },
+    {
+      "id": "v26",
+      "d": {
+        "px": 0.02,
+        "py": 0.02,
+        "pyaw": -0.08726646259971647,
+        "ade": -0.02,
+        "alt": 0.02
+      },
+      "msPlan": 491,
+      "previa": {
+        "ok": true,
+        "txt": ""
+      },
+      "demo": {
+        "fin": "fallo",
+        "paso": 8,
+        "t_mov": 101.7,
+        "pausas": 3,
+        "choques": 0,
+        "roces": 0,
+        "causa": "arranque_contacto",
+        "contra": "bandeja",
+        "txt": "MoveIt rechazaría el arranque en contacto (START_STATE_IN_COLLISION): un dedo de la pinza con la bandeja, al ir hacia la postura de reposo."
+      },
+      "salidas": [
+        {
+          "pk": "plato1",
+          "apertura_mm": -18.5,
+          "salida_mm": -23,
+          "subida_mm": -8.2,
+          "inicio_mm": 20.7,
+          "arranque_mm": 10.9,
+          "arranque_en": {
+            "tcp_mm": 8,
+            "t_s": 0.5
+          },
+          "ultimo": "subida",
+          "parada": false
+        },
+        {
+          "pk": "plato2",
+          "apertura_mm": -36.5,
+          "salida_mm": -30.7,
+          "subida_mm": -18.6,
+          "inicio_mm": -4.6,
+          "arranque_mm": -4.6,
+          "arranque_en": {
+            "tcp_mm": 0,
+            "t_s": 0
+          },
+          "ultimo": "arranque",
+          "parada": true
+        }
+      ],
+      "toca": true,
+      "viable": false,
+      "ms": 2591
+    },
+    {
+      "id": "v27",
+      "d": {
+        "px": 0.02,
+        "py": 0.02,
+        "pyaw": -0.08726646259971647,
+        "ade": 0.02,
+        "alt": -0.02
+      },
+      "msPlan": 665,
+      "previa": {
+        "ok": true,
+        "txt": ""
+      },
+      "demo": {
+        "fin": "fallo",
+        "paso": 8,
+        "t_mov": 98.4,
+        "pausas": 1,
+        "choques": 0,
+        "roces": 0,
+        "causa": "arranque_contacto",
+        "contra": "bandeja",
+        "txt": "MoveIt rechazaría el arranque en contacto (START_STATE_IN_COLLISION): un dedo de la pinza con la bandeja, al ir hacia la postura de reposo."
+      },
+      "salidas": [
+        {
+          "pk": "plato1",
+          "apertura_mm": -12.7,
+          "salida_mm": -19.5,
+          "subida_mm": 0,
+          "inicio_mm": 26.9,
+          "arranque_mm": 3.2,
+          "arranque_en": {
+            "tcp_mm": 51.1,
+            "t_s": 0.95
+          },
+          "ultimo": "salida",
+          "parada": false
+        },
+        {
+          "pk": "plato2",
+          "apertura_mm": -37.1,
+          "salida_mm": -29.9,
+          "subida_mm": -17.1,
+          "inicio_mm": -6.5,
+          "arranque_mm": -6.5,
+          "arranque_en": {
+            "tcp_mm": 0,
+            "t_s": 0
+          },
+          "ultimo": "arranque",
+          "parada": true
+        }
+      ],
+      "toca": true,
+      "viable": false,
+      "ms": 3219
+    },
+    {
+      "id": "v28",
+      "d": {
+        "px": 0.02,
+        "py": 0.02,
+        "pyaw": -0.08726646259971647,
+        "ade": 0.02,
+        "alt": 0.02
+      },
+      "msPlan": 999,
+      "previa": {
+        "ok": true,
+        "txt": ""
+      },
+      "demo": {
+        "fin": "ok",
+        "paso": 8,
+        "t_mov": 117.3,
+        "pausas": 1,
+        "choques": 0,
+        "roces": 0,
+        "causa": null,
+        "contra": null,
+        "txt": ""
+      },
+      "salidas": [
+        {
+          "pk": "plato1",
+          "apertura_mm": -15.6,
+          "salida_mm": -19.4,
+          "subida_mm": 0.7,
+          "inicio_mm": 23.7,
+          "arranque_mm": 2.3,
+          "arranque_en": {
+            "tcp_mm": 50.6,
+            "t_s": 0.8
+          },
+          "ultimo": "salida",
+          "parada": false
+        },
+        {
+          "pk": "plato2",
+          "apertura_mm": -27.7,
+          "salida_mm": -21.1,
+          "subida_mm": -7.1,
+          "inicio_mm": 3.2,
+          "arranque_mm": 3.2,
+          "arranque_en": {
+            "tcp_mm": 0,
+            "t_s": 0
+          },
+          "ultimo": "subida",
+          "parada": false
+        }
+      ],
+      "toca": false,
+      "viable": true,
+      "ms": 4605
+    },
+    {
+      "id": "v29",
+      "d": {
+        "px": 0.02,
+        "py": 0.02,
+        "pyaw": 0.08726646259971647,
+        "ade": -0.02,
+        "alt": -0.02
+      },
+      "msPlan": 609,
+      "previa": {
+        "ok": true,
+        "txt": ""
+      },
+      "demo": {
+        "fin": "ok",
+        "paso": 8,
+        "t_mov": 110.2,
+        "pausas": 3,
+        "choques": 0,
+        "roces": 0,
+        "causa": null,
+        "contra": null,
+        "txt": ""
+      },
+      "salidas": [
+        {
+          "pk": "plato1",
+          "apertura_mm": -14.7,
+          "salida_mm": -24,
+          "subida_mm": 2.1,
+          "inicio_mm": 14.1,
+          "arranque_mm": 14.1,
+          "arranque_en": {
+            "tcp_mm": 0,
+            "t_s": 0.02
+          },
+          "ultimo": "salida",
+          "parada": false
+        },
+        {
+          "pk": "plato2",
+          "apertura_mm": -34.4,
+          "salida_mm": -37.5,
+          "subida_mm": -23.8,
+          "inicio_mm": 3,
+          "arranque_mm": -4.8,
+          "arranque_en": {
+            "tcp_mm": 12.5,
+            "t_s": 0.43
+          },
+          "ultimo": "arranque",
+          "parada": false
+        }
+      ],
+      "toca": true,
+      "viable": true,
+      "ms": 2941
+    },
+    {
+      "id": "v30",
+      "d": {
+        "px": 0.02,
+        "py": 0.02,
+        "pyaw": 0.08726646259971647,
+        "ade": -0.02,
+        "alt": 0.02
+      },
+      "msPlan": 3405,
+      "previa": {
+        "ok": false,
+        "txt": "Plato 2º → zona_segundo: no puedo llevarlo nivelado y dejarlo sin chocar: chocaría lo que lleva la pinza con la cámara cenital o su brazo (llega al 29 %). Bande"
+      },
+      "demo": {
+        "fin": "previo",
+        "paso": 0,
+        "t_mov": 0,
+        "pausas": 0,
+        "choques": 0,
+        "roces": 0,
+        "causa": "previo",
+        "contra": null,
+        "txt": "Plato 2º → zona_segundo: no puedo llevarlo nivelado y dejarlo sin chocar: chocaría lo que lleva la pinza con la cámara cenital o su brazo (llega al 29 %). Bandeja a 26 cm sobre la mesa."
+      },
+      "salidas": [],
+      "toca": false,
+      "viable": false,
+      "ms": 3458
+    },
+    {
+      "id": "v31",
+      "d": {
+        "px": 0.02,
+        "py": 0.02,
+        "pyaw": 0.08726646259971647,
+        "ade": 0.02,
+        "alt": -0.02
+      },
+      "msPlan": 424,
+      "previa": {
+        "ok": true,
+        "txt": ""
+      },
+      "demo": {
+        "fin": "ok",
+        "paso": 8,
+        "t_mov": 110.8,
+        "pausas": 1,
+        "choques": 0,
+        "roces": 0,
+        "causa": null,
+        "contra": null,
+        "txt": ""
+      },
+      "salidas": [
+        {
+          "pk": "plato1",
+          "apertura_mm": -11.7,
+          "salida_mm": -11.8,
+          "subida_mm": 9.1,
+          "inicio_mm": 24.7,
+          "arranque_mm": 24.7,
+          "arranque_en": {
+            "tcp_mm": 0,
+            "t_s": 0
+          },
+          "ultimo": "salida",
+          "parada": false
+        },
+        {
+          "pk": "plato2",
+          "apertura_mm": -26.1,
+          "salida_mm": -32.9,
+          "subida_mm": -21.7,
+          "inicio_mm": 9.2,
+          "arranque_mm": -0.4,
+          "arranque_en": {
+            "tcp_mm": 19.5,
+            "t_s": 0.53
+          },
+          "ultimo": "arranque",
+          "parada": false
+        }
+      ],
+      "toca": true,
+      "viable": true,
+      "ms": 2441
+    },
+    {
+      "id": "v32",
+      "d": {
+        "px": 0.02,
+        "py": 0.02,
+        "pyaw": 0.08726646259971647,
+        "ade": 0.02,
+        "alt": 0.02
+      },
+      "msPlan": 492,
+      "previa": {
+        "ok": true,
+        "txt": ""
+      },
+      "demo": {
+        "fin": "ok",
+        "paso": 8,
+        "t_mov": 111,
+        "pausas": 3,
+        "choques": 0,
+        "roces": 0,
+        "causa": null,
+        "contra": null,
+        "txt": ""
+      },
+      "salidas": [
+        {
+          "pk": "plato1",
+          "apertura_mm": -21.8,
+          "salida_mm": -22.3,
+          "subida_mm": 0.2,
+          "inicio_mm": 20.2,
+          "arranque_mm": 18.4,
+          "arranque_en": {
+            "tcp_mm": 1.4,
+            "t_s": 0.18
+          },
+          "ultimo": "salida",
+          "parada": false
+        },
+        {
+          "pk": "plato2",
+          "apertura_mm": -26.9,
+          "salida_mm": -30.2,
+          "subida_mm": -19.2,
+          "inicio_mm": 9.6,
+          "arranque_mm": -0.7,
+          "arranque_en": {
+            "tcp_mm": 19.7,
+            "t_s": 0.52
+          },
+          "ultimo": "arranque",
+          "parada": false
+        }
+      ],
+      "toca": true,
+      "viable": true,
+      "ms": 2788
+    }
+  ]
+}

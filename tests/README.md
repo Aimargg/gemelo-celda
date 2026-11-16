@@ -34,6 +34,7 @@ Duraciones medidas en el contenedor de 2 núcleos (SwiftShader, sin GPU): «ante
 
 | Fichero | Nivel | Tests | Antes (s) | Ahora (s) | Invariantes y motivo |
 |---|---|---|---|---|---|
+| `balanceo-salida` | tarea | 2 | — | 38 | T2.8 (DT30): en la disposición v27 del barrido, la demo «curso» se completa en tres fases de la bandeja y la salida no la toca; las muestras del balanceo son el obstáculo «bandeja», a 1 mm y sin la fase |
 | `carga` | tarea | 3 | 59 | 31 | los dos destinos (D2) y la red cerrada (I2) |
 | `datos` | tarea | 2 + 6 | — | 23 | I7: posiciones.yaml y la tabla de fuentes del panel «Datos» byte a byte (T2.1), red de T2.2–T2.5 |
 | `deuda-f2` | tarea | 1 + 2 | — | 17 | T2.7: DT35 (zonas de plan durante la demo; posiciones.yaml de una v10 con textos raros, en YAML 1.1 y 1.2), DT31 (aviso de la capa del otro robot) y DT41 (`#btnCalc` tras un cálculo) en una página |
@@ -59,7 +60,7 @@ Duraciones medidas en el contenedor de 2 núcleos (SwiftShader, sin GPU): «ante
 | `ros-recarga` | puerta | 1 | — | 46 | I7: Común-C1 tras volver a abrir con la misma Tu mesa; las dos páginas calculan antes de exportar porque la escena lleva el giro de las cajas del plan (DT38). Salió de `ros` al aceptar T2.3 + T2.5 |
 | `robot-avisos` | puerta | 3 | 123 | 66 | aviso del 204 e «IK calibrada no converge» (T1.4) |
 | `salida` | puerta | 2 | 62 | 43 | salida de la bandeja (T1.9); la recorren también las matrices |
-| `validar` | puerta | 4 | 298 | 213 | barrido de Validar (123,7 s antes), búsqueda (83,6 s antes) y porPerfil al guardar (T1.8) |
+| `validar` | puerta | 4 | 298 | 213 | barrido de Validar (123,7 s antes), búsqueda (83,6 s antes) y porPerfil al guardar (T1.8). Desde T2.8 el barrido llega a 10 cm (el arranque en contacto de 6 cm era DT30): T1.8-1 midió 121 s |
 
 `ros-panel` (T2.6) pulsa sus botones con `click()` en la página: `page.click` espera dos fotogramas quietos y, con SwiftShader,
 cada descarga tardaba 1,5–3 s (el fichero medía 105 s; así, 47 s). `ros` y `ros-referencias`, medidos al entregar T2.3 + T2.5 (`npm test` de 14 min 25 s), en una ejecución en la que el resto de

@@ -28,27 +28,31 @@ test('T1.8-1, T1.8-2 y T1.8-5: Validar muestra los dos veredictos y los dos tiem
     assert.equal(await visible(p, '#valBar'), true, 'la barra de validación está a la vista');
     assert.match(await texto(p, '#valTxt'), /^Perfil «curso»: sin validar\./);
     // Barrido general: la primera disposición, empezando por la de partida y acercando a la persona de 2 en 2 cm, en la que
-    // «gemelo» pasa y «curso» falla por arranque en contacto. Desde T1.9 la salida de la bandeja acaba libre y las cuatro
-    // primeras pasan con los dos perfiles: el barrido sigue alejándola de 2 en 2 cm (con 6 cm, «curso» toca la bandeja al ir
-    // al reposo; medido con el gemelo en T1.9)
+    // «gemelo» pasa y «curso» falla por una causa cuyo motivo sale de la causa (arranque en contacto o ruta cartesiana
+    // incompleta). Desde T1.9 la salida de la bandeja acaba libre y las cuatro primeras pasan con los dos perfiles: el barrido
+    // sigue alejándola de 2 en 2 cm. Hasta T2.8, con 6 cm «curso» tocaba la bandeja al ir al reposo (arranque en contacto:
+    // era DT30); desde T2.8 la salida no toca la bandeja en ninguna fase de su balanceo y el primer caso es el de 10 cm, en
+    // el que «curso» corta la ruta cartesiana de MoveIt (medido con el gemelo en T2.8)
     let caso = null;
-    for (const dx of [0, -0.02, -0.04, 0.02, 0.04, 0.06]) {
+    const MOTIVO = { arranque_contacto: () => 'arranque en contacto', cartesiana_incompleta: pct => `ruta cartesiana incompleta (${Math.round(pct)} %)` };
+    const DETALLE = { arranque_contacto: /^MoveIt rechazaría el arranque en contacto \(START_STATE_IN_COLLISION\): /, cartesiana_incompleta: /la ruta cartesiana queda incompleta: .*\(MoveIt la corta en el \d+ %\)/ };
+    for (const dx of [0, -0.02, -0.04, 0.02, 0.04, 0.06, 0.08, 0.10]) {
       await p.evaluate(dx => { const g = window.__g; g.L().persona.x += dx; g.aplicarLayout(); }, dx);
       await p.evaluate(() => window.__g.calcularPlanes()); await esperarPlanes(p);
       const t0 = Date.now(); await validar(p); const ms = Date.now() - t0;
-      const r = await p.evaluate(() => { const v = window.__g.VAL.res.per; return { g: v.gemelo.previa.ok && v.gemelo.demo.fin === 'ok', c: v.curso.previa.ok && v.curso.demo.fin === 'ok', causa: v.curso.demo.fallo && v.curso.demo.fallo.causa, motivo: v.curso.demo.motivo, tg: v.gemelo.demo.t_ciclo_s, tc: v.curso.demo.t_ciclo_s, previaC: v.curso.previa.ok }; });
-      if (r.g && !r.c && r.causa === 'arranque_contacto') { caso = { dx, ms, ...r }; break; }
+      const r = await p.evaluate(() => { const v = window.__g.VAL.res.per; return { g: v.gemelo.previa.ok && v.gemelo.demo.fin === 'ok', c: v.curso.previa.ok && v.curso.demo.fin === 'ok', causa: v.curso.demo.fallo && v.curso.demo.fallo.causa, pct: v.curso.demo.fallo && v.curso.demo.fallo.pct, motivo: v.curso.demo.motivo, tg: v.gemelo.demo.t_ciclo_s, tc: v.curso.demo.t_ciclo_s, previaC: v.curso.previa.ok }; });
+      if (r.g && !r.c && MOTIVO[r.causa]) { caso = { dx, ms, ...r }; break; }
       await p.evaluate(dx => { const g = window.__g; g.L().persona.x -= dx; g.aplicarLayout(); }, dx);
     }
-    assert.ok(caso, 'el barrido encuentra una disposición que solo pasa en «gemelo» por arranque en contacto');
-    assert.equal(caso.motivo, 'arranque en contacto', 'el motivo sale de la causa, no del texto');
+    assert.ok(caso, 'el barrido encuentra una disposición que solo pasa en «gemelo» por arranque en contacto o ruta cartesiana incompleta');
+    assert.equal(caso.motivo, MOTIVO[caso.causa](caso.pct), 'el motivo sale de la causa, no del texto');
     const filas = { g: await texto(p, '#valBar [data-perfil="gemelo"]'), c: await texto(p, '#valBar [data-perfil="curso"]'), m: await texto(p, '#valBar .valMotivo') };
     const s1 = v => v.toFixed(1).replace('.', ',');
     assert.equal(filas.g, `Gemelo previa: sin problemas · demo: completa · ciclo ${s1(caso.tg)} s`);
     assert.match(filas.c, new RegExp(`^Curso previa: sin problemas · demo: parada en el paso \\d+ · ciclo ${s1(caso.tc)} s hasta el fallo$`));
-    assert.equal(filas.m, 'Solo pasa en «gemelo». Motivo: arranque en contacto');
+    assert.equal(filas.m, `Solo pasa en «gemelo». Motivo: ${caso.motivo}`);
     assert.notEqual(caso.tg, caso.tc, 'los dos tiempos de ciclo, distintos');
-    assert.match(await p.evaluate(() => document.querySelector('#valBar .valMotivo').title), /^MoveIt rechazaría el arranque en contacto \(START_STATE_IN_COLLISION\): /);
+    assert.match(await p.evaluate(() => document.querySelector('#valBar .valMotivo').title), DETALLE[caso.causa]);
     assert.equal(await p.textContent('#btnValidar'), 'Validar otra vez');
     // T1.6-7 con el botón: tras validar, explorar sin tocar nada no recalcula ni «gemelo» ni «curso»
     await p.evaluate(() => { const C = window.__g.CACHE_PLAN; window.__ref = { g: { ...C.gemelo }, c: { ...C.curso } }; });
@@ -68,7 +72,7 @@ test('T1.8-1, T1.8-2 y T1.8-5: Validar muestra los dos veredictos y los dos tiem
     await p.click('#btnCalc'); await p.waitForFunction(() => window.__g.CALC.activo, null, { timeout: 10000, polling: 20 }).catch(() => { }); await esperarPlanes(p);
     assert.deepEqual(await p.evaluate(() => ({ g: window.__g.planesAlDia(), c: window.__g.planesAlDiaDe('curso'), intacta: ['plato1', 'plato2'].every(k => window.__g.CACHE_PLAN.curso[k] === window.__ref.c[k]) })), { g: true, c: false, intacta: true }, 'arrastrar recalcula con «gemelo»');
     comprobar(s.reg);
-    console.log(`  · barrido: persona ${caso.dx * 100} cm; Validar ${caso.ms} ms; ciclo gemelo ${caso.tg} s, curso ${caso.tc} s`);
+    console.log(`  · barrido: persona ${caso.dx * 100} cm (${caso.causa}); Validar ${caso.ms} ms; ciclo gemelo ${caso.tg} s, curso ${caso.tc} s`);
   } finally { await s.cerrar(); }
 });
 

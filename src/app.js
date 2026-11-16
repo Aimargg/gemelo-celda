@@ -33,8 +33,14 @@ const H_TR = 0.12, H_AP = 0.06; // altura de traslado sobre la mesa y de aproxim
 // de la matriz que llegan a la salida, con «gemelo» y con «curso», y en las escenas v8. Medido con el gemelo (2026-11-16,
 // informe de T1.9): con 2 cm, las 19 salidas libres y holgura mínima de 5,5 mm; con 3 cm, una salida de «curso» toca la
 // bandeja (−1,7 mm: arranque en contacto); con 5 y 6 cm, la subida de «gemelo» caja M1 2 cm llega a la singularidad del
-// codo y la demo falla (sin trayectoria)
-const H_SALIDA = 0.02;
+// codo y la demo falla (sin trayectoria).
+// Desde T2.8 (DT30), planColocar exige además que el final de la subida y el arranque hacia el reposo no toquen la bandeja
+// en ninguna pose de su balanceo, y la altura se volvió a medir con esa comprobación en el barrido de 33 disposiciones
+// (tools/barrido-salida.mjs; docs/estado/barrido-salida-t28.md, 2026-11-16). Con 2, 3, 4 y 5 cm ninguna toca la bandeja,
+// frente a 10 antes de T2.8. Con 2 cm, 26 viables, pero Calcular en la disposición de partida pasa de 0,9 s a 1,7 s
+// (descarta sus agarres y busca otros); con 3 cm se pierde v16, viable antes (ruta cartesiana incompleta al llevar el
+// plato 2); con 4 cm, 25 viables sin perder ninguna y Calcular en 0,9 s. Es el menor valor que cumple las tres cosas
+const H_SALIDA = 0.04;
 const CAJA_LADO = 0.10;
 // ArUco reales del diccionario DICT_4X4_50 (ids 0–15), bits interiores por filas
 const ARUCO = ['1011010100110010', '0000111110011010', '0011001100101101', '1001100101000110', '0101010010011110', '0111100111001101', '1001111000101110', '1100010011110010', '1111111011011010', '1100111101010110', '1111100110010001', '0001000110100111', '0000111010110111', '0010101000001111', '0010010010110001', '0010011000111110'];
@@ -412,12 +418,76 @@ function ladoZonas() { // la zona del primero queda del lado del robot
 }
 const BALANCEO = t => ({ dx: 0.55 * Math.sin(2 * PI * 0.33 * t) + 0.35 * Math.sin(2 * PI * 0.87 * t + 1.1), dy: 0.6 * Math.sin(2 * PI * 0.47 * t + 2.0) + 0.25 * Math.sin(2 * PI * 1.1 * t), dz: 0.3 * Math.sin(2 * PI * 0.71 * t + 0.4), dyaw: 0.9 * Math.sin(2 * PI * 0.29 * t + 0.7) });
 const trayState = { subida: 1, balanceo: false };
-function poseBandeja(t) {
-  const P = L.persona, B = L.bandeja; const A = (D.amp || 0) * (trayState.balanceo ? 1 : 0);
-  const o = BALANCEO(t + D.fase); const s = trayState.subida;
+function poseBandeja(t) { return poseBandejaDe(BALANCEO(t + D.fase), (D.amp || 0) * (trayState.balanceo ? 1 : 0), trayState.subida); }
+// Pose de la bandeja con el desplazamiento o de BALANCEO, la amplitud A y la subida s (de 0, bajada, a 1, en recepción)
+function poseBandejaDe(o, A, s) {
+  const P = L.persona, B = L.bandeja;
   const ade = 0.18 + (B.ade - 0.18) * s, alt = (B.alt - 0.22) + 0.22 * s;
   const yaw = P.yaw + o.dyaw * A * 1.6; const lx = ade + o.dx * A, ly = o.dy * A;
   return { x: P.x + Math.cos(P.yaw) * lx - Math.sin(P.yaw) * ly, y: P.y + Math.sin(P.yaw) * lx + Math.cos(P.yaw) * ly, z: alt + o.dz * A, yaw };
+}
+// La bandeja en todo su balanceo (T2.8, DT30): la salida de la bandeja acaba en una postura (qU) en la que la bandeja puede
+// estar en cualquier punto de su recorrido, según cuándo llegue el brazo. BALANCEO es periódico: sus frecuencias son
+// centésimas de hercio (0,33, 0,87, 0,47, 1,1, 0,71 y 0,29 Hz), así que se repite cada BAL_T = 100 s. Se toman muestras de
+// un periodo entero con la amplitud de la demo (D.amp) y en recepción, sin la fase de la demo (D.fase) ni el reloj: el
+// resultado no depende de en qué punto del recorrido esté la bandeja al planificar. El paso es el que mueve cualquier punto
+// de la bandeja (en el obstáculo, con su margen) como mucho BAL_PASO entre dos muestras; la mitad entra como margen extra.
+// Cada muestra es el obstáculo «bandeja» de obstaculos() con la bandeja en esa pose, en base_link.
+const BAL_T = 100, BAL_PASO = 0.001;
+let _balCache = { key: '', b: null };
+function bandejaBalanceo() {
+  const A = D.amp || 0; if (!(A > 0)) return null;
+  const P = L.persona, B = L.bandeja, key = [A, P.x, P.y, P.yaw, B.ade, B.alt, L.robot, ROB.id].join('|'); if (_balCache.key === key) return _balCache.b;
+  const mb = marco(), hx = BAND.d / 2 + 0.008, hy = BAND.w / 2 + 0.008, hz = 0.009, Rm = Math.hypot(hx, hy, hz);
+  const obs = p => { const c = mb.aBase(p.x, p.y, p.z - 0.006), yb = mb.yawABase(p.yaw); return { t: 3, x: c[0], y: c[1], z: c[2], hx, hy, hz, c: Math.cos(yb), s: Math.sin(yb), tag: 'bandeja', m: 0.004, R: Math.hypot(hx, hy, hz) }; };
+  // velocidad máxima de un punto de la bandeja por unidad de amplitud (cota de las derivadas de BALANCEO): da el paso
+  const v = (0.55 * 0.33 + 0.35 * 0.87) + (0.6 * 0.47 + 0.25 * 1.1) + 0.3 * 0.71 + 0.9 * 0.29 * 1.6 * Rm; const n = Math.ceil(BAL_T * 2 * PI * v * A / BAL_PASO);
+  const nominal = obs(poseBandejaDe({ dx: 0, dy: 0, dz: 0, dyaw: 0 }, 0, 1)); const M = new Float64Array(n * 5); let dmax = 0;
+  for (let i = 0; i < n; i++) {
+    const o = obs(poseBandejaDe(BALANCEO(i * BAL_T / n), A, 1)); M.set([o.x, o.y, o.z, o.c, o.s], i * 5);
+    dmax = Math.max(dmax, Math.hypot(o.x - nominal.x, o.y - nominal.y, o.z - nominal.z) + Math.abs(Math.atan2(o.s * nominal.c - o.c * nominal.s, o.c * nominal.c + o.s * nominal.s)) * Rm);
+  }
+  _balCache = { key, b: { nominal, M, n, dmax, extra: BAL_PASO / 2, hx, hy, hz } }; return _balCache.b;
+}
+// ¿Toca la postura q (apertura w, sin carga: el plato ya está en la bandeja) la bandeja en alguna pose de su balanceo? Como
+// choqueEn con el obstáculo «bandeja» (brazo y pinza, mismo margen), más la mitad del paso entre muestras. Solo se miran las
+// esferas que están a menos de lo que se desplaza la bandeja en su balanceo (dmax) de su pose nominal.
+function tocaBandejaEnBalanceo(q, w) {
+  const b = bandejaBalanceo(); if (!b) return false;
+  const n = colocar(q, w, null), X = COL.X, cerca = [];
+  for (let i = COL.ini[2]; i < n; i++) { const k = i * 4; if (distObs(b.nominal, X[k], X[k + 1], X[k + 2]) < X[k + 3] + b.nominal.m + b.extra + b.dmax) cerca.push(k); }
+  // la distancia de distObs a la caja de cada muestra, con un descarte por ejes antes (casi todas quedan fuera en un eje)
+  const M = b.M, m = b.nominal.m + b.extra;
+  for (const k of cerca) {
+    const x = X[k], y = X[k + 1], z = X[k + 2], lim = X[k + 3] + m, ex = b.hx + lim, ey = b.hy + lim, ez = b.hz + lim;
+    for (let j = 0; j < b.n * 5; j += 5) {
+      const lz = z - M[j + 2]; if (lz > ez || lz < -ez) continue;
+      const dx = x - M[j], dy = y - M[j + 1], c = M[j + 3], s = M[j + 4], lx = dx * c + dy * s; if (lx > ex || lx < -ex) continue;
+      const ly = -dx * s + dy * c; if (ly > ey || ly < -ey) continue;
+      const qx = Math.abs(lx) - b.hx, qy = Math.abs(ly) - b.hy, qz = Math.abs(lz) - b.hz, fuera = Math.hypot(Math.max(qx, 0), Math.max(qy, 0), Math.max(qz, 0));
+      if ((fuera > 0 ? fuera : Math.max(qx, qy, qz)) < lim) return true;
+    }
+  }
+  return false;
+}
+// Y el arranque del movimiento siguiente (T2.8, decisión 2): en el barrido de hoy, 6 de los 10 contactos con la bandeja no
+// eran en qU sino en los primeros centímetros del movimiento hacia la postura de reposo (tránsito o reposo final), con la
+// bandeja moviéndose hacia la pinza. Ese movimiento es el camino recto en articulaciones hasta la IK de posReposo() más
+// cercana a qU cuando está libre (planificar); se comprueba su tramo inicial, hasta que el TCP se aleja A_ARRANQUE de qU,
+// en pasos de como mucho PASO_ARRANQUE rad, frente a la bandeja en todo su balanceo. Si no hay IK del reposo, no se mira: el
+// fallo lo da el propio movimiento. [SUPUESTO: si el camino recto choca con la escena del instante, el RRT da otro camino
+// y este tramo no lo cubre; y tras el plato 1 con la muñeca a 45° no hay tránsito (servirPlato): el movimiento siguiente va
+// a la fruta y este tramo es solo una aproximación.]
+const A_ARRANQUE = 0.05, PASO_ARRANQUE = 0.01;
+function arranqueLibreEnBalanceo(qU) {
+  if (!bandejaBalanceo()) return true;
+  const qT = ikTCP(posReposo(), PI / 2, qU, { w: 0.03, carga: null }); if (!qT) return true;
+  const p0 = tcpDeQ(qU, 0.03).p, d = Math.max(...qT.map((v, i) => Math.abs(v - qU[i]))), n = Math.max(1, Math.ceil(d / PASO_ARRANQUE));
+  for (let k = 1; k <= n; k++) {
+    const q = qU.map((v, i) => v + (qT[i] - v) * k / n); if (tocaBandejaEnBalanceo(q, 0.03)) return false;
+    if (tcpDeQ(q, 0.03).p.distanceTo(p0) > A_ARRANQUE) break;
+  }
+  return true;
 }
 // Pose de plan de la bandeja (DT35): la de recepción, sin balanceo y subida, con la que se planifica cada plato (pasosPlan).
 // Fuera de la demo es poseBandeja(t); durante la demo, poseBandeja(0) lleva el balanceo de la fase D.fase. La exportan la TF
@@ -686,9 +756,11 @@ function planColocar(zw, qRef, flip, carga = null, pitch = 0, todos = false) {
     const q = ikTCP(tcp, yaw, qPre, { ...o, permitir: ['bandeja'] }); if (!q) continue;
     const salida = tcp.clone().addScaledVector(eje, -0.08); const qS = ikTCP(salida, yaw, q, { ...o, w: 0.03, carga: null, permitir: ['bandeja'] }); if (!qS) continue;
     // la subida tras la salida (T1.9, decisión 3): tiene que tener IK y acabar libre con el contexto del movimiento
-    // siguiente (sin nada permitido); si no, la entrada se descarta y el fallo sale en la comprobación previa
+    // siguiente (sin nada permitido), con la bandeja en su pose de ahora y en todas las de su balanceo con la amplitud de la
+    // demo (T2.8, DT30): cuando el brazo llegue a qU, la bandeja puede estar en cualquier punto de su recorrido. Si no, la
+    // entrada se descarta y el fallo sale en la comprobación previa
     const subida = salida.clone(); subida.z += H_SALIDA; const qU = ikTCP(subida, yaw, qS, { ...o, w: 0.03, carga: null, permitir: ['bandeja'] });
-    if (!qU || choqueEn(qU, ctxDe({ w: 0.03, carga: null }))) continue;
+    if (!qU || choqueEn(qU, ctxDe({ w: 0.03, carga: null })) || tocaBandejaEnBalanceo(qU, 0.03) || !arranqueLibreEnBalanceo(qU)) continue;
     const c = { yaw, pitch, d, eje, tcp, pre, salida, subida, q, qPre, qS, qU, k, flip: Math.sign(CIN.fk(q)[8]) || flip || 1 }; if (!todos) return c; lista.push(c);
   }
   return todos ? lista : null;
@@ -1316,10 +1388,10 @@ function enBase(p) { return mundoABase(p); } // punto del mundo en base_link: la
 // con «gemelo» ni al revés. cachePlan crea la del perfil si no existe (un test puede vaciar CACHE_PLAN entero).
 const CACHE_PLAN = { gemelo: {}, curso: {} };
 const cachePlan = pf => CACHE_PLAN[PERFIL.de(pf).nombre] || (CACHE_PLAN[pf] = {});
-// todo lo que entra en la escena de colisión o en la cadena: robot (posición A/B y cinemática, T1.4), plato, el otro plato, caja (y su altura), zona de fruta, persona, bandeja, cámaras (posición y hacia dónde miran) y pedido, más el perfil (T1.6) y si se ve el robot del otro puesto (H4)
+// todo lo que entra en la escena de colisión o en la cadena: robot (posición A/B y cinemática, T1.4), plato, el otro plato, caja (y su altura), zona de fruta, persona, bandeja, cámaras (posición y hacia dónde miran) y pedido, más el perfil (T1.6) y si se ve el robot del otro puesto (H4), y la amplitud del balanceo de la demo, con la que se comprueba la salida de la bandeja (T2.8)
 function clavePlan(pk, pf) {
   const P = L.persona, B = L.bandeja; const r3 = v => (+v).toFixed(3), ps = o => `${r3(o.x)},${r3(o.y)}`;
-  return [PERFIL.de(pf).nombre, L.robot, ROB.id, r3(L[pk].x), r3(L[pk].y), r3(zPlato()), L.caja.on, r3(L.caja.h), ps(L.plato1), ps(L.plato2), ps(L.zona), r3(L.zona.yaw), ps(P), r3(P.yaw), B.alt, B.ade, L.pedido, Object.values(L.cams).map(c => ps(c.pos) + ',' + r3(c.pos.z) + ',' + ps(c.mira) + ',' + r3(c.roll || 0)).join(';'), otroVisible() ? 'otro' : 'sin otro'].join('|');
+  return [PERFIL.de(pf).nombre, L.robot, ROB.id, r3(L[pk].x), r3(L[pk].y), r3(zPlato()), L.caja.on, r3(L.caja.h), ps(L.plato1), ps(L.plato2), ps(L.zona), r3(L.zona.yaw), ps(P), r3(P.yaw), B.alt, B.ade, L.pedido, Object.values(L.cams).map(c => ps(c.pos) + ',' + r3(c.pos.z) + ',' + ps(c.mira) + ',' + r3(c.roll || 0)).join(';'), otroVisible() ? 'otro' : 'sin otro', (+(D.amp || 0)).toFixed(4)].join('|');
 }
 const planAlDia = (pk, pf) => cachePlan(pf)[pk]?.key === clavePlan(pk, pf);
 // ======================= Escena de partida (H3, DT24) =======================
@@ -2042,7 +2114,7 @@ $('#segModoB').addEventListener('click', e => { const b = e.target.closest('butt
 $('#dVel').addEventListener('input', e => { D.vel = e.target.value / 100; $('#dVelOut').textContent = `${e.target.value} %`; });
 $('#dAmp').addEventListener('input', e => { D.amp = e.target.value / 100; $('#dAmpOut').textContent = `${fmt(+e.target.value, 1)} cm`; actualizarCheck(); });
 requestAnimationFrame(bucle);
-if (location.search.includes('prueba')) window.__g = { aplicarPedido, actualizarZona, esferasObjeto, cargaDe, BAND, bandeja, aplicarBandeja: t => aplicarBandeja(t), ladoZonas: () => ladoZonas(), comprobarPlan, llegaVertical, puntosSoltar, FRUTAS, CACHE_PLAN, poseHoriz, ejeHoriz, mundoABase, enLimites, qValida, rutaNivelada: (...a) => rutaNivelada(...a), colocacionConTransporte: (...a) => colocacionConTransporte(...a), planColocar: (...a) => planColocar(...a), zonasB, ikTCP, planAgarrePlato, planColocar, planPlatoCache, KIN_: KIN, BASES, consts: { R_AGARRE, H_BORDE }, COL: () => COL, choqueEn: (q, c) => choqueEn(q, c), obstaculos: () => obstaculos(), textoChoque: c => textoChoque(c), D, L: () => L, cam, orbit, scene, renderer, OBJ, piezas: () => piezas, simT: () => simT, CAMS, actualizarCam, actualizarAruco, actualizarPlatos, metricasCam, estadoObjeto, alcance, comprobarPlan, ensayo, planAgarrePlato, holguraActual, get robot() { return robot; }, KIN, pinza, tcpMundo, zPlato, setL: l => { L = l; }, ESC, ALM, abrirEscena, codigoEscena, abrirCodigo, guardarEscena, escCam: cam, orbit, vista, CALC, calcularPlanes, planesAlDia, recalcular, orientDe, fijarOrient, orientarDesdeQuat, CAMS, seleccionar, tctl, generarYaml, ficherosRos: () => ficherosRos(), modeloExportacion: () => modeloExportacion(), cadenaPlato, cargaPlan, rutaCartesiana: (...a) => rutaCartesiana(...a), zonasB_: () => zonasB, zonaDe, qReposo, aplicarLayout, buscarAlternativa, candidatos, explicar, mostrarFalloInfo, diagnosticarPunto, LAYOUT, ESQ_L, migrarLayout, soloLectura, RNG, planificar: (...a) => planificar(...a), get CIN() { return CIN; }, get ROB() { return ROB; }, CALIBRACION, marco: () => marco(), baseAMundo: (x, y, z) => baseAMundo(x, y, z), tcpDeQ: (q, w) => tcpDeQ(q, w), pedirRobotId: id => pedirRobotId(id), ikNoConverge: (p, y, o) => ikNoConverge(p, y, o), posesTCP, volCol, calcularPerfil, radioA, PERFIL, prepararMoveJ: (...a) => prepararMoveJ(...a), semillaDe: (...a) => semillaDe(...a), otroVisible: () => otroVisible(), apartarEscena: () => apartarEscena(), perfilEscena: () => perfilEscena(), planesAlDiaDe: pf => planesAlDia(pf), validar: () => validar(), VAL, SENSOR, areaDe: c => areaDe(c), hfovDe: c => hfovDe(c), vfovDe: c => vfovDe(c), firmaVal: () => firmaVal(), valAlDia: () => valAlDia(), perfilesDe: e => perfilesDe(e), estadoParaGuardar: () => estadoParaGuardar() }; // T1.4: robot activo, su cinemática y el marco de base_link (una sola línea: build_web.sh la quita entera)
+if (location.search.includes('prueba')) window.__g = { aplicarPedido, actualizarZona, esferasObjeto, cargaDe, BAND, bandeja, aplicarBandeja: t => aplicarBandeja(t), ladoZonas: () => ladoZonas(), comprobarPlan, llegaVertical, puntosSoltar, FRUTAS, CACHE_PLAN, poseHoriz, ejeHoriz, mundoABase, enLimites, qValida, rutaNivelada: (...a) => rutaNivelada(...a), colocacionConTransporte: (...a) => colocacionConTransporte(...a), planColocar: (...a) => planColocar(...a), zonasB, ikTCP, planAgarrePlato, planColocar, planPlatoCache, KIN_: KIN, BASES, consts: { R_AGARRE, H_BORDE }, COL: () => COL, choqueEn: (q, c) => choqueEn(q, c), obstaculos: () => obstaculos(), textoChoque: c => textoChoque(c), D, L: () => L, cam, orbit, scene, renderer, OBJ, piezas: () => piezas, simT: () => simT, CAMS, actualizarCam, actualizarAruco, actualizarPlatos, metricasCam, estadoObjeto, alcance, comprobarPlan, ensayo, planAgarrePlato, holguraActual, get robot() { return robot; }, KIN, pinza, tcpMundo, zPlato, setL: l => { L = l; }, ESC, ALM, abrirEscena, codigoEscena, abrirCodigo, guardarEscena, escCam: cam, orbit, vista, CALC, calcularPlanes, planesAlDia, recalcular, orientDe, fijarOrient, orientarDesdeQuat, CAMS, seleccionar, tctl, generarYaml, ficherosRos: () => ficherosRos(), modeloExportacion: () => modeloExportacion(), cadenaPlato, cargaPlan, rutaCartesiana: (...a) => rutaCartesiana(...a), zonasB_: () => zonasB, zonaDe, qReposo, aplicarLayout, buscarAlternativa, candidatos, explicar, mostrarFalloInfo, diagnosticarPunto, LAYOUT, ESQ_L, migrarLayout, soloLectura, RNG, planificar: (...a) => planificar(...a), get CIN() { return CIN; }, get ROB() { return ROB; }, CALIBRACION, marco: () => marco(), baseAMundo: (x, y, z) => baseAMundo(x, y, z), tcpDeQ: (q, w) => tcpDeQ(q, w), pedirRobotId: id => pedirRobotId(id), ikNoConverge: (p, y, o) => ikNoConverge(p, y, o), posesTCP, volCol, calcularPerfil, radioA, PERFIL, prepararMoveJ: (...a) => prepararMoveJ(...a), semillaDe: (...a) => semillaDe(...a), otroVisible: () => otroVisible(), apartarEscena: () => apartarEscena(), perfilEscena: () => perfilEscena(), planesAlDiaDe: pf => planesAlDia(pf), validar: () => validar(), VAL, SENSOR, areaDe: c => areaDe(c), hfovDe: c => hfovDe(c), vfovDe: c => vfovDe(c), firmaVal: () => firmaVal(), valAlDia: () => valAlDia(), perfilesDe: e => perfilesDe(e), estadoParaGuardar: () => estadoParaGuardar(), bandejaBalanceo: () => bandejaBalanceo(), tocaBandejaEnBalanceo: (q, w) => tocaBandejaEnBalanceo(q, w) }; // T1.4: robot activo, su cinemática y el marco de base_link (una sola línea: build_web.sh la quita entera)
 fetch('ur3e-malla.json').then(r => { if (!r.ok) throw new Error(r.status); return r.json(); }).then(j => { const bin = atob(j.glb); const u8 = new Uint8Array(bin.length); for (let i = 0; i < bin.length; i++) u8[i] = bin.charCodeAt(i); new GLTFLoader().parse(u8.buffer, '', cargado, fallo); }).catch(fallo);
 function fallo(err) { $('#loading').textContent = 'No se ha podido cargar el modelo del UR3e.'; console.error(err); }
 function cargado(g) {
