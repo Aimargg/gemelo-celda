@@ -31,7 +31,7 @@ after(async () => { await srv?.cerrar(); });
 function leerPagina() {
   const g = window.__g, L = g.L(), V = g.robot.root.position.constructor;
   g.bandeja.updateMatrixWorld(true);
-  const zonas = Object.fromEntries(['zona_primero', 'zona_segundo'].map(k => { const p = g.zonasB[k].getWorldPosition(new V()); return [k, { x: p.x, y: p.y, z: p.z }]; }));
+  const zonas = Object.fromEntries(['zona_primero', 'zona_segundo', 'zona_centro'].map(k => { const p = g.zonasB[k].getWorldPosition(new V()); return [k, { x: p.x, y: p.y, z: p.z }]; }));
   // Lo que dibuja el gemelo (T2.4): la cámara de render de cada cámara (su marco óptico en world, la referencia de T2.4-C3)
   // con las etiquetas de sus marcos TF, y cada marcador de entrega con su plano texturado (supuesto 2)
   const opticos = Object.fromEntries(Object.keys(g.CAMS).map(k => {
@@ -113,7 +113,7 @@ const CORRESPONDENCIAS = [
   [/^objetos\.marcador_entrega_(\d)\.([xyz])$/, (m, pos) => [`marcadores.marcador_${pos.get(`objetos.marcador_entrega_${m[1]}.id`).fuente}.xyz[${I(m[2])}]`]],
   [/^objetos\.bandeja_recepcion\.([xyz])$/, m => [`bandeja.xyz[${I(m[1])}]`]],
   [/^objetos\.bandeja_recepcion\.yaw_rad$/, () => ['bandeja.yaw']],
-  [/^objetos\.(zona_primero|zona_segundo)\.([xyz])$/, m => [`bandeja.${m[1]}.xyz[${I(m[2])}]`]],
+  [/^objetos\.(zona_primero|zona_segundo|zona_centro)\.([xyz])$/, m => [`bandeja.${m[1]}.xyz[${I(m[2])}]`]], // zona_centro: DT36
   [/^objetos\.persona\.([xy])$/, m => [`persona.xy[${I(m[1])}]`]],
   [/^objetos\.persona\.yaw_rad$/, () => ['persona.yaw']],
   [/^camaras\.camara_(\w+)\.(grupo|modelo|focal_mm|modo|hfov_rad)$/, m => [`camaras.${m[1]}.${m[2]}`]],
@@ -125,7 +125,7 @@ const CORRESPONDENCIAS = [
 // y el lado de cada marcador, la z de la cara de arriba de la mesa (0 en base_link) y la lista de cámaras
 const SOLO_PARAMETROS = [
   /^mesa\.frame_id$/, /^mesa\.xyz\[2\]$/, /^platos\.plato_\d\.frame_id$/, /^zona_fruta\.frame_id$/,
-  /^marcadores\.marcador_\d+\.(frame_id|yaw|lado_m)$/, /^bandeja\.frame_id$/, /^bandeja\.zona_(primero|segundo)\.frame_id$/,
+  /^marcadores\.marcador_\d+\.(frame_id|yaw|lado_m)$/, /^bandeja\.frame_id$/, /^bandeja\.zona_(primero|segundo|centro)\.frame_id$/,
   /^camaras\.nombres\[\d+\]$/, /^camaras\.\w+\.frame_id$/, /^camaras\.\w+\.rpy\[[012]\]$/,
 ];
 function destinos(ruta, pos) {
@@ -149,7 +149,7 @@ const mismoGiro = (a, b, que) => assert.ok(giro(a, b) <= 0.001 + 1e-9, `${que}: 
 // Aristas de la decisión 6 del brief, escritas aquí (no las da el código que exporta): [padre, hijo]
 const aristasEsperadas = (raizTF, cams) => [
   [raizTF, 'mesa'], [raizTF, 'zona_fruta'], [raizTF, 'plato_1_inicio'], [raizTF, 'plato_2_inicio'], [raizTF, 'marcador_4'], [raizTF, 'marcador_5'],
-  [raizTF, 'bandeja'], ['bandeja', 'zona_primero'], ['bandeja', 'zona_segundo'],
+  [raizTF, 'bandeja'], ['bandeja', 'zona_primero'], ['bandeja', 'zona_segundo'], ['bandeja', 'zona_centro'], // zona_centro: DT36
   ...cams.flatMap(k => [[raizTF, `camara_${k}`], [`camara_${k}`, `camara_${k}_optical`]]),
 ];
 const NOMINALES = { bandeja: 'nominal: la sustituye la pose que publique Visión', camara: 'nominal: la sustituye la calibración' };
@@ -212,6 +212,38 @@ function leerScene(src) {
 // ---------- T2.5: cámaras ----------
 const ENTEROS_USB = { enteros: ['image_width', 'image_height', 'exposure', 'white_balance'] }; // los que usb_cam declara enteros
 
+// ---------- T2.7: zona_centro (DT36) ----------
+// La línea que dice si la disposición usa zona_centro, escrita aquí: con un plato es el destino; con dos, no se usa
+const LINEA_CENTRO = pedido => `# zona_centro (centro de la bandeja): el destino del plato con un pedido de un plato${pedido === 1 ? ', como el de esta disposición' : '; con dos, como en esta disposición, no se usa'}.`;
+// C3: tf/zona_centro.yaml (hija de bandeja), su pose en base_link frente a la zona dibujada (zonasB.zona_centro) y los mismos
+// números en parametros_celda.yaml, tf_estaticas.sh y posiciones.yaml; con el pedido de la página (r.L.pedido)
+function comprobarCentro(r) {
+  const pedido = r.L.pedido, T = REF(r.robotId).T, J = R3(T), base = [r.base.x, r.base.y, MESA_H]; RT = T;
+  const tz = texto(r, 'tf/zona_centro.yaml'), tb = texto(r, 'tf/bandeja.yaml'), sh = texto(r, 'tf_estaticas.sh'), p = texto(r, 'parametros_celda.yaml');
+  assert.deepEqual(problemasParams(tz), []);
+  const z = leerTF(tz), b = leerTF(tb);
+  assert.deepEqual([z.padre, z.hijo, b.padre], ['bandeja', 'zona_centro', `${r.c.prefijo}base_link`], 'zona_centro cuelga de bandeja (sin prefijo: un frame de la celda), y bandeja de <prefijo>base_link');
+  // la zona dibujada, en base_link
+  const w = r.zonas.zona_centro, ref = aplicar(tr(J), [w.x - base[0], w.y - base[1], w.z - base[2]]);
+  // la cadena bandeja ∘ zona_centro: dos redondeos de 1 mm y uno de 0,001 rad en 2 cm (como las otras zonas en T2.4-C5)
+  const Rb = deQ(b.q), pc = b.t.map((v, i) => v + aplicar(Rb, z.t)[i]);
+  for (let i = 0; i < 3; i++) assert.ok(Math.abs(pc[i] - ref[i]) <= 1.3e-3, `bandeja ∘ zona_centro: ${'xyz'[i]} ${pc[i]} frente a ${ref[i]}`);
+  // su pose en base_link escrita una vez (parámetros y posiciones.yaml): ±0,5 mm por eje de base_link
+  const c = YAML.parse(p)['/**'].ros__parameters.celda;
+  for (let i = 0; i < 3; i++) assert.ok(Math.abs(c.bandeja.zona_centro.xyz[i] - ref[i]) <= 0.5e-3 + 1e-9, `parametros bandeja.zona_centro.xyz[${i}] ${c.bandeja.zona_centro.xyz[i]} frente a ${ref[i]}`);
+  assert.equal(c.bandeja.zona_centro.frame_id, 'zona_centro');
+  // los mismos números: parámetros = posiciones.yaml (texto), comando = tf/zona_centro.yaml (texto)
+  const pos = hojas(r.yaml, docDe(r.yaml).contents), par = celdaDe(p);
+  for (const [i, k] of ['x', 'y', 'z'].entries()) assert.equal(par.get(`bandeja.zona_centro.xyz[${i}]`).fuente, pos.get(`objetos.zona_centro.${k}`).fuente, `posiciones.yaml zona_centro.${k}`);
+  const cmd = sh.split('\n').filter(l => l.startsWith('ros2 run ') && l.includes(' --child-frame-id zona_centro '));
+  assert.equal(cmd.length, 1, 'un comando para zona_centro'); const f = leerComando(cmd[0]).flags;
+  assert.deepEqual([f['frame-id'], f.x, f.y, f.z], ['bandeja', ...['x', 'y', 'z'].map(k => z.texto.get(`translation.${k}`).fuente)]);
+  // la línea de la cabecera, en los cuatro ficheros que la llevan, y en ninguno más
+  for (const [nombre, t] of [['posiciones.yaml', r.yaml], ['parametros_celda.yaml', p], ['tf/zona_centro.yaml', tz], ['tf_estaticas.sh', sh]]) assert.equal(t.split('\n').filter(l => l === LINEA_CENTRO(pedido)).length, 1, `${nombre}: ${LINEA_CENTRO(pedido)}`);
+  for (const f2 of r.ficheros.filter(f2 => !['parametros_celda.yaml', 'tf/zona_centro.yaml', 'tf_estaticas.sh'].includes(f2.nombre))) assert.ok(!f2.texto.includes('# zona_centro (centro'), `${f2.nombre} no la lleva`);
+  return { pedido, cadena: Math.max(...pc.map((v, i) => Math.abs(v - ref[i]))), param: Math.max(...c.bandeja.zona_centro.xyz.map((v, i) => Math.abs(v - ref[i]))) };
+}
+
 test('T2.2 y T2.4 con nominal, el 203 y el 203 con prefijo: parametros_celda.yaml (C1–C4), las TF estáticas (C1–C5) y Común-C1 en la misma página', { timeout: 300000 }, async t => {
   const s = await abrir(srv.url);
   try {
@@ -254,7 +286,7 @@ test('T2.2 y T2.4 con nominal, el 203 y el 203 con prefijo: parametros_celda.yam
         const P = L.persona, bL = [P.x + Math.cos(P.yaw) * L.bandeja.ade, P.y + Math.sin(P.yaw) * L.bandeja.ade, L.bandeja.alt];
         cerca(W(c.bandeja.xyz), bL, 'bandeja (disposición)'); cerca(W(c.bandeja.xyz), xyz(r.bandeja), 'bandeja (página)');
         mismoGiro(c.bandeja.yaw + yb, P.yaw, 'giro de la bandeja'); mismoGiro(r.bandeja.yaw, P.yaw, 'giro de la bandeja de la página');
-        for (const k of ['zona_primero', 'zona_segundo']) cerca(W(c.bandeja[k].xyz), xyz(r.zonas[k]), k);
+        for (const k of ['zona_primero', 'zona_segundo', 'zona_centro']) cerca(W(c.bandeja[k].xyz), xyz(r.zonas[k]), k);
         cerca(W([...c.persona.xy, 0]), [P.x, P.y], 'persona'); mismoGiro(c.persona.yaw + yb, P.yaw, 'giro de la persona');
         for (const [k, cam] of Object.entries(L.cams)) {
           const q = c.camaras[k]; cerca(W(q.xyz), xyz(cam.pos), `cámara ${k}`); cerca(W(q.mira), xyz(cam.mira), `mira de ${k}`); cerca(W(q.pinza_mesa), [cam.clamp.x, cam.clamp.y, MESA_H], `pinza de ${k}`);
@@ -357,7 +389,7 @@ test('T2.2 y T2.4 con nominal, el 203 y el 203 con prefijo: parametros_celda.yam
         // las zonas cuelgan de la bandeja: bandeja ∘ zona da la zona dibujada (dos redondeos de 1 mm y uno de 0,001 rad en
         // 10 cm: 0,5 + 0,71 + 0,05 < 1,3 mm por eje)
         const b = porHijo.bandeja, Rb = deQ(b.q);
-        for (const k of ['zona_primero', 'zona_segundo']) {
+        for (const k of ['zona_primero', 'zona_segundo', 'zona_centro']) {
           const z = porHijo[k], p = b.t.map((v, i) => v + aplicar(Rb, z.t)[i]), w = r.zonas[k], ref = aplicar(tr(J), [w.x - base[0], w.y - base[1], w.z - base[2]]);
           for (let i = 0; i < 3; i++) assert.ok(Math.abs(p[i] - ref[i]) <= 1.3e-3, `${k}: ${'xyz'[i]} ${p[i]} frente a ${ref[i]}`);
         }
@@ -365,6 +397,10 @@ test('T2.2 y T2.4 con nominal, el 203 y el 203 con prefijo: parametros_celda.yam
       await t.test(`${r.c.id} · Común-C1: exportar dos veces da los mismos bytes y ningún fichero lleva fecha`, () => {
         assert.deepEqual(r.otra, r.ficheros);
         for (const f of r.ficheros) assert.ok(!/\b\d{4}-\d{2}-\d{2}\b/.test(f.texto), `${f.nombre}: sin fecha`);
+      });
+      await t.test(`${r.c.id} · T2.7-C3 (DT36), con dos platos: zona_centro en tf/, parametros_celda.yaml, tf_estaticas.sh y posiciones.yaml con los mismos números`, st => {
+        const e = comprobarCentro(r); assert.equal(e.pedido, 2);
+        st.diagnostic(`peor error: ${(e.cadena * 1000).toFixed(3)} mm por la cadena de TF y ${(e.param * 1000).toFixed(3)} mm en los parámetros`);
       });
 
       // ---------- T2.3 y T2.5 (añadido en T2.3 + T2.5): en la misma página y con los mismos casos ----------
@@ -511,6 +547,20 @@ test('T2.2 y T2.4 con nominal, el 203 y el 203 con prefijo: parametros_celda.yam
           assert.deepEqual([u.image_width, u.image_height], [ci.image_width, ci.image_height], `${k}: el tamaño del modo`); assert.ok(u.framerate > 0, `${k}: framerate`); // double: lo exige problemasParams (no es un entero de usb_cam)
           assert.deepEqual([u.autoexposure, u.exposure, u.auto_white_balance, u.white_balance], [false, 50, false, 4000], `${k}: exposición y balance manuales`);
         }
+      });
+    }
+    // T2.7-C3 (DT36) con un plato: los mismos casos, en orden inverso, con «Pide 1 plato»
+    await s.page.click('.tabs [data-tab="demo"]'); await s.page.click('#segPedido [data-v="1"]');
+    await s.page.waitForFunction(() => window.__g.L().pedido === 1, null, { timeout: 30000, polling: 50 });
+    const uno = [];
+    for (const c of [...CASOS_YAML].reverse()) { await aplicarCaso(s.page, c); uno.push({ c, ...(await s.page.evaluate(leerPagina)) }); }
+    comprobar(s.reg);
+    for (const r of uno) {
+      await t.test(`${r.c.id} · T2.7-C3 (DT36), con un plato: zona_centro (el destino) en tf/, parametros_celda.yaml, tf_estaticas.sh y posiciones.yaml con los mismos números`, st => {
+        const e = comprobarCentro(r); assert.equal(e.pedido, 1);
+        assert.equal(YAML.parse(texto(r, 'parametros_celda.yaml'))['/**'].ros__parameters.celda.pedido, 'un_plato');
+        assert.deepEqual(r.ficheros.filter(f => f.nombre.startsWith('tf/')).map(f => f.nombre), aristasEsperadas(`${r.c.prefijo}base_link`, Object.keys(r.L.cams)).map(([, h]) => `tf/${h}.yaml`), 'las mismas TF que con dos platos');
+        st.diagnostic(`peor error: ${(e.cadena * 1000).toFixed(3)} mm por la cadena de TF y ${(e.param * 1000).toFixed(3)} mm en los parámetros`);
       });
     }
   } finally { await s.cerrar(); }

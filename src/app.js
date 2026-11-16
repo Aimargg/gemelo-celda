@@ -1790,7 +1790,7 @@ function modeloExportacion() {
     zona: { ...zf, yaw: yawABase(L.zona.yaw), ancho: L.zona.w, fondo: L.zona.d },
     // marcadores de entrega: planos sobre la mesa y con sus ejes (OBJ.arucoE no gira), de 6 cm (aruco(4 + i, 0.06))
     marcadores: L.arucoE.map((a, i) => ({ id: 4 + i, diccionario: 'DICT_4X4_50', lado: 0.06, ...B(a), yaw: yawABase(0) })),
-    bandeja: { ...bt, yaw: yawABase(tp.yaw), zonas: ['zona_primero', 'zona_segundo'].map(k => ({ clave: k, base: B(enPlan(zonasB[k].position)), local: v(zonasB[k].position) })) },
+    bandeja: { ...bt, yaw: yawABase(tp.yaw), zonas: ['zona_primero', 'zona_segundo', 'zona_centro'].map(k => ({ clave: k, base: B(enPlan(zonasB[k].position)), local: v(zonasB[k].position) })) }, // zona_centro siempre (DT36)
     persona: { ...pe, yaw: yawABase(L.persona.yaw) },
     camaras,
     escena: escenaExportacion(B, mc, bt, yawABase(tp.yaw), camaras),

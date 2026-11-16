@@ -259,6 +259,27 @@ test('T2.4: las aristas de la decisión 6, en orden, y el script con un comando 
   assert.match(fichero(MODELO, 'tf/camara_cenital_optical.yaml'), /^ {6}'x': 0\.000 {2}# FABRICANTE \(convenio de REP-103\)$/m);
 });
 
+test('DT36: zona_centro, con un plato y con dos: su TF hija de bandeja, sus parámetros, su comando y su línea de posiciones.yaml, y la cabecera lo dice', () => {
+  const con = pedido => { const m = plano(MODELO); m.pedido = pedido; m.bandeja.zonas.push({ clave: 'zona_centro', base: { x: 0.47, y: 0.05, z: 0.2404 }, local: { x: -0.02, y: 0, z: 0.0004 } }); return m; };
+  const linea = { 1: '# zona_centro (centro de la bandeja): el destino del plato con un pedido de un plato, como el de esta disposición.', 2: '# zona_centro (centro de la bandeja): el destino del plato con un pedido de un plato; con dos, como en esta disposición, no se usa.' };
+  for (const pedido of [1, 2]) {
+    const m = con(pedido), f = EXPORTAR.ficherosRos(m, ORIGEN), nombres = plano(f.map(x => x.nombre)), texto = n => f.find(x => x.nombre === n).texto;
+    assert.deepEqual(nombres.slice(nombres.indexOf('tf/bandeja.yaml'), nombres.indexOf('tf/camara_cenital.yaml')), ['tf/bandeja.yaml', 'tf/zona_primero.yaml', 'tf/zona_segundo.yaml', 'tf/zona_centro.yaml']);
+    const tz = texto('tf/zona_centro.yaml'), p = texto('parametros_celda.yaml'), s = texto('tf_estaticas.sh'), y = EXPORTAR.posiciones(m, ORIGEN, '2026-01-01');
+    assert.deepEqual(problemasParams(tz), []); assert.deepEqual(problemasParams(p, ENTEROS), []);
+    assert.match(tz, /^ {4}frame_id: 'bandeja' {2}# SUPUESTO \(nombre propuesto\)\n {4}child_frame_id: 'zona_centro' {2}# SUPUESTO \(nombre propuesto\)$/m);
+    assert.match(tz, /^ {6}'x': -0\.020 {2}# SUPUESTO \(sin medir\)\n {6}'y': 0\.000 {2}# SUPUESTO \(sin medir\)\n {6}'z': 0\.000 {2}# SUPUESTO \(sin medir\)$/m);
+    assert.ok(s.split('\n').includes('ros2 run tf2_ros static_transform_publisher --x -0.020 --y 0.000 --z 0.000 --roll 0.000 --pitch 0.000 --yaw 0.000 --frame-id bandeja --child-frame-id zona_centro --ros-args -r __node:=tf_zona_centro &'));
+    assert.equal(bloque(p, '        zona_centro:', 3), ['        zona_centro:', "          frame_id: 'zona_centro'  # SUPUESTO (nombre propuesto)", '          xyz: [0.470, 0.050, 0.240]  # SUPUESTO (disposición propuesta, sin medir)'].join('\n'));
+    assert.ok(y.split('\n').includes('  zona_centro: {x: 0.470, y: 0.050, z: 0.240}  # SUPUESTO (disposición propuesta, sin medir)'));
+    assert.match(p, /^# {3}zona_fruta, marcadores \(ids, marcador_<id>\), bandeja \(zona_primero, zona_segundo, zona_centro\), persona/m);
+    for (const [n, t] of [['tz', tz], ['p', p], ['s', s], ['y', y]]) assert.equal(t.split('\n').filter(l => l === linea[pedido]).length, 1, `${n}, ${pedido} plato(s)`);
+    assert.ok(!texto('tf/zona_primero.yaml').includes('# zona_centro (') && !texto('tf/mesa.yaml').includes('# zona_centro ('), 'solo los ficheros que la llevan');
+  }
+  // sin zona_centro en el modelo (como el modelo a mano de los otros tests) no hay línea ni TF: nada se inventa
+  assert.ok(!EXPORTAR.ficherosRos(MODELO, ORIGEN).some(x => x.nombre === 'tf/zona_centro.yaml' || x.texto.includes('# zona_centro (')));
+});
+
 test('Común-C2 y T2.4: con el prefijo «203_» y el giro de −135°, la raíz lleva el prefijo y los frames de la celda no', () => {
   const s = fichero(MODELO_203, 'tf_estaticas.sh');
   assert.ok(s.split('\n').includes('ros2 run tf2_ros static_transform_publisher --x -0.434 --y -0.269 --z 0.000 --roll 0.000 --pitch 0.000 --yaw 2.356 --frame-id 203_base_link --child-frame-id mesa --ros-args -r __node:=tf_mesa &'));
