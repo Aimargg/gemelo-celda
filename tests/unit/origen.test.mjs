@@ -17,12 +17,13 @@ const CONTEXTOS = [CTX, { ...CTX, robotId: '203', yaw: -3 * Math.PI / 4 }, { ...
 
 test('toda entrada tiene clave única, tipo válido, texto, fuente y un comentario corto que empieza por su tipo', () => {
   assert.deepEqual(ORIGEN.TIPOS, ['MEDIDO', 'FABRICANTE', 'SUPUESTO']);
-  assert.deepEqual(Object.keys(ORIGEN.CLASE).sort(), [...ORIGEN.TIPOS].sort());
+  assert.equal(ORIGEN.GRUPO, 'decisión del grupo'); // DT34: una etiqueta propia, no un cuarto tipo de D8
+  assert.deepEqual(Object.keys(ORIGEN.CLASE).sort(), [...ORIGEN.TIPOS, ORIGEN.GRUPO].sort());
   assert.equal(ORIGEN.LEYENDA, 'MEDIDO, FABRICANTE o SUPUESTO');
   assert.equal(new Set(ORIGEN.CLAVES).size, ORIGEN.CLAVES.length, 'claves únicas');
   for (const ctx of CONTEXTOS) for (const k of ORIGEN.CLAVES) {
     const e = ORIGEN.entrada(k, ctx);
-    assert.ok(ORIGEN.TIPOS.includes(e.tipo), `${k}: tipo ${e.tipo}`);
+    assert.ok(ORIGEN.TIPOS.includes(e.tipo) || e.tipo === ORIGEN.GRUPO, `${k}: tipo ${e.tipo}`);
     for (const campo of ['valor', 'fuente', 'yaml']) assert.ok(typeof e[campo] === 'string' && e[campo].trim().length > 0, `${k}: ${campo}`);
     assert.ok(e.nombre === null || (typeof e.nombre === 'string' && e.nombre.length > 0), `${k}: nombre`);
     assert.ok(e.yaml === e.tipo || e.yaml.startsWith(`${e.tipo} (`), `${k}: el comentario empieza por el tipo: «${e.yaml}»`);
@@ -82,4 +83,22 @@ test('el módulo no lee globales del gemelo: se carga en un contexto vacío y no
   assert.deepEqual(JSON.parse(JSON.stringify(m.exports.panel(CTX))), ORIGEN.panel(CTX), 'en un contexto sin nada más da lo mismo'); // otro reino: se compara su contenido
   const codigo = FUENTE.split('\n').map(l => l.replace(/\/\/.*$/, '')).join('\n'); // sin comentarios
   for (const g of [/\bROB\b/, /\bL\s*[.(]/, /\bSENSOR\b/, /\bdocument\b/, /\bwindow\b/, /\bTHREE\b/, /\blocalStorage\b/]) assert.doesNotMatch(codigo, g);
+});
+
+// DT34 (T2.7): lo que ha decidido el grupo lleva la etiqueta «decisión del grupo» (ORIGEN.GRUPO), no MEDIDO. La regla se
+// comprueba con una función que también se pasa por una copia de origen.js con el agarre en MEDIDO, que debe fallar.
+function decisionesMal(O, ctx) {
+  return O.CLAVES.map(k => O.entrada(k, ctx)).filter(e => /^decisión del grupo/i.test(e.fuente) && (e.tipo !== O.GRUPO || e.yaml !== O.GRUPO)).map(e => `${e.clave}: ${e.tipo} · ${e.yaml}`);
+}
+test('DT34: una entrada cuya fuente es una decisión del grupo lleva «decisión del grupo» (en la tabla y en los ficheros), no MEDIDO', () => {
+  for (const ctx of CONTEXTOS) assert.deepEqual(decisionesMal(ORIGEN, ctx), []);
+  const grupo = ORIGEN.CLAVES.filter(k => ORIGEN.entrada(k, CTX).tipo === ORIGEN.GRUPO);
+  assert.deepEqual(grupo, ['agarre_plato'], 'hoy solo el agarre del plato');
+  assert.deepEqual(ORIGEN.panel(CTX).find(f => f.clave === 'agarre_plato'), { clave: 'agarre_plato', nombre: 'Agarre del plato', tipo: 'decisión del grupo', valor: 'horizontal por el borde, un dedo encima y otro debajo del ala', fuente: 'Decisión del grupo (12-11)', yaml: 'decisión del grupo' });
+  assert.equal(ORIGEN.CLASE[ORIGEN.GRUPO], 'g');
+  // la misma comprobación falla con el agarre en MEDIDO (como estaba antes de T2.7)
+  const viejo = FUENTE.replace("{ clave: 'agarre_plato', nombre: 'Agarre del plato', tipo: GRUPO,", "{ clave: 'agarre_plato', nombre: 'Agarre del plato', tipo: M,");
+  assert.notEqual(viejo, FUENTE, 'la copia cambia la entrada del agarre');
+  const m = { exports: null }; vm.runInNewContext(viejo, { module: m });
+  assert.deepEqual([...decisionesMal(m.exports, CTX)], ['agarre_plato: MEDIDO · MEDIDO']); // otro reino: se copia el array
 });

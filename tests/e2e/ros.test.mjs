@@ -266,9 +266,9 @@ test('T2.2 y T2.4 con nominal, el 203 y el 203 con prefijo: parametros_celda.yam
         }
         assert.equal(c.platos.sobre_caja, L.caja.on); assert.equal(c.pedido, L.pedido === 1 ? 'un_plato' : 'dos_platos'); assert.equal(c.robot.posicion, L.robot);
       });
-      await t.test(`${r.c.id} · T2.2-C4: cada hoja lleva al final de su línea el origen (MEDIDO, FABRICANTE, SUPUESTO o «${ORIGEN.ELEGIDO}»)`, () => {
+      await t.test(`${r.c.id} · T2.2-C4: cada hoja lleva al final de su línea el origen (MEDIDO, FABRICANTE, SUPUESTO, «${ORIGEN.ELEGIDO}» o «${ORIGEN.GRUPO}»)`, () => {
         const cuerpo = p.split('\n').filter(l => l && !l.startsWith('#')), conValor = cuerpo.filter(l => /^\s*[^\s:#]+: \S/.test(l));
-        const re = new RegExp(`  # (${[...ORIGEN.TIPOS, ORIGEN.ELEGIDO].join('|')})\\b`);
+        const re = new RegExp(`  # (${[...ORIGEN.TIPOS, ORIGEN.ELEGIDO, ORIGEN.GRUPO].join('|')})\\b`); // DT34: «decisión del grupo», el agarre del plato
         for (const l of conValor) assert.match(l, re, l);
         for (const l of cuerpo.filter(l => !conValor.includes(l))) assert.match(l, /^\s*[^\s:#]+:$/, `línea sin valor ni origen: ${l}`);
         // una línea con valor por hoja: las de los arrays van en la misma línea que su clave

@@ -1053,7 +1053,10 @@ const SENSOR = (() => {
 const ORIGEN = (() => {
   const M = 'MEDIDO', F = 'FABRICANTE', S = 'SUPUESTO';
   const TIPOS = [M, F, S];
-  const CLASE = { [M]: 'm', [F]: 'f', [S]: 's' }; // clase de la etiqueta en la tabla (.tag.m, .tag.f y .tag.s del CSS)
+  // Lo que ha decidido el grupo (DT34, T2.7) no es un cuarto tipo de D8: es una etiqueta propia, como ELEGIDO (abajo). La
+  // lleva en el campo tipo, en la tabla y en los ficheros, la entrada cuya fuente es una decisión del grupo (agarre_plato).
+  const GRUPO = 'decisión del grupo';
+  const CLASE = { [M]: 'm', [F]: 'f', [S]: 's', [GRUPO]: 'g' }; // clase de la etiqueta en la tabla (.tag.m, .tag.f y .tag.s del CSS; .tag.g, la de .tag)
   const LEYENDA = `${TIPOS.slice(0, -1).join(', ')} o ${TIPOS.at(-1)}`;
   // Formatos de la tabla: los mismos que fmt, mm y gradosTxt de app.js (mismas operaciones, mismo texto)
   const R2D = 180 / Math.PI;
@@ -1061,7 +1064,8 @@ const ORIGEN = (() => {
   const grados = a => `${fmt(a * R2D, 1).replace('-', '−')}°`;
   const con = (t, detalle) => detalle ? `${t} (${detalle})` : t; // comentario corto: el tipo y, si hace falta, por qué
   // Una entrada por valor exportable. nombre: la fila de la tabla (null = solo en los ficheros exportados).
-  // tipo, valor, fuente: texto o función del contexto. yaml: (tipo, ctx) → comentario corto, que siempre empieza por el tipo.
+  // tipo (uno de TIPOS o GRUPO), valor, fuente: texto o función del contexto. yaml: (tipo, ctx) → comentario corto, que
+  // siempre empieza por el tipo.
   // El orden es el de la tabla.
   const ENTRADAS = [
     { clave: 'mesa', nombre: 'Mesa', tipo: M, valor: '1180 × 830 mm, superficie a 760 mm', fuente: 'Cinta + foto (regla y A4, error < 2 %)', yaml: t => t },
@@ -1077,7 +1081,7 @@ const ORIGEN = (() => {
     },
     { clave: 'pinza', nombre: 'Pinza', tipo: M, valor: 'OnRobot RG2, 0–110 mm, 0,78 kg, 3–40 N', fuente: 'Apertura medida 110 mm + ficha', yaml: t => t },
     { clave: 'tcp_pinza', nombre: 'TCP de la pinza', tipo: S, valor: c => `${Math.round(c.tcpZ * 1000)} mm cerrada`, fuente: 'Modelo simplificado; medir en PolyScope', yaml: t => con(t, 'modelo simplificado') },
-    { clave: 'agarre_plato', nombre: 'Agarre del plato', tipo: M, valor: 'horizontal por el borde, un dedo encima y otro debajo del ala', fuente: 'Decisión del grupo (12-11)', yaml: t => con(t, 'decisión del grupo') },
+    { clave: 'agarre_plato', nombre: 'Agarre del plato', tipo: GRUPO, valor: 'horizontal por el borde, un dedo encima y otro debajo del ala', fuente: 'Decisión del grupo (12-11)', yaml: t => t },
     { clave: 'caja_plato', nombre: 'Caja bajo el plato', tipo: S, valor: '10 × 10 cm, altura regulable', fuente: 'Propuesta del grupo; tamaño sin medir', yaml: t => t },
     {
       clave: 'orientacion_base_link', nombre: 'Orientación de base_link', tipo: S,
@@ -1143,7 +1147,7 @@ const ORIGEN = (() => {
   const yaml = (clave, ctx) => entrada(clave, ctx).yaml;
   // Las filas de la tabla del panel «Datos», en su orden
   const panel = ctx => ENTRADAS.filter(e => e.nombre !== null).map(e => entrada(e.clave, ctx));
-  return { TIPOS, CLASE, LEYENDA, ELEGIDO, CLAVES, entrada, tipo, yaml, panel };
+  return { TIPOS, CLASE, LEYENDA, ELEGIDO, GRUPO, CLAVES, entrada, tipo, yaml, panel };
 })();
 // Formateador de los ficheros exportados (T2.2–T2.5, D8, I7): convierte el modelo de modeloExportacion() (app.js: un objeto
 // plano, sin redondear y en el base_link del robot elegido) en texto. Sin DOM, three ni globales del gemelo: el origen de
@@ -1196,8 +1200,9 @@ const EXPORTAR = (() => {
     y += lineaRobot(m) + lineaFrame(m);
     y += `# world: el world del gemelo, con los ejes de la mesa y el origen en el centro de la base sobre el tablero [${ot('orientacion_base_link')} hasta comprobarlo en el laboratorio].\n`;
     y += `# ${frame} está girado ${rad3(R.yaw)} rad (${grados(R.yaw)}) respecto a ese world: mount_yaw − π del xacro del curso [SIN VALIDAR en ROS; docs/estado/frames.md].\n`;
-    y += `# Origen de cada valor, al final de su línea: ${O.LEYENDA}. Las cámaras dan el giro desde +y de ${frame} hacia +x.\n`;
-    y += `fecha: ${fecha}\nrobot: ${R.posicion}  # ${og(R.posicion === 'B' ? 'base_b' : 'base_a')}\nrobot_id: ${R.desconocido ? `${R.idLayout}  # de la disposición; el gemelo no lo conoce y usa la cinemática nominal` : `${R.id}  # ${O.ELEGIDO}`}\n`;
+    y += `# Origen de cada valor, al final de su línea: ${O.LEYENDA}; lo que ha decidido el grupo, «${O.GRUPO}». Las cámaras dan el giro desde +y de ${frame} hacia +x.\n`;
+    // La posición A/B es una elección del gemelo (DT34); la posición medida de cada base no se escribe en este fichero
+    y += `fecha: ${fecha}\nrobot: ${R.posicion}  # ${O.ELEGIDO}\nrobot_id: ${R.desconocido ? `${R.idLayout}  # de la disposición; el gemelo no lo conoce y usa la cinemática nominal` : `${R.id}  # ${O.ELEGIDO}`}\n`;
     const w = R.worldABase;
     y += `frame: ${frame}\nprefijo_frames: '${R.prefijo}'\nworld_a_base_link: {x: ${r3(w.x)}, y: ${r3(w.y)}, z: ${r3(w.z)}, yaw_rad: ${rad3(R.yaw)}}  # world del gemelo (ejes de la mesa): ${ot('orientacion_base_link')} · giro: mount_yaw − π del xacro del curso, ${og('orientacion_base_link')}\n`;
     if (R.doble) y += `pose_en_world_doble: {frame: ${frame}, x: ${r3(R.doble.x)}, y: ${r3(R.doble.y)}, z: ${r3(R.doble.z)}, yaw_rad: ${rad3(R.doble.yaw)}}  # xacro del curso, ${R.doble.nombre}: ${og('pose_doble')}\n`;
@@ -1252,11 +1257,12 @@ const EXPORTAR = (() => {
   const raiz = nodos => `/**:\n  ros__parameters:\n${bloque(nodos, 4)}`;
 
   // Cabecera de los ficheros de ROS (decisión 8): sin fecha, con el robot, el frame, la huella y cómo se carga
-  function cabecera(m, O, nombre, carga, extra = [], donde = 'al final de su línea') {
+  // grupo: el fichero lleva valores que ha decidido el grupo (DT34): la leyenda dice su etiqueta
+  function cabecera(m, O, nombre, carga, extra = [], donde = 'al final de su línea', grupo = false) {
     return [`# ${nombre} · gemelo de la celda UR3e · generado por el gemelo (IA), BORRADOR\n`, comentario(lineaRobot(m)), comentario(lineaFrame(m)),
       `# Huella de la disposición: ${huella(m.layoutJson)} (FNV-1a de 32 bits de JSON.stringify(L), en UTF-8): casa este fichero con su disposición.\n`,
       `# Carga: ${carga} [SIN VALIDAR en ROS: U4].\n`, ...extra.map(l => `# ${l}\n`),
-      `# Origen de cada valor, ${donde}: ${O.LEYENDA}; lo que se elige en el gemelo, «${O.ELEGIDO}».\n`].join('');
+      `# Origen de cada valor, ${donde}: ${O.LEYENDA}; lo que se elige en el gemelo, «${O.ELEGIDO}»${grupo ? `; lo que ha decidido el grupo, «${O.GRUPO}»` : ''}.\n`].join('');
   }
 
   // ---------- parametros_celda.yaml (T2.2): ros__parameters para --params-file ----------
@@ -1316,7 +1322,7 @@ const EXPORTAR = (() => {
       'Nombres en celda: robot (posicion, id, frame, prefijo_frames, world_a_base_link, pose_en_world_doble), pinza, mesa, pedido, platos (caja_tamano_m, plato_1, plato_2),',
       '  zona_fruta, marcadores (ids, marcador_<id>), bandeja (zona_primero, zona_segundo), persona (xy, yaw) y camaras (nombres, <nombre>: frame_id del marco óptico,',
       '  xyz y rpy del marco camara_<nombre>, mira, orientacion_rad como en posiciones.yaml y pinza_mesa).',
-    ]) + raiz([mapa('celda', ...nodos)]);
+    ], undefined, true) + raiz([mapa('celda', ...nodos)]);
   }
 
   // ---------- TF estáticas (T2.4): un tf/<child_frame_id>.yaml por arista y tf_estaticas.sh ----------

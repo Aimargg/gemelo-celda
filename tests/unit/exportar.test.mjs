@@ -166,6 +166,20 @@ test('texto seguro: un robot desconocido de una versión más nueva, comillas y 
   assert.throws(() => EXPORTAR.ficherosRos(id, ORIGEN), /se esperaba un entero/);
 });
 
+test('DT34: el agarre del plato lleva «decisión del grupo» y la posición A/B «elegido en el gemelo», en posiciones.yaml y en parametros_celda.yaml', () => {
+  assert.ok(!FUENTE.includes(ORIGEN.GRUPO), 'la etiqueta sale de ORIGEN, no se escribe a mano');
+  const p = fichero(MODELO, 'parametros_celda.yaml'), y = EXPORTAR.posiciones(MODELO, ORIGEN, '2026-01-01');
+  assert.match(p, /^ {8}agarre: 'horizontal_por_el_borde' {2}# decisión del grupo$/m);
+  assert.match(p, /^ {8}posicion: 'B' {2}# elegido en el gemelo$/m);
+  assert.match(p, /^# Origen de cada valor, al final de su línea: MEDIDO, FABRICANTE o SUPUESTO; lo que se elige en el gemelo, «elegido en el gemelo»; lo que ha decidido el grupo, «decisión del grupo»\.$/m);
+  assert.match(y, /^robot: B {2}# elegido en el gemelo$/m);
+  assert.match(y, /^platos: \{.*agarre: horizontal_por_el_borde, .*\} {2}# agarre: decisión del grupo · resto: SUPUESTO$/m);
+  assert.match(y, /^# Origen de cada valor, al final de su línea: MEDIDO, FABRICANTE o SUPUESTO; lo que ha decidido el grupo, «decisión del grupo»\. Las cámaras/m);
+  assert.ok(!/MEDIDO \(decisión del grupo\)|MEDIDO \(posición de la base/.test(p + y), 'ni el agarre ni la posición A/B llevan MEDIDO');
+  // los ficheros sin decisiones del grupo no cambian su leyenda
+  assert.match(fichero(MODELO, 'tf/mesa.yaml'), /^# Origen de cada valor, al final de su línea: MEDIDO, FABRICANTE o SUPUESTO; lo que se elige en el gemelo, «elegido en el gemelo»\.$/m);
+});
+
 test('I5: exportar.js va dentro de los dos HTML construidos, sin su línea de módulo, y yaml (solo de los tests) no', () => {
   for (const f of ['dist/gemelo-celda.html', 'index.html']) {
     const h = fs.readFileSync(path.join(RAIZ, f), 'utf8');
