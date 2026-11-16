@@ -46,8 +46,10 @@ test('H3: Guardar guarda el mismo estado tras una demo terminada, tras otra abor
     assert.ok(fin1.platos.every(([pa]) => pa === 'bandeja') && fin1.piezas.every(x => x[0] === 'plato1' || x[0] === 'plato2' || !x[2]), `escena animada tras la demo: ${JSON.stringify(fin1.platos)}`);
     await vaciar(); assert.deepEqual(await guardar(p, 'tras una demo terminada'), e0);
     assert.deepEqual(await animada(p), fin1, 'Guardar deja la escena de la demo terminada como estaba');
-    // 2) demo abortada a medias (la bandeja se mueve 10 cm: se aparta más de 10 s del volumen natural y se retira el brazo)
-    const r2 = await p.evaluate(c => window.__g.ensayo(c).then(r => ({ fin: r.fin, paso: r.paso, causa: window.__g.D.falloDemo && window.__g.D.falloDemo.causa })), { ...BASE, caja: true, modo: 'M0', amp: 0.1, perfil: 'gemelo' });
+    // 2) demo abortada a medias (la bandeja se mueve 6 cm, el máximo del control: se aparta más de 10 s del volumen natural
+    // y se retira el brazo). Hasta T2.8 eran 10 cm; desde T2.8 la salida se comprueba con la amplitud de la demo, y con 10 cm
+    // se elige otro agarre del plato 1 que choca con la bandeja al acercarse al borde (paso 6) antes de llegar a abortar
+    const r2 = await p.evaluate(c => window.__g.ensayo(c).then(r => ({ fin: r.fin, paso: r.paso, causa: window.__g.D.falloDemo && window.__g.D.falloDemo.causa })), { ...BASE, caja: true, modo: 'M0', amp: 0.06, perfil: 'gemelo' });
     assert.deepEqual({ fin: r2.fin, causa: r2.causa }, { fin: 'abort', causa: 'bandeja_movida' }, `demo abortada en el paso ${r2.paso}`);
     const fin2 = await animada(p);
     assert.ok(fin2.piezas.some(x => x[2]), 'la demo abortada ya había usado fruta');
@@ -72,7 +74,7 @@ test('H3: Guardar guarda el mismo estado tras una demo terminada, tras otra abor
 test('H3: tras una demo abortada, el ensayo en seco de la búsqueda ve la fruta en su zona', { timeout: 900000 }, async () => {
   const s = await abrir(srv.url); const p = s.page;
   try {
-    const r = await p.evaluate(c => window.__g.ensayo(c).then(r => r.fin), { ...BASE, caja: true, modo: 'M0', amp: 0.1, perfil: 'gemelo' });
+    const r = await p.evaluate(c => window.__g.ensayo(c).then(r => r.fin), { ...BASE, caja: true, modo: 'M0', amp: 0.06, perfil: 'gemelo' });
     assert.equal(r, 'abort');
     // Espía (sin cambiar nada) las posiciones de la fruta que se leen durante el primer ensayo en seco de la búsqueda, en
     // el marco de la zona de fruta de la disposición que se ensaya en ese momento

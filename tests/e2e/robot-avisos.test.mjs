@@ -108,8 +108,9 @@ test('corrección 3: «IK calibrada no converge» también en rutaCartesiana, en
     assert.ok(r, 'la búsqueda encuentra un caso'); assert.ok(!r.sinPlan, 'con el 204 hay plan del plato 1 al día');
     assert.deepEqual({ causa: r.causa, fallo: r.fallo }, { causa: 'ik_calibrada', fallo: 'IK calibrada no converge' });
     assert.match(r.item, /^Plato 1º: no puedo cogerlo y levantarlo en línea recta: al levantarlo de la caja, IK calibrada no converge/);
-    // el panel «La demo no puede empezar» de la demo
-    const d = await p.evaluate(() => window.__g.ensayo({ vel: 0.25, fase: 0, sinRender: true, limite: 60, modo: 'M0', amp: 0, perfil: 'gemelo' }));
+    // el panel «La demo no puede empezar» de la demo. Con el balanceo con el que se calcularon los planes (el de la página,
+    // 2 cm): desde T2.8 la amplitud entra en la clave del plan y con otra la demo lo recalcularía sin el fallo puesto arriba
+    const d = await p.evaluate(() => window.__g.ensayo({ vel: 0.25, fase: 0, sinRender: true, limite: 60, modo: 'M0', amp: 0.02, perfil: 'gemelo' }));
     assert.equal(d.fin, 'previo'); assert.match(d.fallo, /La demo no puede empezar/); assert.match(d.fallo, /IK calibrada no converge/);
     // La fruta: con las calibraciones del curso, las poses verticales de esa comprobación no dan nunca ramas sin converger
     // (búsqueda en rejilla de 5 mm en el informe), así que aquí ninguna rama converge para ninguna pose (se simula) y se
