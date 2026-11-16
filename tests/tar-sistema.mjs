@@ -8,8 +8,13 @@ import path from 'node:path';
 
 const ENV = { ...process.env, TZ: 'UTC', LC_ALL: 'C' };
 // tar con sus argumentos en una carpeta: { codigo, salida, error }. Sin tar en el sistema, el test falla con este mensaje.
+// En Windows, GNU tar (el de Git Bash) toma «C:\…» como un host remoto («Cannot connect to C:»): --force-local le dice que el
+// fichero es local. bsdtar no conoce esa opción y no la necesita.
+let gnu = null;
+const esGnuTar = () => gnu ??= /GNU tar/.test(spawnSync('tar', ['--version'], { encoding: 'utf8', env: ENV }).stdout || '');
 export function tar(args, cwd) {
-  const r = spawnSync('tar', args, { cwd, encoding: 'utf8', env: ENV });
+  const extra = process.platform === 'win32' && args[0] !== '--version' && esGnuTar() ? ['--force-local'] : [];
+  const r = spawnSync('tar', [...extra, ...args], { cwd, encoding: 'utf8', env: ENV });
   if (r.error) throw new Error(`No se puede ejecutar el tar del sistema (la referencia de T2.6): ${r.error.message}`);
   return { codigo: r.status, salida: r.stdout, error: r.stderr };
 }
