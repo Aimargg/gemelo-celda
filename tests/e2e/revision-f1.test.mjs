@@ -25,17 +25,18 @@ test('H1: con Validar en marcha, Reiniciar, el pedido y Buscar avisan y no tocan
       const g = window.__g; const pedido0 = g.L().pedido; const v = g.validar(); const dentro = {};
       // a mitad de la demo de la validación (ensayo de banco, ya en marcha)
       await new Promise(res => { const t = setInterval(() => { if (g.VAL.activo && g.D.banco && g.D.paso >= 1) { clearInterval(t); res(); } }, 10); });
-      const run0 = g.D.run, paso0 = g.D.paso;
-      document.getElementById('dReset').click();
-      document.querySelector(`#segPedido button[data-v="${pedido0 === 1 ? 2 : 1}"]`).click();
-      const busca = g.buscarAlternativa({ causa: 'alcance', fase: 'plato', pk: 'plato1' });
-      Object.assign(dentro, { run: g.D.run === run0, paso: g.D.paso >= paso0, pedido: g.L().pedido === pedido0, buscando: g.D.buscando });
+      const run0 = g.D.run, paso0 = g.D.paso; const aviso = () => document.getElementById('toast').textContent; const avisos = [];
+      // las tres acciones van en la misma tarea: el observador de los avisos solo vería el último, así que se lee cada uno
+      document.getElementById('dReset').click(); avisos.push(aviso());
+      document.querySelector(`#segPedido button[data-v="${pedido0 === 1 ? 2 : 1}"]`).click(); avisos.push(aviso());
+      const busca = g.buscarAlternativa({ causa: 'alcance', fase: 'plato', pk: 'plato1' }); avisos.push(aviso());
+      Object.assign(dentro, { run: g.D.run === run0, paso: g.D.paso >= paso0, pedido: g.L().pedido === pedido0, buscando: !!g.D.buscando });
       await busca; await v;
       const x = g.VAL.res;
-      return { dentro, alDia: g.valAlDia(), fin: x && [x.per.gemelo.demo.fin, x.per.curso.demo.fin], toasts: window.__toastsPrueba.slice() };
+      return { dentro, alDia: g.valAlDia(), fin: x && [x.per.gemelo.demo.fin, x.per.curso.demo.fin], avisos };
     });
     assert.deepEqual(r.dentro, { run: true, paso: true, pedido: true, buscando: false }, 'durante la validación nada reinicia la demo, cambia el pedido ni empieza una búsqueda');
-    for (const t of ['reiniciar la demo', 'cambiar el pedido', 'buscar una disposición']) assert.ok(r.toasts.includes(`Espera a que termine la validación para ${t}`), `aviso «${t}»: ${JSON.stringify(r.toasts)}`);
+    assert.deepEqual(r.avisos, ['reiniciar la demo', 'cambiar el pedido', 'buscar una disposición'].map(t => `Espera a que termine la validación para ${t}`));
     assert.deepEqual({ alDia: r.alDia, fin: r.fin }, { alDia: true, fin: ['ok', 'ok'] }, 'la disposición por defecto valida con los dos perfiles');
     // sin nada en marcha, Reiniciar sí reinicia
     const tras = await p.evaluate(() => { const g = window.__g, n = g.D.run; document.getElementById('dReset').click(); return { run: g.D.run > n, paso: g.D.paso }; });
