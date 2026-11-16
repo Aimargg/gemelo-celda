@@ -27,6 +27,7 @@ export const NIVELES = {
     'tests/e2e/matriz.test.mjs',            // I8: matriz «gemelo» de 8 casos en orden directo
     'tests/e2e/perfil.test.mjs',            // I6 con «curso» (A, B, A') y el perfil de movimiento (T1.6)
     'tests/e2e/robot.test.mjs',             // I6 con el 203 y dibujo = colisión = TCP (T1.4)
+    'tests/e2e/ros.test.mjs',               // I7: parametros_celda.yaml y TF estáticas con nominal, 203 y prefijo (T2.2, T2.4)
     'tests/e2e/sensor.test.mjs',            // modelo de sensor de la ELP (T1.7, D10)
   ],
   puerta: [

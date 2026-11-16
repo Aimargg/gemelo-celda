@@ -25,8 +25,8 @@ y no es fuente del repo del proyecto de Robótica (invariante I9).
 
 ## Construir y probar
 
-- `npm install` (solo `playwright@1.63.0` y `three@0.160.0`, versión exacta). Si falta el navegador de Playwright 1.63.0,
-  para y avisa: no ejecutes `playwright install` sin preguntar.
+- `npm install` (solo `playwright@1.63.0`, `three@0.160.0` y `yaml@2.9.1`, versión exacta; `yaml`, solo en los tests,
+  P6). Si falta el navegador de Playwright 1.63.0, para y avisa: no ejecutes `playwright install` sin preguntar.
 - `npm run build`: los dos destinos. `index.html` se versiona construido (D1).
 - `npm test`: nivel de tarea (T2.0): build + unitarios (`node:test`) + e2e de tarea (Playwright + Chromium con
   SwiftShader, sin GPU ni red), < 15 min. `npm run test:puerta`: los dos niveles, todos los tests (puertas de fase).

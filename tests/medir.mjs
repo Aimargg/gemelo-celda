@@ -43,19 +43,24 @@ export const CASOS_YAML = [
   { id: '203', descripcion: 'la misma con el 203 («Mantener la mesa»: los objetos no se mueven en world), sin prefijo', robot: '203', prefijo: '' },
   { id: '203-prefijo', descripcion: 'la misma con el 203 y el prefijo «203_» del URDF doble (doble_ur3e_203_204)', robot: '203', prefijo: '203_' },
 ];
+// Deja la página en un caso de CASOS_YAML: el robot (con «Mantener la mesa» si pregunta), el panel «Datos» abierto y el
+// prefijo de frames. Lo usan datosDe (posiciones.yaml, T2.1) y rosDe (ficheros de ROS, T2.2 y T2.4).
+export async function aplicarCaso(page, c) {
+  if (await page.evaluate(() => window.__g.ROB.id) !== c.robot) {
+    await page.click('.tabs [data-tab="escena"]'); await page.click(`#segRobotId [data-v="${c.robot}"]`);
+    if (await page.evaluate(() => !document.getElementById('robotPregunta').hidden)) await page.click('#rpMesa');
+    await page.waitForFunction(id => window.__g.ROB.id === id && window.__g.L().robotId === id, c.robot, { timeout: 60000, polling: 50 });
+  }
+  await page.click('.tabs [data-tab="datos"]'); // pinta el YAML y la tabla de fuentes (pintarDatos)
+  if (await page.evaluate(() => window.__g.L().prefijoFrames) !== c.prefijo) {
+    await page.selectOption('#prefijo', c.prefijo);
+    await page.waitForFunction(pf => window.__g.L().prefijoFrames === pf, c.prefijo, { timeout: 30000, polling: 50 });
+  }
+}
 export async function datosDe(page, casos = CASOS_YAML) {
   const out = [];
   for (const c of casos) {
-    if (await page.evaluate(() => window.__g.ROB.id) !== c.robot) {
-      await page.click('.tabs [data-tab="escena"]'); await page.click(`#segRobotId [data-v="${c.robot}"]`);
-      if (await page.evaluate(() => !document.getElementById('robotPregunta').hidden)) await page.click('#rpMesa');
-      await page.waitForFunction(id => window.__g.ROB.id === id && window.__g.L().robotId === id, c.robot, { timeout: 60000, polling: 50 });
-    }
-    await page.click('.tabs [data-tab="datos"]'); // pinta el YAML y la tabla de fuentes (pintarDatos)
-    if (await page.evaluate(() => window.__g.L().prefijoFrames) !== c.prefijo) {
-      await page.selectOption('#prefijo', c.prefijo);
-      await page.waitForFunction(pf => window.__g.L().prefijoFrames === pf, c.prefijo, { timeout: 30000, polling: 50 });
-    }
+    await aplicarCaso(page, c);
     const r = await page.evaluate(() => {
       const filas = [...document.querySelectorAll('#srcTbl tbody tr')].map(tr => {
         const [a, b, t] = tr.cells, tag = t.querySelector('.tag');
@@ -64,6 +69,17 @@ export async function datosDe(page, casos = CASOS_YAML) {
       return { yaml: window.__g.generarYaml(), panel: filas };
     });
     out.push({ caso: c.id, ...r });
+  }
+  return out;
+}
+// Ficheros de ROS (T2.2, T2.4) de los casos de CASOS_YAML, en este orden y en la misma página: window.__g.ficherosRos(),
+// [{ nombre, texto }] por caso. El generador (npm run caracterizar -- --ros → tests/fixtures/ros/<caso>/) y el test de las
+// referencias (tests/e2e/ros-referencias.test.mjs) usan este mismo procedimiento.
+export async function rosDe(page, casos = CASOS_YAML) {
+  const out = [];
+  for (const c of casos) {
+    await aplicarCaso(page, c);
+    out.push({ caso: c.id, ficheros: await page.evaluate(() => window.__g.ficherosRos()) });
   }
   return out;
 }
