@@ -46,7 +46,7 @@ Duraciones medidas en el contenedor de 2 núcleos (SwiftShader, sin GPU): «ante
 | `matriz` | tarea | 4 | 40 | 31 | I8: matriz «gemelo» en orden directo; comprobaciones de `matriz-curso.json` sin página |
 | `perfil` | tarea | 4 | 118 | 61 | I6 con «curso» (A, B, A'), perfil de movimiento (T1.6) |
 | `robot` | tarea | 2 | 90 | 46 | I6 con el 203; dibujo = colisión = TCP (T1.4) |
-| `ros` | tarea | 1 + 54, 1 | — | 75 | I7: parametros_celda.yaml (T2.2), TF estáticas (T2.4), escena de colisión (T2.3) y camera_info y usb_cam (T2.5) con nominal, 203 y prefijo en una página; los mismos bytes al volver a abrir con la misma Tu mesa (Común-C1). T2.3 y T2.5 añadieron 24 subtests a la misma página, de milisegundos cada uno |
+| `ros` | tarea | 1 + 54 | — | 33 | I7: parametros_celda.yaml (T2.2), TF estáticas (T2.4), escena de colisión (T2.3) y camera_info y usb_cam (T2.5) con nominal, 203 y prefijo en una página, y los mismos bytes dos veces en ella (Común-C1). T2.3 y T2.5 añadieron 24 subtests, de milisegundos cada uno |
 | `ros-referencias` | tarea | 1, 1 + 3 | — | 31 | I7: los ficheros de ROS (T2.2–T2.5) byte a byte con nominal, 203 y prefijo (Común-C3), red de T2.6 |
 | `sensor` | tarea | 2 | 59 | 34 | modelo de sensor (T1.7, D10) |
 | `cambio-robot` | puerta | 3 | 186 | 122 | T1.5-3, T1.5-4 (68,6 s antes) y correcciones 1 y 2 |
@@ -54,12 +54,14 @@ Duraciones medidas en el contenedor de 2 núcleos (SwiftShader, sin GPU): «ante
 | `matriz-curso` | puerta | 2 | 74 | 53 | matriz «curso» directa e inversa (I6 con «curso» también en la tarea) |
 | `partida` | puerta | 3 | 280 | 232 | H3 (203,6 s antes) y H4 de F1 |
 | `revision-f1` | puerta | 2 | 64 | 34 | H1 y H2 de la revisión de F1 |
+| `ros-recarga` | puerta | 1 | — | 46 | I7: Común-C1 tras volver a abrir con la misma Tu mesa; las dos páginas calculan antes de exportar porque la escena lleva el giro de las cajas del plan (DT38). Salió de `ros` al aceptar T2.3 + T2.5 |
 | `robot-avisos` | puerta | 3 | 123 | 66 | aviso del 204 e «IK calibrada no converge» (T1.4) |
 | `salida` | puerta | 2 | 62 | 43 | salida de la bandeja (T1.9); la recorren también las matrices |
 | `validar` | puerta | 4 | 298 | 213 | barrido de Validar (123,7 s antes), búsqueda (83,6 s antes) y porPerfil al guardar (T1.8) |
 
 `ros` y `ros-referencias`, medidos al entregar T2.3 + T2.5 (`npm test` de 14 min 25 s), en una ejecución en la que el resto de
-ficheros también tardó un 10–40 % más que en esta columna (`carga`, 38 s): antes medían 66 y 24 s.
+ficheros también tardó un 10–40 % más que en esta columna (`carga`, 38 s): antes medían 66 y 24 s. `ros` sin la recarga (que
+pasó a `ros-recarga`) y `ros-recarga`, medidos por el coordinador al aceptar T2.3 + T2.5.
 
 «Tests» cuenta los `test()` de cada fichero tal como los ejecuta node:test: `escenas-v8` crea uno por escena en un bucle y
 `carga` tiene una suite (`describe`) con dos tests que comparten la página de su `before`; `datos`, un test con 6 subtests
