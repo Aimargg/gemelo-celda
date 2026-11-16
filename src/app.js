@@ -774,11 +774,12 @@ async function validar() {
     const t = { gemelo: per.gemelo.demo.t_ciclo_s, curso: per.curso.demo.t_ciclo_s };
     for (const pf of ['gemelo', 'curso']) { const d = per[pf].demo; d.motivo = d.fin === 'ok' ? null : PERFIL.motivo(d.fallo, t); per[pf].previa.motivo = per[pf].previa.ok ? null : PERFIL.motivo(per[pf].previa.fallo, t); }
     res = { firma, per, ms: Math.round(performance.now() - t0) };
-  } finally {
+  } catch (e) { console.error(e); } // un error interno no deja la página ocupada: se avisa y la escena sigue «sin validar»
+  finally {
     D.activo = false; reiniciarDemo(); D.fase = fase0; VAL.activo = false; CALC.activo = false; CALC.txt = ''; D.validando = false; D.mantenerFallo = false;
   }
-  VAL.res = res; actualizarPlatos(); evaluar(); pintarCalc();
-  toast(`Validado con los dos perfiles: gemelo ${veredictoOk(res.per.gemelo) ? 'pasa' : 'falla'}, curso ${veredictoOk(res.per.curso) ? 'pasa' : 'falla'}`);
+  if (res) VAL.res = res; actualizarPlatos(); evaluar(); pintarCalc();
+  toast(!res ? 'La validación ha fallado por un error interno' : `Validado con los dos perfiles: gemelo ${veredictoOk(res.per.gemelo) ? 'pasa' : 'falla'}, curso ${veredictoOk(res.per.curso) ? 'pasa' : 'falla'}`);
 }
 // Barra de validación, siempre a la vista (salvo con la demo en marcha): los dos veredictos (comprobación previa y demo),
 // los dos tiempos de ciclo y, si difieren, el motivo concreto
@@ -796,7 +797,7 @@ function pintarVal() {
     const mot = vg === vc ? '' : (() => { const v = r.per[falla]; const m = v.previa.ok ? v.demo.motivo : v.previa.motivo; const det = v.previa.ok ? v.demo.detalle : v.previa.txt; return `<div class="valMotivo" title="${esc(det || '')}"><b>Solo pasa en ${falla === 'curso' ? '«gemelo»' : '«curso»'}. Motivo:</b> ${esc(m || '')}</div>${det && det !== m ? `<small class="valDet">${esc(det.slice(0, 300))}</small>` : ''}`; })();
     h = `<div class="valFilas">${fila('gemelo')}${fila('curso')}${mot}<small>Tiempos aproximados (no TOTG, DT4) · ${r.per.gemelo.demo.fin === 'ok' && r.per.curso.demo.fin === 'ok' ? `curso ${fmt(r.per.curso.demo.t_ciclo_s - r.per.gemelo.demo.t_ciclo_s, 1)} s frente a gemelo` : 'validado'} · ${D.modo}, balanceo ${fmt(D.amp * 100, 1)} cm, ${Math.round(D.vel * 100)} %</small></div>`;
   }
-  $('#valTxt').innerHTML = h; $('#btnValidar').textContent = r ? 'Validar otra vez' : 'Validar con perfil curso';
+  if (el._h !== h) { $('#valTxt').innerHTML = h; el._h = h; } $('#btnValidar').textContent = r ? 'Validar otra vez' : 'Validar con perfil curso'; // solo se reescribe si cambia (se repinta cada 18 fotogramas)
 }
 $('#btnValidar').addEventListener('click', () => validar());
 let sel = null;
