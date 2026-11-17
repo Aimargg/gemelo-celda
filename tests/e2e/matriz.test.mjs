@@ -1,7 +1,7 @@
 // Caracterización de la matriz de ensayo de la v8 (T0.2 C5, base de I8): los 8 casos de tests/fixtures/matriz-base.json,
 // en su orden y en una página recién cargada, deben dar el mismo fin, choques, roces y pausas.
-// Y la misma matriz con el perfil «curso» (T1.9, decisión 7): tests/fixtures/matriz-curso.json, en orden directo (fin,
-// choques, roces y pausas) y en orden inverso (todos los campos: I6 con «curso» a nivel de demo).
+// Y la misma matriz con el perfil «curso» (T1.9, decisión 7): aquí, que tests/fixtures/matriz-curso.json tiene los 8 casos y
+// que con «curso» se completa la demo por defecto; sus dos ensayos con página están en matriz-curso.test.mjs (puerta, T2.0).
 import { test, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
@@ -39,22 +39,4 @@ test('T1.9-5: los casos de matriz-curso.json son los mismos 8 casos con perfil �
 test('T1.9-2: con «curso», la disposición por defecto (caja, M0, 2 cm) completa la demo', () => {
   const d = CURSO.casos.find(c => c.cfg.caja && c.cfg.modo === 'M0' && c.cfg.amp === 0.02);
   assert.deepEqual({ fin: d.fin, choques: d.choques, roces: d.roces }, { fin: 'ok', choques: 0, roces: 0 });
-});
-
-test('T1.9-5: matriz «curso» en orden directo: fin, choques, roces y pausas iguales a matriz-curso.json', { timeout: 600000 }, async () => {
-  const s = await abrir(srv.url);
-  try {
-    const res = await ensayar(s.page, CASOS_CURSO);
-    assert.deepEqual(res.map(ver), CURSO.casos.map(ver));
-    comprobar(s.reg);
-  } finally { await s.cerrar(); }
-});
-
-test('T1.9-5 e I6 con «curso»: la matriz en orden inverso da los mismos registros, campo a campo', { timeout: 600000 }, async () => {
-  const s = await abrir(srv.url);
-  try {
-    const res = (await ensayar(s.page, [...CASOS_CURSO].reverse())).reverse().map(({ ms, ...r }) => r);
-    assert.deepEqual(res, CURSO.casos); // todos los campos: t_sim, t_mov, errores, planes, pausas…
-    comprobar(s.reg);
-  } finally { await s.cerrar(); }
 });

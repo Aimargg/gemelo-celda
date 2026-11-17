@@ -213,6 +213,15 @@ textarea{width:100%;min-height:120px;border:1px solid var(--line);border-radius:
 .props li{border:1px solid var(--line);border-radius:6px;padding:8px;display:flex;justify-content:space-between;gap:8px;align-items:center}
 .props li div{min-width:0}
 .props li small{display:block;color:var(--muted);font-size:11.5px}
+.rosLista li{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:3px 8px;align-items:center;padding:6px 8px}
+.rosLista li > small{grid-column:1 / -1}
+.rosLista li[aria-current="true"]{border-color:var(--accent);background:var(--accent-soft)}
+.rosLista code,.rosGrupo h3 code{font:500 12px/1.35 var(--f-mono);overflow-wrap:anywhere}
+.rosGrupo{display:flex;flex-direction:column;gap:6px}
+.rosGrupo h3 code{color:var(--muted)}
+#rosLista{display:flex;flex-direction:column;gap:12px}
+.rosLista .btns{flex:none;gap:4px;flex-wrap:nowrap}
+.rosLista .btn{padding:5px 8px;font-size:12px}
 .foot{font-size:11.5px;color:var(--muted)}
 .foot a{color:var(--accent)}
 @media (max-width:900px){
@@ -421,6 +430,16 @@ textarea{width:100%;min-height:120px;border:1px solid var(--line);border-radius:
           <p class="hint" id="prefijoTxt">Con <code>sim_&lt;id&gt;</code> (un robot) los frames van sin prefijo: <code>base_link</code>, <code>tool0</code>… Solo los URDF dobles del curso (<code>doble_ur3e_&lt;a&gt;_&lt;b&gt;</code>) añaden <code>&lt;id&gt;_</code> (<code>203_base_link</code>…), según la expansión de su xacro. SIN VALIDAR en ROS: se comprueba con <code>ros2 run tf2_tools view_frames</code> en <code>sim_&lt;id&gt;</code>. Más en <a id="prefijoDoc" href="https://github.com/Aimargg/gemelo-celda/blob/main/docs/estado/frames.md" target="_blank" rel="noopener">docs/estado/frames.md</a>.</p>
           <textarea id="yaml" readonly spellcheck="false"></textarea>
           <div class="btns"><button class="btn" id="btnCopy">Copiar</button><button class="btn" id="btnDlYaml">Descargar</button><button class="btn" id="btnPng">Captura PNG</button></div>
+        </div>
+        <div class="sec" id="rosSec">
+          <h2>Exportar a ROS</h2>
+          <p class="hint" id="rosQue">Ficheros de datos para ROS 2 Jazzy, BORRADOR generado por IA, en el <code>base_link</code> del robot y con el prefijo elegidos arriba. Solo texto y descargas: el gemelo no envía nada a ROS. Cómo comprobarlos en <code>sim_&lt;id&gt;</code>: <a id="rosGuia" href="https://github.com/Aimargg/gemelo-celda/blob/main/docs/validar-en-ros.md" target="_blank" rel="noopener">docs/validar-en-ros.md</a>.</p>
+          <dl class="kv"><dt>Huella de la disposición</dt><dd id="rosHuella">—</dd><dt>Frame raíz</dt><dd id="rosFrame">—</dd><dt>Ficheros</dt><dd id="rosCuenta">—</dd></dl>
+          <p class="hint" id="rosEstado" role="status"></p>
+          <div class="btns"><button class="btn pri" id="btnRosTar">Descargar todo (.tar)</button></div>
+          <p class="hint" id="rosTarTxt"></p>
+          <div class="field2" id="rosVerCaja" hidden><label for="rosVer" id="rosVerNombre"></label><textarea id="rosVer" readonly spellcheck="false"></textarea></div>
+          <div id="rosLista"></div>
         </div>
         <div class="sec">
           <h2>Importar una distribución</h2>
@@ -741,8 +760,14 @@ const H_TR = 0.12, H_AP = 0.06; // altura de traslado sobre la mesa y de aproxim
 // de la matriz que llegan a la salida, con «gemelo» y con «curso», y en las escenas v8. Medido con el gemelo (2026-11-16,
 // informe de T1.9): con 2 cm, las 19 salidas libres y holgura mínima de 5,5 mm; con 3 cm, una salida de «curso» toca la
 // bandeja (−1,7 mm: arranque en contacto); con 5 y 6 cm, la subida de «gemelo» caja M1 2 cm llega a la singularidad del
-// codo y la demo falla (sin trayectoria)
-const H_SALIDA = 0.02;
+// codo y la demo falla (sin trayectoria).
+// Desde T2.8 (DT30), planColocar exige además que el final de la subida y el arranque hacia el reposo no toquen la bandeja
+// en ninguna pose de su balanceo, y la altura se volvió a medir con esa comprobación en el barrido de 33 disposiciones
+// (tools/barrido-salida.mjs; docs/estado/barrido-salida-t28.md, 2026-11-16). Con 2, 3, 4 y 5 cm ninguna toca la bandeja,
+// frente a 10 antes de T2.8. Con 2 cm, 26 viables, pero Calcular en la disposición de partida pasa de 0,9 s a 1,7 s
+// (descarta sus agarres y busca otros); con 3 cm se pierde v16, viable antes (ruta cartesiana incompleta al llevar el
+// plato 2); con 4 cm, 25 viables sin perder ninguna y Calcular en 0,9 s. Es el menor valor que cumple las tres cosas
+const H_SALIDA = 0.04;
 const CAJA_LADO = 0.10;
 // ArUco reales del diccionario DICT_4X4_50 (ids 0–15), bits interiores por filas
 const ARUCO = ['1011010100110010', '0000111110011010', '0011001100101101', '1001100101000110', '0101010010011110', '0111100111001101', '1001111000101110', '1100010011110010', '1111111011011010', '1100111101010110', '1111100110010001', '0001000110100111', '0000111010110111', '0010101000001111', '0010010010110001', '0010011000111110'];
@@ -1021,6 +1046,630 @@ const SENSOR = (() => {
   // normal del plano), ÷ cos θ. Mismo orden de operaciones que la v8 (I1: las escenas v8 dan las mismas cifras).
   const mmPorPx = (d, w, f, N, c = 1) => d * ((w / f) / N) / c * 1000;
   return { MODELOS, NOMBRES, de, area, hfov, vfov, mmPorPx, NOTA_1080_120 };
+})();
+// Origen de cada valor exportable (T2.1, D8, I7): la única fuente de su tipo (MEDIDO, FABRICANTE o SUPUESTO), del texto y
+// la fuente que enseña la tabla del panel «Datos» y del comentario corto que lleva en los ficheros exportados. Lo leen
+// pintarFuentes (la tabla) y generarYaml (posiciones.yaml); los exportadores de T2.2–T2.5 leerán de aquí. Sin DOM ni three:
+// se prueba con node:test (tests/unit/origen.test.mjs) y se concatena en app.js con el marcador @@ORIGEN@@ (D4).
+// Lo que depende del robot, del sensor o de la pinza se calcula con un contexto explícito, nunca con globales del gemelo:
+//   ctx = { robotId, sospechoso, yaw, sensor: { id, nombre, w, origen }, tcpZ }
+//   robotId: el robot cuya cinemática se usa ('nominal', '203'…) · sospechoso: su calibración está marcada sospechosa
+//   yaw: giro de base_link respecto a world (rad) · sensor: el modelo del sensor de la escena (SENSOR.de con su id)
+//   tcpZ: TCP de la pinza cerrada (m), la que da su modelo simplificado
+const ORIGEN = (() => {
+  const M = 'MEDIDO', F = 'FABRICANTE', S = 'SUPUESTO';
+  const TIPOS = [M, F, S];
+  // Lo que ha decidido el grupo (DT34, T2.7) no es un cuarto tipo de D8: es una etiqueta propia, como ELEGIDO (abajo). La
+  // lleva en el campo tipo, en la tabla y en los ficheros, la entrada cuya fuente es una decisión del grupo (agarre_plato).
+  const GRUPO = 'decisión del grupo';
+  const CLASE = { [M]: 'm', [F]: 'f', [S]: 's', [GRUPO]: 'g' }; // clase de la etiqueta en la tabla (.tag.m, .tag.f y .tag.s del CSS; .tag.g, la de .tag)
+  const LEYENDA = `${TIPOS.slice(0, -1).join(', ')} o ${TIPOS.at(-1)}`;
+  // Formatos de la tabla: los mismos que fmt, mm y gradosTxt de app.js (mismas operaciones, mismo texto)
+  const R2D = 180 / Math.PI;
+  const fmt = (v, d = 1) => v.toFixed(d).replace('.', ',');
+  const grados = a => `${fmt(a * R2D, 1).replace('-', '−')}°`;
+  const con = (t, detalle) => detalle ? `${t} (${detalle})` : t; // comentario corto: el tipo y, si hace falta, por qué
+  // Una entrada por valor exportable. nombre: la fila de la tabla (null = solo en los ficheros exportados).
+  // tipo (uno de TIPOS o GRUPO), valor, fuente: texto o función del contexto. yaml: (tipo, ctx) → comentario corto, que
+  // siempre empieza por el tipo.
+  // El orden es el de la tabla.
+  const ENTRADAS = [
+    { clave: 'mesa', nombre: 'Mesa', tipo: M, valor: '1180 × 830 mm, superficie a 760 mm', fuente: 'Cinta + foto (regla y A4, error < 2 %)', yaml: t => t },
+    { clave: 'base_b', nombre: 'Base del robot B (grupo)', tipo: M, valor: '9 y 8 cm del borde de la base a los bordes de la mesa', fuente: 'Cinta; centro con radio de base de 66 mm (supuesto)', yaml: t => con(t, 'posición de la base en la celda') },
+    { clave: 'base_a', nombre: 'Base del robot A', tipo: M, valor: 'centro a 151 y 115 mm de los bordes', fuente: 'Foto ±10 mm', yaml: t => con(t, 'posición de la base en la celda') },
+    { clave: 'ur3e', nombre: 'UR3e', tipo: F, valor: 'alcance 500 mm, carga 3 kg, 11,2 kg, 2020', fuente: 'Placa del robot', yaml: t => con(t, 'placa del robot') },
+    {
+      clave: 'cinematica', nombre: 'Cinemática del UR3e',
+      tipo: c => c.robotId === 'nominal' ? F : c.sospechoso ? S : M,
+      valor: c => c.robotId === 'nominal' ? 'DH oficiales, IK analítica de 8 soluciones' : `calibración del robot ${c.robotId}; IK analítica nominal refinada con Levenberg–Marquardt (1e-6 m y 1e-6 rad)`,
+      fuente: c => c.robotId === 'nominal' ? 'ur_description; verificada con 2000 posturas' : `calibration_${c.robotId}.yaml del repo del curso (4e4e1a7)${c.sospechoso ? ', sospechosa' : ''}; SIN VALIDAR en ROS`,
+      yaml: (t, c) => con(t, c.robotId === 'nominal' ? 'DH oficiales de ur_description' : `calibration_${c.robotId}.yaml del curso${c.sospechoso ? ', sospechosa' : ''}, sin validar en ROS`),
+    },
+    { clave: 'pinza', nombre: 'Pinza', tipo: M, valor: 'OnRobot RG2, 0–110 mm, 0,78 kg, 3–40 N', fuente: 'Apertura medida 110 mm + ficha', yaml: t => t },
+    { clave: 'tcp_pinza', nombre: 'TCP de la pinza', tipo: S, valor: c => `${Math.round(c.tcpZ * 1000)} mm cerrada`, fuente: 'Modelo simplificado; medir en PolyScope', yaml: t => con(t, 'modelo simplificado') },
+    { clave: 'agarre_plato', nombre: 'Agarre del plato', tipo: GRUPO, valor: 'horizontal por el borde, un dedo encima y otro debajo del ala', fuente: 'Decisión del grupo (12-11)', yaml: t => t },
+    { clave: 'caja_plato', nombre: 'Caja bajo el plato', tipo: S, valor: '10 × 10 cm, altura regulable', fuente: 'Propuesta del grupo; tamaño sin medir', yaml: t => t },
+    {
+      clave: 'orientacion_base_link', nombre: 'Orientación de base_link', tipo: S,
+      valor: c => `girado ${grados(c.yaw)} respecto a world; world con los ejes de la mesa`,
+      fuente: 'Giro: mount_yaw − π del xacro del curso. Ejes de world: comprobar en el laboratorio (docs/estado/frames.md)',
+      yaml: t => con(t, 'sin validar en ROS'),
+    },
+    { clave: 'camaras', nombre: 'Cámaras', tipo: M, valor: 'ELP-USB12MP01-UFV, IMX577, 3,6–10 mm, USB 2.0', fuente: 'Caja de la cámara + web del fabricante', yaml: t => t },
+    {
+      clave: 'campo_vision', nombre: 'Campo de visión', tipo: S,
+      valor: c => `lente ideal sobre el ancho del sensor «${c.sensor.nombre}» (${fmt(c.sensor.w, 3)} mm), completo en todos los modos`,
+      fuente: c => `${c.sensor.origen}; medir en la calibración intrínseca (F4)`,
+      yaml: (t, c) => con(t, `lente ideal, sensor ${c.sensor.id}`),
+    },
+    { clave: 'marcadores', nombre: 'Marcadores', tipo: S, valor: 'ArUco DICT_4X4_50: zona 0–3, entrega 4–5, bandeja 6–9 (dibujados con su patrón real)', fuente: 'Ids propuestos', yaml: t => con(t, 'ids propuestos') },
+    { clave: 'soportes_camara', nombre: 'Soportes de cámara', tipo: M, valor: 'Manfrotto 035 + brazo 244 de 53 cm', fuente: 'Foto + ficha', yaml: t => t },
+    { clave: 'fruta', nombre: 'Fruta', tipo: S, valor: 'piezas de plástico de 4,5–7 cm', fuente: 'Foto de referencia del grupo', yaml: t => t },
+    { clave: 'plato_bandeja_persona', nombre: 'Plato, bandeja y persona', tipo: S, valor: 'plato Ø160 mm · bandeja 450 × 330 mm a 1,00 m del suelo · persona en el lateral derecho, de frente, con la bandeja a la derecha del robot y fuera de la mesa', fuente: 'Sin medir; posición elegida porque es donde el robot puede dejar los platos nivelados', yaml: t => con(t, 'sin medir') },
+    { clave: 'modelo_colision', nombre: 'Modelo de colisión', tipo: F, valor: '162 esferas ajustadas a las mallas de colisión oficiales del UR3e y a la RG2; límites articulares de joint_limits.yaml (codo ±180°)', fuente: 'ur_description (Universal Robots)', yaml: t => t },
+    { clave: 'planificacion', nombre: 'Planificación', tipo: M, valor: 'RRT-Connect con atajos para movimientos libres; rectas cada 4 mm sin saltos (perfil «gemelo») o cada 1 cm con el punto medio a 1 mm y 0,01 rad (perfil «curso»); plato siempre nivelado', fuente: 'Equivalente a lo que hará MoveIt 2; sin validar en el robot', yaml: t => con(t, 'sin validar en el robot') },
+    { clave: 'aceleracion_gemelo', nombre: 'Aceleración articular (perfil «gemelo»)', tipo: S, valor: '3 rad/s² al 100 %', fuente: 'El yaml del UR3e no fija aceleraciones', yaml: t => t },
+    { clave: 'perfil_curso', nombre: 'Perfil «curso»', tipo: S, valor: 'escala 0,1 de velocidad y aceleración, 5 rad/s², cartesiana de MoveIt 2.11+ y arranque en contacto = fallo', fuente: 'config/joint_limits.yaml y el ejemplo del profesor (repo del curso); tiempos con un trapecio por articulación, no TOTG (DT4)', yaml: t => con(t, 'trapecio por articulación, no TOTG') },
+    { clave: 'agarre_inclinacion', nombre: 'Agarre del plato', tipo: S, valor: 'muñeca inclinada hasta 45° respecto a la horizontal', fuente: 'Probar con el plato real que no gira ni resbala', yaml: t => t },
+    { clave: 'bandeja_m0_m1', nombre: 'Bandeja en M0 / M1', tipo: S, valor: 'pausa a 25 mm, aborto a 10 s; latencia 120 ms', fuente: 'DEC-04 sin cifras', yaml: t => t },
+    { clave: 'velocidades', nombre: 'Velocidades', tipo: F, valor: '180°/s (base, hombro, codo), 360°/s (muñecas)', fuente: 'Ficha del UR3e', yaml: t => t },
+    { clave: 'nodos_robotica', nombre: 'Nodos de Robótica', tipo: S, valor: 'coordinador, pedidos, movimiento, pinza, seguridad', fuente: 'Propuesta; D3 sin congelar', yaml: t => t },
+    { clave: 'topics_vision', nombre: 'Topics de Visión', tipo: M, valor: '/v1/*, /v2/*, /menu, /service_state', fuente: 'Contexto de Visión del 7-11', yaml: t => t },
+    // Solo en los ficheros exportados (no son filas de la tabla)
+    { clave: 'disposicion', nombre: null, tipo: S, valor: 'posiciones de la zona de fruta, los platos, los marcadores, la bandeja, sus zonas, la persona y las cámaras', fuente: 'la disposición propuesta en el gemelo, sin medir', yaml: t => con(t, 'disposición propuesta, sin medir') },
+    { clave: 'pose_doble', nombre: null, tipo: S, valor: 'pose de <id>_base_link en el world del URDF doble', fuente: 'xacro del URDF doble del curso (doble_ur3e_<a>_<b>)', yaml: t => con(t, 'sin validar en ROS') },
+    // Valores nuevos de parametros_celda.yaml y de las TF estáticas (T2.2, T2.4), también solo en los ficheros
+    { clave: 'nombre_frame', nombre: null, tipo: S, valor: 'nombres de los frames de la celda: mesa, zona_fruta, plato_<n>_inicio, marcador_<id>, bandeja, zona_primero, zona_segundo, zona_centro, camara_<k> y camara_<k>_optical', fuente: 'propuestos por el gemelo (T2.4); los fija el grupo con la arquitectura (D3)', yaml: t => con(t, 'nombre propuesto') },
+    { clave: 'lado_marcador', nombre: null, tipo: S, valor: 'lado de 6 cm de los marcadores de entrega (ids 4 y 5)', fuente: 'el dibujo del gemelo, sin medir: el impreso puede ser otro', yaml: t => con(t, 'lado del dibujo del gemelo, sin medir') },
+    { clave: 'marco_optico', nombre: null, tipo: F, valor: 'camara_<k> → camara_<k>_optical: rpy (−π/2, 0, −π/2), sin traslación', fuente: 'convenio de REP-103 (marco del cuerpo y marco óptico de una cámara)', yaml: t => con(t, 'convenio de REP-103') },
+    // Valores nuevos de la escena de colisión (T2.3), también solo en los ficheros
+    { clave: 'id_escena', nombre: null, tipo: S, valor: 'ids de los objetos de la escena de colisión: mesa, caja_plato_<n>, plato_<n>, bandeja y camara_<k>', fuente: 'propuestos por el gemelo (T2.3); el id suelo es el del ejemplo del profesor y no se usa', yaml: t => con(t, 'id propuesto') },
+    { clave: 'mesa_bajo_base', nombre: null, tipo: S, valor: 'cara de arriba de la mesa 1 mm por debajo de base_link', fuente: 'como el suelo del ejemplo del profesor: la base del robot no arranca en contacto con la mesa', yaml: t => con(t, 'cara de arriba 1 mm por debajo de base_link, como el suelo del profesor') },
+    { clave: 'giro_caja', nombre: null, tipo: S, valor: 'giro de cada caja bajo el plato: una cara hacia la pinza, la del agarre que elige el plan del gemelo; sin plan al día, hacia la base del robot', fuente: 'planificador del gemelo (agarre del plato), sin validar en ROS', yaml: t => con(t, 'giro del plan del gemelo, sin validar') },
+    { clave: 'grosor_plato', nombre: null, tipo: S, valor: '25 mm de grosor: el perfil del plato dibujado en el gemelo', fuente: 'el dibujo del gemelo, sin medir', yaml: t => con(t, 'perfil del plato del gemelo, sin medir') },
+    { clave: 'colision_camara', nombre: null, tipo: S, valor: 'cada cámara y su brazo, como las esferas y cápsulas del modelo de colisión del gemelo (cuerpo, dos tramos de brazo, codo y pinza de mesa)', fuente: 'obstaculos() del gemelo, sin medir', yaml: t => con(t, 'modelo de colisión del gemelo, sin medir') },
+    // Valores nuevos de camera_info y de usb_cam (T2.5), también solo en los ficheros
+    { clave: 'formato_camera_info', nombre: null, tipo: F, valor: 'camera_info de camera_calibration_parsers: matrices con rows, cols y data; R = I y P = [K | 0] en una cámara monocular', fuente: 'image_common 5.1 y sensor_msgs/CameraInfo', yaml: t => con(t, 'formato de camera_info') },
+    { clave: 'distorsion_nula', nombre: null, tipo: S, valor: 'D = 0 (plumb_bob): lente ideal', fuente: 'sin medir; la sustituye la calibración intrínseca (F4)', yaml: t => con(t, 'lente ideal, sin distorsión') },
+    { clave: 'dispositivo_video', nombre: null, tipo: S, valor: '/dev/video0, /dev/video2 y /dev/video4, en el orden de las cámaras (cada cámara UVC suele crear dos nodos de vídeo)', fuente: 'sin comprobar en los PCs del laboratorio', yaml: t => con(t, 'compruébalo con v4l2-ctl --list-devices; mejor un /dev/v4l/by-id/…') },
+    { clave: 'formato_pixel', nombre: null, tipo: S, valor: 'pixel_format mjpeg2rgb: usb_cam decodifica el MJPEG de la cámara', fuente: 'README de usb_cam 0.8; los modos rápidos de la ELP van en MJPEG según la ficha, SIN VALIDAR', yaml: t => con(t, 'MJPEG decodificado por usb_cam') },
+    { clave: 'ruta_camera_info', nombre: null, tipo: F, valor: 'file://${ROS_HOME}/camera_info/<camera_name>.yaml', fuente: 'ruta por defecto de camera_info_manager (image_common 5.1)', yaml: t => con(t, 'ruta por defecto de camera_info_manager') },
+    { clave: 'exposicion', nombre: null, tipo: S, valor: 'exposición manual de 5 ms (exposure 50, en unidades de 100 µs de V4L2)', fuente: 'la bandeja en movimiento pide ≤ 5,6 ms; con luz de 50 Hz puede dar bandas', yaml: t => con(t, '5 ms: la bandeja en movimiento pide ≤ 5,6 ms; con luz de 50 Hz puede dar bandas') },
+    { clave: 'balance_blancos', nombre: null, tipo: S, valor: 'balance de blancos manual a 4000 K', fuente: 'sin medir la luz del laboratorio', yaml: t => con(t, 'sin medir la luz del laboratorio') },
+  ];
+  // Lo que elige el usuario en el gemelo (robot, prefijo, pedido, focal, modo, grupo de la cámara, caja sí o no) no es un
+  // origen: los ficheros exportados lo comentan con este texto en lugar de un tipo (T2.2, decisión 7 de su brief)
+  const ELEGIDO = 'elegido en el gemelo';
+  const POR_CLAVE = new Map(ENTRADAS.map(e => [e.clave, e]));
+  const CLAVES = ENTRADAS.map(e => e.clave);
+  const valorDe = (v, ctx) => typeof v === 'function' ? v(ctx) : v;
+  const buscar = clave => { const e = POR_CLAVE.get(clave); if (!e) throw new Error(`origen desconocido (${JSON.stringify(clave)})`); return e; };
+  // La entrada con todo resuelto para ese contexto: { clave, nombre, tipo, valor, fuente, yaml }
+  function entrada(clave, ctx) {
+    const e = buscar(clave), tipo = valorDe(e.tipo, ctx);
+    return { clave, nombre: e.nombre, tipo, valor: valorDe(e.valor, ctx), fuente: valorDe(e.fuente, ctx), yaml: e.yaml(tipo, ctx) };
+  }
+  const tipo = (clave, ctx) => entrada(clave, ctx).tipo;
+  const yaml = (clave, ctx) => entrada(clave, ctx).yaml;
+  // Las filas de la tabla del panel «Datos», en su orden
+  const panel = ctx => ENTRADAS.filter(e => e.nombre !== null).map(e => entrada(e.clave, ctx));
+  return { TIPOS, CLASE, LEYENDA, ELEGIDO, GRUPO, CLAVES, entrada, tipo, yaml, panel };
+})();
+// Formateador de los ficheros exportados (T2.2–T2.5, D8, I7): convierte el modelo de modeloExportacion() (app.js: un objeto
+// plano, sin redondear y en el base_link del robot elegido) en texto. Sin DOM, three ni globales del gemelo: el origen de
+// cada valor lo da el módulo de origen que recibe cada función (src/origen.js en el gemelo) con el contexto del modelo
+// (m.ctx), y aquí no se escribe ningún tipo de origen a mano. Se prueba con node:test en un contexto vm vacío
+// (tests/unit/exportar.test.mjs y exportar-escena.test.mjs) y se concatena en app.js con el marcador @@EXPORTAR@@ (D4).
+// Modelo (todo en metros y radianes, en m.robot.frame salvo world_a_base_link y pose_en_world_doble):
+//   ctx (contexto de origen) · layoutJson (JSON.stringify(L)) · robot { posicion, id, idLayout, desconocido, sospechoso,
+//   yaw, prefijo, frame, worldABase {x, y, z}, doble { nombre, x, y, z, yaw } | null } · pinza { modelo, tcpZ, carrera } ·
+//   mesa { ancho, fondo, alto, x, y, z, yaw } · pedido · platos { sobreCaja, cajaAlto, cajaLado, agarre, radioAgarre,
+//   lista [{ clave, x, y, z }] } · zona { x, y, z, yaw, ancho, fondo } · marcadores [{ id, diccionario, lado, x, y, z, yaw }]
+//   · bandeja { x, y, z, yaw, zonas [{ clave, base {x, y, z}, local {x, y, z} }] } · persona { x, y, z, yaw } ·
+//   camaras [{ clave, grupo, modelo, focal, modo, hfov, vfov, px { w, h, fps }, pos, mira, clamp, orient { pan, tilt, roll },
+//   rpy [r, p, y], usb { dispositivo, exposicion, balance } }] · escena { objetos [{ id, que, giro?, pose { x, y, z, rpy },
+//   formas [{ tipo: 'caja' (dims [x, y, z]) | 'esfera' (radio) | 'cilindro' (radio, altura; eje z del objeto) | 'capsula'
+//   (radio, a {x, y, z}, b {x, y, z}), local {x, y, z} (en el marco del objeto) o centro {x, y, z} (en base_link) }] }] }
+const EXPORTAR = (() => {
+  const PI = Math.PI, R2D = 180 / PI;
+  // Números (I7): metros y radianes con 3 decimales (1 mm y 0,001 rad); los ángulos, en [−π, π] antes de redondear
+  const r3 = v => (Math.round(v * 1000) / 1000).toFixed(3);
+  const envolver = a => { let d = a; while (d > PI) d -= 2 * PI; while (d < -PI) d += 2 * PI; return d; }; // angDiff(a, 0) de app.js
+  const rad3 = a => r3(envolver(a));
+  const fmt = (v, d = 1) => v.toFixed(d).replace('.', ',');
+  const grados = a => `${fmt(a * R2D, 1).replace('-', '−')}°`; // gradosTxt de app.js
+  const P = p => `{x: ${r3(p.x)}, y: ${r3(p.y)}, z: ${r3(p.z)}}`;
+
+  // ---------- Cabecera común: robot y calibración, frame y prefijo (las mismas líneas que posiciones.yaml) ----------
+  function lineaRobot(m) {
+    const R = m.robot;
+    const quien = R.desconocido ? `«${R.idLayout}» (desconocido para esta versión del gemelo: se usa la cinemática nominal)`
+      : R.id === 'nominal' ? 'nominal (sin identificar: cinemática nominal del UR3e)'
+        : `${R.id} (calibration_${R.id}.yaml del curso${R.sospechoso ? '; calibración sospechosa, SIN VALIDAR' : ''})`;
+    return `# Robot: ${quien}, en la posición ${R.posicion} de la celda (${R.posicion === 'B' ? 'derecha' : 'izquierda'} en la foto cenital).\n`;
+  }
+  function lineaFrame(m) {
+    const R = m.robot, pf = R.prefijo;
+    const como = R.doble ? ` (prefijo «${pf}» del URDF doble ${R.doble.nombre}.urdf.xacro)` : pf ? ` (prefijo «${pf}» de la disposición; esta versión del gemelo no conoce su URDF doble)` : ' (sin prefijo, como en sim_<id>)';
+    return `# Frame: ${R.frame}${como}. Metros y radianes (REP-103), redondeo a 1 mm y 0,001 rad.\n`;
+  }
+
+  // zona_centro (DT36): se exporta siempre, como las otras dos zonas; los ficheros que la llevan dicen en una línea si esta
+  // disposición la usa (un plato) o no (dos)
+  const CENTRO = 'zona_centro';
+  const lineaCentro = m => !m.bandeja.zonas.some(z => z.clave === CENTRO) ? []
+    : [`${CENTRO} (centro de la bandeja): el destino del plato con un pedido de un plato${m.pedido === 1 ? ', como el de esta disposición' : '; con dos, como en esta disposición, no se usa'}.`];
+
+  // ---------- posiciones.yaml (T1.5, T2.1): el mismo texto que escribía generarYaml ----------
+  // fecha: 'AAAA-MM-DD' (la única línea que cambia de un día a otro). Lo que viene de la disposición sin validar (robot_id,
+  // frame, prefijo_frames y su prefijo en las líneas de comentario) se escribe con el mismo escape que los ficheros de ROS
+  // (cad, comentario y limpio; DT35): una disposición de solo lectura de una versión más nueva puede traer cualquier texto.
+  function posiciones(m, O, fecha) {
+    const c = m.ctx, og = k => O.yaml(k, c), ot = k => O.tipo(k, c);
+    const R = m.robot, frame = R.frame, sup = `# ${og('disposicion')}`;
+    // Lo que depende del giro world → base_link (mount_yaw − π) lleva el origen de la orientación de base_link mientras no se
+    // valide en ROS (corrección 6 de T1.5)
+    const conGiro = R.yaw !== 0, giroSup = `${ot('orientacion_base_link')} (giro world→base_link sin validar en ROS)`;
+    let y = `# posiciones.yaml · gemelo de la celda UR3e · BORRADOR (generado por IA)\n`;
+    y += comentario(lineaRobot(m)) + comentario(lineaFrame(m));
+    y += `# world: el world del gemelo, con los ejes de la mesa y el origen en el centro de la base sobre el tablero [${ot('orientacion_base_link')} hasta comprobarlo en el laboratorio].\n`;
+    y += `# ${limpio(frame)} está girado ${rad3(R.yaw)} rad (${grados(R.yaw)}) respecto a ese world: mount_yaw − π del xacro del curso [SIN VALIDAR en ROS; docs/estado/frames.md].\n`;
+    y += `# Origen de cada valor, al final de su línea: ${O.LEYENDA}; lo que ha decidido el grupo, «${O.GRUPO}». Las cámaras dan el giro desde +y de ${limpio(frame)} hacia +x.\n`;
+    for (const l of lineaCentro(m)) y += `# ${l}\n`;
+    // La posición A/B es una elección del gemelo (DT34); la posición medida de cada base no se escribe en este fichero
+    y += `fecha: ${fecha}\nrobot: ${R.posicion}  # ${O.ELEGIDO}\nrobot_id: ${R.desconocido ? `${cad(R.idLayout)}  # de la disposición; el gemelo no lo conoce y usa la cinemática nominal` : `${cad(R.id)}  # ${O.ELEGIDO}`}\n`;
+    const w = R.worldABase;
+    y += `frame: ${cad(frame)}\nprefijo_frames: ${cad(R.prefijo)}\nworld_a_base_link: {x: ${r3(w.x)}, y: ${r3(w.y)}, z: ${r3(w.z)}, yaw_rad: ${rad3(R.yaw)}}  # world del gemelo (ejes de la mesa): ${ot('orientacion_base_link')} · giro: mount_yaw − π del xacro del curso, ${og('orientacion_base_link')}\n`;
+    if (R.doble) y += `pose_en_world_doble: {frame: ${cad(frame)}, x: ${r3(R.doble.x)}, y: ${r3(R.doble.y)}, z: ${r3(R.doble.z)}, yaw_rad: ${rad3(R.doble.yaw)}}  # xacro del curso, ${R.doble.nombre}: ${og('pose_doble')}\n`;
+    y += `pinza: {modelo: ${m.pinza.modelo}, tcp_z_m: ${r3(m.pinza.tcpZ)}, carrera_m: ${r3(m.pinza.carrera)}}  # tcp_z: ${og('tcp_pinza')} · carrera: ${og('pinza')}\n`;
+    const me = m.mesa;
+    y += `mesa: {ancho_m: ${r3(me.ancho)}, fondo_m: ${r3(me.fondo)}, alto_m: ${r3(me.alto)}, centro_en_base_link: {x: ${r3(me.x)}, y: ${r3(me.y)}}, yaw_rad: ${rad3(me.yaw)}}  # ${conGiro ? `medidas: ${og('mesa')} · centro_en_base_link y yaw_rad: ${giroSup}` : og('mesa')}\n`;
+    y += `pedido: ${m.pedido === 1 ? 'un_plato  # al centro de la bandeja' : 'dos_platos  # primero y segundo'} · ${O.ELEGIDO}\n`;
+    const pl = m.platos;
+    y += `platos: {sobre_caja: ${pl.sobreCaja}, caja_alto_m: ${r3(pl.cajaAlto)}, caja_lado_m: ${r3(pl.cajaLado)}, agarre: ${pl.agarre}, radio_agarre_m: ${r3(pl.radioAgarre)}}  # agarre: ${og('agarre_plato')} · resto: ${og('caja_plato')}\n`;
+    const z = m.zona;
+    y += `objetos:\n  zona_fruta: {x: ${r3(z.x)}, y: ${r3(z.y)}, z: ${r3(z.z)}, yaw_rad: ${rad3(z.yaw)}, ancho_m: ${r3(z.ancho)}, fondo_m: ${r3(z.fondo)}}  ${sup}\n`;
+    for (const p of pl.lista) y += `  ${p.clave}: ${P(p)}  ${sup}\n`;
+    m.marcadores.forEach((a, i) => { y += `  marcador_entrega_${i + 1}: {id: ${a.id}, diccionario: ${a.diccionario}, x: ${r3(a.x)}, y: ${r3(a.y)}, z: ${r3(a.z)}}  ${sup}\n`; });
+    const b = m.bandeja; y += `  bandeja_recepcion: {x: ${r3(b.x)}, y: ${r3(b.y)}, z: ${r3(b.z)}, yaw_rad: ${rad3(b.yaw)}}  ${sup}\n`;
+    for (const zb of b.zonas) y += `  ${zb.clave}: ${P(zb.base)}  ${sup}\n`;
+    const pe = m.persona; y += `  persona: {x: ${r3(pe.x)}, y: ${r3(pe.y)}, yaw_rad: ${rad3(pe.yaw)}}  ${sup}\ncamaras:\n`;
+    for (const k of m.camaras) { const o = k.orient; y += `  camara_${k.clave}: {grupo: ${k.grupo}, modelo: ${k.modelo}, focal_mm: ${k.focal.toFixed(1)}, modo: ${k.modo}, hfov_rad: ${r3(k.hfov)}, posicion: ${P(k.pos)}, mira: ${P(k.mira)}, orientacion_rad: {giro: ${rad3(o.pan)}, inclinacion: ${rad3(o.tilt)}, alabeo: ${rad3(o.roll)}}, pinza_mesa: ${P(k.clamp)}}  # pose: ${ot('disposicion')} · modelo: ${og('camaras')} · focal y modo: elegidos · hfov: ${og('campo_vision')}\n`; }
+    y += `# layout-json: ${m.layoutJson}\n`;
+    return y;
+  }
+
+  // ---------- Texto seguro para los ficheros de ROS (decisiones 2 y 3 del brief de T2.2–T2.4) ----------
+  // Un número que no sea finito no se escribe: rcl lo leería como string o fallaría al cargar
+  const num = v => { if (typeof v !== 'number' || !Number.isFinite(v)) throw new Error(`exportar: valor no numérico (${v})`); return v; };
+  const d3 = v => r3(num(v)), a3 = v => rad3(num(v)); // double de metros o de radianes: siempre con punto decimal
+  const ent = v => { if (!Number.isInteger(v)) throw new Error(`exportar: se esperaba un entero (${v})`); return String(v); };
+  const limpio = s => String(s).replace(/[\u0000-\u001f\u007f\u2028\u2029]/g, ' '); // sin saltos de línea ni de control
+  const cad = s => `'${limpio(s).replace(/'/g, "''")}'`; // string entre comillas simples: YAML 1.1 y 1.2 la leen igual
+  const lista = vs => `[${vs.join(', ')}]`; // array homogéneo (sin listas de mapas: rcl no las admite)
+  const xyz = p => lista([d3(p.x), d3(p.y), d3(p.z)]);
+  const comentario = l => limpio(l.slice(0, -1)) + '\n'; // una línea de cabecera con texto de la disposición
+
+  // Huella de la disposición: FNV-1a de 32 bits de los bytes UTF-8 de JSON.stringify(L), en 8 cifras hexadecimales
+  function huella(texto) {
+    let h = 0x811c9dc5;
+    const b = x => { h = Math.imul(h ^ x, 0x01000193) >>> 0; };
+    for (const ch of String(texto)) {
+      const c = ch.codePointAt(0);
+      if (c < 0x80) b(c);
+      else if (c < 0x800) { b(0xc0 | c >> 6); b(0x80 | c & 63); }
+      else if (c < 0x10000) { b(0xe0 | c >> 12); b(0x80 | c >> 6 & 63); b(0x80 | c & 63); }
+      else { b(0xf0 | c >> 18); b(0x80 | c >> 12 & 63); b(0x80 | c >> 6 & 63); b(0x80 | c & 63); }
+    }
+    return h.toString(16).padStart(8, '0');
+  }
+
+  // Árbol de parámetros: hoja (clave, valor ya escrito, comentario de origen) o mapa (clave, hijos); un mapa anidado es un
+  // nombre con punto para rcl (celda.mesa.xyz)
+  const hoja = (k, v, o) => ({ k, v, o });
+  const mapa = (k, ...hijos) => ({ k, hijos: hijos.filter(Boolean) });
+  const bloque = (nodos, n) => nodos.map(x => x.hijos ? `${' '.repeat(n)}${x.k}:\n${bloque(x.hijos, n + 2)}` : `${' '.repeat(n)}${x.k}: ${x.v}  # ${limpio(x.o)}\n`).join('');
+  const raiz = nodos => `/**:\n  ros__parameters:\n${bloque(nodos, 4)}`;
+
+  // Cabecera de los ficheros de ROS (decisión 8): sin fecha, con el robot, el frame, la huella y cómo se carga
+  // grupo: el fichero lleva valores que ha decidido el grupo (DT34): la leyenda dice su etiqueta
+  function cabecera(m, O, nombre, carga, extra = [], donde = 'al final de su línea', grupo = false) {
+    return [`# ${nombre} · gemelo de la celda UR3e · generado por el gemelo (IA), BORRADOR\n`, comentario(lineaRobot(m)), comentario(lineaFrame(m)),
+      `# Huella de la disposición: ${huella(m.layoutJson)} (FNV-1a de 32 bits de JSON.stringify(L), en UTF-8): casa este fichero con su disposición.\n`,
+      `# Carga: ${carga} [SIN VALIDAR en ROS: U4].\n`, ...extra.map(l => `# ${l}\n`),
+      `# Origen de cada valor, ${donde}: ${O.LEYENDA}; lo que se elige en el gemelo, «${O.ELEGIDO}»${grupo ? `; lo que ha decidido el grupo, «${O.GRUPO}»` : ''}.\n`].join('');
+  }
+
+  // ---------- parametros_celda.yaml (T2.2): ros__parameters para --params-file ----------
+  // Los mismos números que posiciones.yaml, escritos igual, más los frame_id de las TF, el rpy del marco de cada cámara y el
+  // giro y el lado de cada marcador. Todas las poses en m.robot.frame.
+  function parametros(m, O) {
+    const c = m.ctx, og = k => O.yaml(k, c), ot = k => O.tipo(k, c), EL = O.ELEGIDO;
+    const R = m.robot, sup = og('disposicion'), nom = og('nombre_frame');
+    const giro = R.yaw !== 0 ? `${ot('orientacion_base_link')} (giro world→base_link sin validar en ROS)` : og('mesa'); // como posiciones.yaml
+    const me = m.mesa, pl = m.platos, z = m.zona, b = m.bandeja, pe = m.persona;
+    const nodos = [
+      mapa('robot',
+        hoja('posicion', cad(R.posicion), EL),
+        hoja('id', cad(R.idLayout), R.desconocido ? `${EL} (de la disposición: el gemelo no lo conoce y usa la cinemática nominal)` : EL),
+        hoja('frame', cad(R.frame), `${EL} (el prefijo; base_link es el del URDF)`),
+        hoja('prefijo_frames', cad(R.prefijo), EL),
+        mapa('world_a_base_link',
+          hoja('xyz', xyz(R.worldABase), `${ot('orientacion_base_link')} (world del gemelo: ejes de la mesa, origen en la base sobre el tablero)`),
+          hoja('yaw', a3(R.yaw), `${og('orientacion_base_link')}: mount_yaw − π del xacro del curso`)),
+        R.doble && mapa('pose_en_world_doble', hoja('xyz', xyz(R.doble), og('pose_doble')), hoja('yaw', a3(R.doble.yaw), og('pose_doble')))),
+      mapa('pinza', hoja('modelo', cad(m.pinza.modelo), og('pinza')), hoja('tcp_z_m', d3(m.pinza.tcpZ), og('tcp_pinza')), hoja('carrera_m', d3(m.pinza.carrera), og('pinza'))),
+      mapa('mesa', hoja('frame_id', cad('mesa'), nom), hoja('tamano_m', lista([d3(me.ancho), d3(me.fondo), d3(me.alto)]), og('mesa')), hoja('xyz', xyz(me), giro), hoja('yaw', a3(me.yaw), giro)),
+      hoja('pedido', cad(m.pedido === 1 ? 'un_plato' : 'dos_platos'), EL),
+      mapa('platos',
+        hoja('sobre_caja', pl.sobreCaja ? 'true' : 'false', EL),
+        hoja('caja_tamano_m', lista([d3(pl.cajaLado), d3(pl.cajaLado), d3(pl.cajaAlto)]), og('caja_plato')),
+        hoja('agarre', cad(pl.agarre), og('agarre_plato')),
+        hoja('radio_agarre_m', d3(pl.radioAgarre), og('caja_plato')),
+        ...pl.lista.map(p => mapa(p.clave, hoja('frame_id', cad(`${p.clave}_inicio`), nom), hoja('xyz', xyz(p), sup)))),
+      mapa('zona_fruta', hoja('frame_id', cad('zona_fruta'), nom), hoja('xyz', xyz(z), sup), hoja('yaw', a3(z.yaw), sup), hoja('tamano_m', lista([d3(z.ancho), d3(z.fondo)]), sup)),
+      mapa('marcadores',
+        hoja('ids', lista(m.marcadores.map(a => ent(a.id))), og('marcadores')),
+        ...m.marcadores.map(a => mapa(`marcador_${ent(a.id)}`, hoja('frame_id', cad(`marcador_${ent(a.id)}`), nom), hoja('xyz', xyz(a), sup), hoja('yaw', a3(a.yaw), sup),
+          hoja('lado_m', d3(a.lado), og('lado_marcador')), hoja('diccionario', cad(a.diccionario), og('marcadores'))))),
+      mapa('bandeja', hoja('frame_id', cad('bandeja'), nom), hoja('xyz', xyz(b), sup), hoja('yaw', a3(b.yaw), sup),
+        ...b.zonas.map(zb => mapa(zb.clave, hoja('frame_id', cad(zb.clave), nom), hoja('xyz', xyz(zb.base), sup)))),
+      mapa('persona', hoja('xy', lista([d3(pe.x), d3(pe.y)]), sup), hoja('yaw', a3(pe.yaw), sup)),
+      mapa('camaras',
+        hoja('nombres', lista(m.camaras.map(k => cad(k.clave))), nom),
+        ...m.camaras.map(k => mapa(k.clave,
+          hoja('frame_id', cad(`camara_${k.clave}_optical`), nom),
+          hoja('grupo', cad(k.grupo), EL),
+          hoja('modelo', cad(k.modelo), og('camaras')),
+          hoja('focal_mm', num(k.focal).toFixed(1), EL),
+          hoja('modo', cad(k.modo), EL),
+          hoja('hfov_rad', d3(k.hfov), og('campo_vision')),
+          hoja('xyz', xyz(k.pos), sup),
+          hoja('rpy', lista(k.rpy.map(a3)), `${sup}; marco camara_${limpio(k.clave)} (REP-103: x hacia donde mira, y a la izquierda, z arriba)`),
+          hoja('mira', xyz(k.mira), sup),
+          mapa('orientacion_rad', hoja('giro', a3(k.orient.pan), sup), hoja('inclinacion', a3(k.orient.tilt), sup), hoja('alabeo', a3(k.orient.roll), sup)),
+          hoja('pinza_mesa', xyz(k.clamp), sup)))),
+    ];
+    return cabecera(m, O, 'parametros_celda.yaml', 'ros2 run <paquete> <nodo> --ros-args --params-file parametros_celda.yaml (la raíz /** vale para cualquier nodo)', [
+      `${limpio(R.frame)} está girado ${rad3(R.yaw)} rad (${grados(R.yaw)}) respecto al world del gemelo (ejes de la mesa): mount_yaw − π del xacro del curso [SIN VALIDAR en ROS].`,
+      `Poses en ${limpio(R.frame)}: xyz [x, y, z] en m y rpy [roll, pitch, yaw] en rad (setRPY: R = Rz(yaw)·Ry(pitch)·Rx(roll), ejes fijos), o solo yaw si el objeto solo gira en z; tamaños en m; focal_mm en mm (DT19).`,
+      'world_a_base_link y pose_en_world_doble: la pose de base_link en el world del gemelo y en el del URDF doble. frame_id: el frame de la TF del objeto (tf_estaticas.sh).',
+      'Nombres en celda: robot (posicion, id, frame, prefijo_frames, world_a_base_link, pose_en_world_doble), pinza, mesa, pedido, platos (caja_tamano_m, plato_1, plato_2),',
+      `  zona_fruta, marcadores (ids, marcador_<id>), bandeja (${b.zonas.map(zb => limpio(zb.clave)).join(', ')}), persona (xy, yaw) y camaras (nombres, <nombre>: frame_id del marco óptico,`,
+      '  xyz y rpy del marco camara_<nombre>, mira, orientacion_rad como en posiciones.yaml y pinza_mesa).',
+      ...lineaCentro(m),
+    ], undefined, true) + raiz([mapa('celda', ...nodos)]);
+  }
+
+  // ---------- TF estáticas (T2.4): un tf/<child_frame_id>.yaml por arista y tf_estaticas.sh ----------
+  const OPTICO = [-PI / 2, 0, -PI / 2]; // camara_<k> → camara_<k>_optical (REP-103), fijo
+  // Cuaternión (x, y, z, w) de setRPY de tf2 (R = Rz(yaw)·Ry(pitch)·Rx(roll), ejes fijos) con los ángulos tal como se escriben
+  // (3 decimales): el YAML y el comando dan el mismo giro. Normalizado y en enteros de 1e-9 (se escriben con 9 decimales).
+  // Redondear cada componente por separado aleja |q|² de 1 hasta 2e-9: de las 81 combinaciones de ±1e-9 alrededor del
+  // redondeo se queda la de |q|² más cerca de 1 (con empate, la de menos cambios); el giro cambia menos de 1e-8 rad.
+  function cuaternion(rpy) {
+    const [r, p, y] = rpy.map(a => +a3(a)), h = a => [Math.cos(a / 2), Math.sin(a / 2)];
+    const [cr, sr] = h(r), [cp, sp] = h(p), [cy, sy] = h(y);
+    return q9([sr * cp * cy - cr * sp * sy, cr * sp * cy + sr * cp * sy, cr * cp * sy - sr * sp * cy, cr * cp * cy + sr * sp * sy]);
+  }
+  // Un cuaternión (x, y, z, w) cualquiera, normalizado y en enteros de 1e-9, con la misma búsqueda de la norma más cercana a 1
+  function q9(q) {
+    const n = Math.hypot(...q), base = q.map(v => Math.round(v / n * 1e9));
+    let mejor = base, e0 = Infinity, c0 = 5;
+    for (let i = 0; i < 81; i++) {
+      const d = [i % 3, (i / 3 | 0) % 3, (i / 9 | 0) % 3, (i / 27 | 0) % 3].map(k => k - 1), cand = base.map((v, j) => v + d[j]);
+      const e = Math.abs(cand.reduce((s, v) => s + (v * 1e-9) ** 2, 0) - 1), cambios = d.filter(Boolean).length;
+      if (e < e0 - 1e-15 || (Math.abs(e - e0) <= 1e-15 && cambios < c0)) { mejor = cand; e0 = e; c0 = cambios; }
+    }
+    return mejor;
+  }
+  const dec9 = n => `${n < 0 ? '-' : ''}${Math.floor(Math.abs(n) / 1e9)}.${String(Math.abs(n) % 1e9).padStart(9, '0')}`; // entero de 1e-9 → texto
+  // Un argumento de bash: tal cual si es un nombre normal; si no, entre comillas simples (nada de la disposición se ejecuta)
+  const sh = s => /^[A-Za-z0-9_./:-]+$/.test(s) ? s : `'${limpio(s).replace(/'/g, "'\\''")}'`;
+
+  // Aristas de la decisión 6, en orden fijo: { padre, hijo, p {x, y, z}, rpy, origen, que, nominal, notas (líneas de más para
+  // la cabecera de su tf/<hijo>.yaml) }. Las zonas de la bandeja, también zona_centro (DT36). La raíz es
+  // <prefijo>base_link (sin arista a world: la publica el URDF); los frames de la celda no llevan prefijo.
+  function aristas(m, O) {
+    const c = m.ctx, og = k => O.yaml(k, c), ot = k => O.tipo(k, c);
+    const raizTF = m.robot.frame, sup = og('disposicion'), cero = { x: 0, y: 0, z: 0 };
+    const giro = m.robot.yaw !== 0 ? `${ot('orientacion_base_link')} (giro world→base_link sin validar en ROS)` : og('mesa'); // como posiciones.yaml
+    const A = [], a = (padre, hijo, p, rpy, origen, que, nominal = null, notas = []) => A.push({ padre, hijo, p, rpy, origen, que, nominal, notas });
+    a(raizTF, 'mesa', m.mesa, [0, 0, m.mesa.yaw], giro, 'centro de la cara de arriba de la mesa, con su giro');
+    a(raizTF, 'zona_fruta', m.zona, [0, 0, m.zona.yaw], sup, 'centro y giro de la zona de fruta');
+    for (const p of m.platos.lista) a(raizTF, `${p.clave}_inicio`, p, [0, 0, m.mesa.yaw], sup, `dónde está el ${p.clave.replace('_', ' ')} antes de cogerlo, con los ejes de la mesa (el robot lo mueve y una TF estática no lo sigue)`);
+    for (const k of m.marcadores) a(raizTF, `marcador_${ent(k.id)}`, k, [0, 0, k.yaw], sup, `marcador de entrega ${ent(k.id)} (${limpio(k.diccionario)}), plano sobre la mesa y con sus ejes; convenio de ArUco de OpenCV: z sale de la cara impresa, x a la derecha e y hacia arriba del patrón`);
+    a(raizTF, 'bandeja', m.bandeja, [0, 0, m.bandeja.yaw], sup, 'pose de plan de la bandeja (sin balanceo), en la cara de arriba', 'nominal: la sustituye la pose que publique Visión');
+    for (const z of m.bandeja.zonas) a('bandeja', z.clave, z.local, [0, 0, 0], og('plato_bandeja_persona'), `${z.clave}, donde se deja un plato en la bandeja: cuelga de la bandeja para seguirla cuando Visión publique su pose`, null, z.clave === CENTRO ? lineaCentro(m) : []);
+    for (const k of m.camaras) {
+      const cam = `camara_${limpio(k.clave)}`;
+      a(raizTF, cam, k.pos, k.rpy, sup, `marco del cuerpo de la cámara ${limpio(k.clave)} (REP-103): x hacia donde mira, y a la izquierda, z arriba`, 'nominal: la sustituye la calibración');
+      a(cam, `${cam}_optical`, cero, OPTICO, og('marco_optico'), `marco óptico de la cámara ${limpio(k.clave)} (REP-103): z hacia donde mira, x a la derecha e y hacia abajo de la imagen`);
+    }
+    return A;
+  }
+  const ESCENA_DOBLE = 'En una escena doble, carga las TF de un solo robot: cada frame admite un único padre.';
+  // tf/<hijo>.yaml: los 9 parámetros de tf2_ros::StaticTransformBroadcasterNode (translation.*, rotation.*, frame_id y
+  // child_frame_id). Las claves x, y, z y w van entre comillas: YAML 1.1 lee una «y» suelta como true.
+  function tfYaml(m, O, e) {
+    const EL = O.ELEGIDO, nom = O.yaml('nombre_frame', m.ctx), q = cuaternion(e.rpy), [r, p, y] = e.rpy.map(a3);
+    const nodos = [
+      hoja('frame_id', cad(e.padre), e.padre === m.robot.frame ? `${EL} (el prefijo; base_link es el del URDF)` : nom),
+      hoja('child_frame_id', cad(e.hijo), nom),
+      mapa('translation', ...['x', 'y', 'z'].map(k => hoja(`'${k}'`, d3(e.p[k]), e.origen))),
+      mapa('rotation', ...['x', 'y', 'z', 'w'].map((k, i) => hoja(`'${k}'`, dec9(q[i]), e.origen))),
+    ];
+    return cabecera(m, O, `tf/${e.hijo}.yaml`, `ros2 component standalone tf2_ros tf2_ros::StaticTransformBroadcasterNode --ros-args --params-file tf/${e.hijo}.yaml -r __node:=tf_${e.hijo}`, [
+      `TF estática ${limpio(e.padre)} → ${e.hijo}: ${e.que}.${e.nominal ? ` ${e.nominal}.` : ''}`,
+      `Giro: roll ${r}, pitch ${p}, yaw ${y} rad (setRPY: R = Rz(yaw)·Ry(pitch)·Rx(roll), ejes fijos), en cuaternión (x, y, z, w) normalizado con 9 decimales.`,
+      'Las claves x, y, z y w van entre comillas: YAML 1.1 lee una «y» suelta como true.',
+      ESCENA_DOBLE, ...e.notas,
+    ]) + raiz(nodos);
+  }
+  // tf_estaticas.sh: un static_transform_publisher (flags con nombre, ángulos en rad) por arista, en segundo plano, y wait
+  function script(m, O, A) {
+    let t = '#!/bin/bash\n' + cabecera(m, O, 'tf_estaticas.sh', 'bash tf_estaticas.sh, con ROS 2 Jazzy en el entorno: una static_transform_publisher por TF; Ctrl+C las para todas', [
+      ESCENA_DOBLE, 'Metros y radianes; los ángulos, con setRPY (R = Rz(yaw)·Ry(pitch)·Rx(roll), ejes fijos). Los mismos números que tf/<child_frame_id>.yaml.',
+      ...lineaCentro(m),
+    ], 'en la línea anterior a cada comando');
+    t += "trap 'kill $(jobs -p) 2>/dev/null' INT TERM\n";
+    for (const e of A) {
+      const [r, p, y] = e.rpy.map(a3);
+      t += `# ${limpio(e.padre)} → ${e.hijo}: ${limpio(e.origen)}${e.nominal ? ` · ${e.nominal}` : ''}\n`;
+      t += `ros2 run tf2_ros static_transform_publisher --x ${d3(e.p.x)} --y ${d3(e.p.y)} --z ${d3(e.p.z)} --roll ${r} --pitch ${p} --yaw ${y} --frame-id ${sh(e.padre)} --child-frame-id ${sh(e.hijo)} --ros-args -r __node:=tf_${e.hijo} &\n`;
+    }
+    return t + 'wait\n';
+  }
+
+  // Ficheros de ROS de una disposición, en orden fijo: [{ nombre, texto }]: parametros_celda.yaml, tf/<child_frame_id>.yaml de cada
+  // arista y tf_estaticas.sh
+  function ficherosRos(m, O) {
+    const A = aristas(m, O);
+    return [{ nombre: 'parametros_celda.yaml', texto: parametros(m, O) }, ...A.map(e => ({ nombre: `tf/${e.hijo}.yaml`, texto: tfYaml(m, O, e) })), { nombre: 'tf_estaticas.sh', texto: script(m, O, A) }];
+  }
+
+  // ---------- Escena de colisión (T2.3): escena_colision.yaml (CollisionObject en <prefijo>base_link) y celda.scene (world) ----------
+  // Cada objeto de m.escena.objetos pasa a { id, que, giro, p, q, formas }: la posición a 1 mm y el cuaternión de setRPY con
+  // los ángulos a 0,001 rad (el mismo que su TF, si la tiene), y por forma su tipo de shape_msgs/SolidPrimitive, sus
+  // dimensiones a 1 mm y su pose relativa a la del objeto (CollisionObject: primitive_poses son relativas a pose). Una forma
+  // con `local` lleva esa posición en el marco del objeto; con `centro` (en base_link), la que la deja en ese punto con la pose
+  // del objeto ya redondeada (Rᵀ·(centro − p)), para que el redondeo de la pose del objeto no se sume al de la forma. Una
+  // cápsula de obstaculos() es un CYLINDER entre sus dos extremos más una SPHERE en cada extremo.
+  const BOX = 1, SPHERE = 2, CYLINDER = 3; // shape_msgs/SolidPrimitive: dimensions BOX [x, y, z], SPHERE [radio], CYLINDER [altura, radio]
+  const ID = [0, 0, 0, 1e9];
+  const matQ = ([x, y, z, w]) => [[1 - 2 * (y * y + z * z), 2 * (x * y - z * w), 2 * (x * z + y * w)], [2 * (x * y + z * w), 1 - 2 * (x * x + z * z), 2 * (y * z - x * w)], [2 * (x * z - y * w), 2 * (y * z + x * w), 1 - 2 * (x * x + y * y)]];
+  const aObjeto = (R, v) => [0, 1, 2].map(j => R[0][j] * v[0] + R[1][j] * v[1] + R[2][j] * v[2]); // Rᵀ·v
+  const aPadre = (R, v) => R.map(f => f[0] * v[0] + f[1] * v[1] + f[2] * v[2]); // R·v
+  const qMul = (a, b) => [a[3] * b[0] + a[0] * b[3] + a[1] * b[2] - a[2] * b[1], a[3] * b[1] - a[0] * b[2] + a[1] * b[3] + a[2] * b[0], a[3] * b[2] + a[0] * b[1] - a[1] * b[0] + a[2] * b[3], a[3] * b[3] - a[0] * b[0] - a[1] * b[1] - a[2] * b[2]];
+  const mm = v => +d3(v); // el número tal como se escribe (1 mm)
+  const arco = d => d[2] < -1 + 1e-12 ? q9([1, 0, 0, 0]) : q9([-d[1], d[0], 0, 1 + d[2]]); // lleva +z a la dirección unitaria d (giro más corto)
+  function objetosEscena(m) {
+    return m.escena.objetos.map(o => {
+      const p = [o.pose.x, o.pose.y, o.pose.z].map(mm), q = cuaternion(o.pose.rpy), R = matQ(q.map(v => v / 1e9));
+      const rel = c => aObjeto(R, [c.x - p[0], c.y - p[1], c.z - p[2]]).map(mm), formas = [];
+      for (const f of o.formas) {
+        const pf = f.centro ? rel(f.centro) : f.local ? [f.local.x, f.local.y, f.local.z].map(mm) : [0, 0, 0];
+        if (f.tipo === 'caja') formas.push({ tipo: BOX, dims: f.dims.map(mm), p: pf, q: ID });
+        else if (f.tipo === 'esfera') formas.push({ tipo: SPHERE, dims: [mm(f.radio)], p: pf, q: ID });
+        else if (f.tipo === 'cilindro') formas.push({ tipo: CYLINDER, dims: [mm(f.altura), mm(f.radio)], p: pf, q: ID });
+        else if (f.tipo === 'capsula') {
+          const d = [f.b.x - f.a.x, f.b.y - f.a.y, f.b.z - f.a.z], l = Math.hypot(...d), medio = { x: (f.a.x + f.b.x) / 2, y: (f.a.y + f.b.y) / 2, z: (f.a.z + f.b.z) / 2 };
+          // un tramo que no llega a 1 mm no es un cilindro (dimensión 0): lo cubren las dos esferas de sus extremos
+          if (mm(l) > 0) formas.push({ tipo: CYLINDER, dims: [mm(l), mm(f.radio)], p: rel(medio), q: arco(aObjeto(R, d.map(v => v / l))), nota: 'tramo de una cápsula' });
+          formas.push({ tipo: SPHERE, dims: [mm(f.radio)], p: rel(f.a), q: ID, nota: 'extremo de una cápsula' }, { tipo: SPHERE, dims: [mm(f.radio)], p: rel(f.b), q: ID, nota: 'extremo de una cápsula' });
+        } else throw new Error(`exportar: forma desconocida (${f.tipo})`);
+      }
+      return { id: limpio(o.id), que: o.que, giro: o.giro || null, p, q, formas };
+    });
+  }
+  // Origen de la pose, del giro, de las formas y de sus poses, por tipo de objeto
+  const GIRO_CAJA = { plan: 'el del agarre que eligió el plan del gemelo', base: 'provisional, hacia la base del robot: las trayectorias no están al día (Calcular)', calculo: 'el de un cálculo a medias: exporta cuando termine' };
+  function origenesEscena(m, O) {
+    const c = m.ctx, og = k => O.yaml(k, c), ot = k => O.tipo(k, c), sup = og('disposicion');
+    const giro = m.robot.yaw !== 0 ? `${ot('orientacion_base_link')} (giro world→base_link sin validar en ROS)` : og('mesa'); // como su TF
+    const tf = n => `${sup}; la de su TF ${n}`;
+    return {
+      mesa: { pos: () => `${giro}; la de su TF mesa (centro de la cara de arriba)`, ori: () => giro, forma: og('mesa'), poseForma: `${og('mesa_bajo_base')}; centro a media altura de la mesa` },
+      caja: { pos: () => `${sup}: bajo su plato; z: ${og('caja_plato')}, media altura de la caja`, ori: o => `${og('giro_caja')}: ${GIRO_CAJA[o.giro] || GIRO_CAJA.calculo}`, forma: og('caja_plato'), poseForma: `${og('caja_plato')}: en la pose del objeto` },
+      plato: { pos: o => tf(`${o.id}_inicio`), ori: o => tf(`${o.id}_inicio`), forma: `${og('plato_bandeja_persona')}: radio · ${og('grosor_plato')}: altura`, poseForma: `${og('grosor_plato')}: medio grosor por encima de su TF` },
+      bandeja: { pos: () => `${tf('bandeja')} (pose de plan, sin balanceo) · nominal: la sustituye la pose que publique Visión`, ori: () => tf('bandeja'), forma: og('plato_bandeja_persona'), poseForma: og('plato_bandeja_persona') },
+      camara: { pos: o => `${tf(o.id)} · nominal: la sustituye la calibración`, ori: o => tf(o.id), forma: og('colision_camara'), poseForma: og('colision_camara') },
+    };
+  }
+  const P3 = p => `{'x': ${d3(p[0])}, 'y': ${d3(p[1])}, 'z': ${d3(p[2])}}`; // claves entre comillas: YAML 1.1 lee una «y» suelta como true
+  const Q4 = q => `{'x': ${dec9(q[0])}, 'y': ${dec9(q[1])}, 'z': ${dec9(q[2])}, 'w': ${dec9(q[3])}}`;
+  const TIPO_TXT = { [BOX]: 'BOX [x, y, z]', [SPHERE]: 'SPHERE [radio]', [CYLINDER]: 'CYLINDER [altura, radio]' };
+  const FUERA = 'Fuera de la escena: la persona y la fruta (se mueven o son lo que se coge), la zona de fruta y el otro robot (ya está en el URDF doble, DT16).';
+  const PLATOS = 'plato_1 y plato_2 son obstáculos hasta que se cogen: para cogerlos, adjúntalos a la pinza (AttachedCollisionObject) o permite el contacto en la ACM.';
+  const SUELO = 'El id suelo es el de la caja del ejemplo del profesor: aquí no se usa (un ADD con el mismo id la sustituiría).';
+  const lineaCajas = E => { const g = [...new Set(E.filter(o => o.que === 'caja').map(o => o.giro || 'calculo'))]; return g.length ? [`Giro de las cajas: ${g.map(x => GIRO_CAJA[x] || GIRO_CAJA.calculo).join('; ')}.`] : []; };
+  // escena_colision.yaml: objetos: una lista de mapas con los campos de moveit_msgs/CollisionObject que se usan (no son
+  // ros__parameters: aquí una lista de mapas sí vale). Sin operation: ADD (0) es su valor por defecto.
+  function escenaYaml(m, O, E) {
+    const EL = O.ELEGIDO, F = m.robot.frame, og = k => O.yaml(k, m.ctx), org = origenesEscena(m, O);
+    let y = cabecera(m, O, 'escena_colision.yaml', 'un nodo del grupo lo lee con yaml.safe_load, rellena cada moveit_msgs/CollisionObject con rosidl_runtime_py.set_message_fields y los envía con el servicio apply_planning_scene (is_diff: true)', [
+      `objetos: lista de moveit_msgs/CollisionObject (moveit_msgs 2.6) en ${limpio(F)}, con header.frame_id, id, pose (la del objeto), primitives y primitive_poses (relativas a pose).`,
+      'Sin operation: vale ADD (0) por defecto y ADD con un id que ya existe sustituye el objeto; un byte escrito como entero no pasa por set_message_fields.',
+      'SolidPrimitive: type 1 = BOX [x, y, z], 2 = SPHERE [radio] y 3 = CYLINDER [altura, radio], en m (celda.scene escribe el cilindro al revés: cylinder radio longitud).',
+      'Posiciones a 1 mm; cuaterniones (x, y, z, w) normalizados con 9 decimales, de setRPY con los ángulos a 0,001 rad (los mismos que las TF). Las poses de las formas salen de la pose del objeto ya redondeada.',
+      'Objetos: mesa (BOX), caja_plato_<n> (BOX, solo con los platos sobre caja), plato_<n> (CYLINDER), bandeja (BOX) y camara_<k> (SPHERE y CYLINDER: la cámara y su brazo), sin márgenes de roce.',
+      'La cara de arriba de la mesa queda 1 mm por debajo de base_link, como el suelo del ejemplo del profesor: así la base del robot no arranca en contacto con la mesa.',
+      PLATOS, FUERA, SUELO, ...lineaCajas(E),
+      'La bandeja va en su pose de plan y cada cámara en la de su TF: las dos son nominales.',
+    ]) + 'objetos:\n';
+    for (const o of E) {
+      const g = org[o.que];
+      y += `  - header: {frame_id: ${cad(F)}}  # ${EL} (el prefijo; base_link es el del URDF)\n    id: ${cad(o.id)}  # ${og('id_escena')}\n`;
+      y += `    pose:\n      position: ${P3(o.p)}  # ${limpio(g.pos(o))}\n      orientation: ${Q4(o.q)}  # ${limpio(g.ori(o))}\n    primitives:\n`;
+      for (const f of o.formas) y += `      - {type: ${f.tipo}, dimensions: ${lista(f.dims.map(d3))}}  # ${limpio(g.forma)} · ${TIPO_TXT[f.tipo]}${f.nota ? `: ${f.nota}` : ''}\n`;
+      y += '    primitive_poses:\n';
+      for (const f of o.formas) y += `      - {position: ${P3(f.p)}, orientation: ${Q4(f.q)}}  # ${limpio(g.poseForma)}\n`;
+    }
+    return y;
+  }
+  // celda.scene: el texto de PlanningScene::loadGeometryFromStream (moveit 2.12) en el world del URDF que corresponda. Sin
+  // comentarios (el lector no los ignora): lo explica celda.scene.txt. Por objeto: «* id», su pose (x y z / qx qy qz qw), el
+  // número de formas y, por forma, su tipo, sus dimensiones (cylinder: radio longitud), su pose relativa y su color; luego el
+  // número de subframes (0). Las formas y sus poses son las de escena_colision.yaml; solo la pose de cada objeto cambia de frame.
+  const TIPO_SCENE = { [BOX]: 'box', [SPHERE]: 'sphere', [CYLINDER]: 'cylinder' };
+  const COLOR = { mesa: [0.3, 0.3, 0.32, 1], caja: [0.76, 0.6, 0.42, 1], plato: [0.96, 0.95, 0.93, 1], bandeja: [0.5, 0.58, 0.65, 1], camara: [0.08, 0.08, 0.09, 1] }; // solo para verlos en RViz
+  // El world del .scene: con prefijo y URDF doble conocido, el del doble (pose_en_world_doble); si no, el de sim_<id>
+  // (world_a_base_link, giro puro)
+  const mundoDe = m => { const R = m.robot; return R.doble ? { x: R.doble.x, y: R.doble.y, z: R.doble.z, yaw: R.doble.yaw, doble: R.doble.nombre } : { ...R.worldABase, yaw: R.yaw, doble: null }; };
+  function scene(m, E) {
+    const W = mundoDe(m), qW = [0, 0, Math.sin(W.yaw / 2), Math.cos(W.yaw / 2)], RW = matQ(qW), t0 = [W.x, W.y, W.z].map(num);
+    let t = `gemelo_celda_${huella(m.layoutJson)}\n`;
+    for (const o of E) {
+      const pw = aPadre(RW, o.p).map((v, i) => v + t0[i]), qw = q9(qMul(qW, o.q.map(v => v / 1e9)));
+      t += `* ${o.id}\n${pw.map(d3).join(' ')}\n${qw.map(dec9).join(' ')}\n${o.formas.length}\n`;
+      for (const f of o.formas) t += `${TIPO_SCENE[f.tipo]}\n${(f.tipo === CYLINDER ? [f.dims[1], f.dims[0]] : f.dims).map(d3).join(' ')}\n${f.p.map(d3).join(' ')}\n${f.q.map(dec9).join(' ')}\n${COLOR[o.que].map(v => v.toFixed(3)).join(' ')}\n`;
+      t += '0\n';
+    }
+    return t + '.\n';
+  }
+  // celda.scene.txt: en qué world está la escena, cómo se carga, el aviso del «éxito» falso y el origen de cada objeto
+  function sceneTxt(m, O, E) {
+    const W = mundoDe(m), F = limpio(m.robot.frame), og = k => O.yaml(k, m.ctx), org = origenesEscena(m, O);
+    const donde = W.doble ? `el world del URDF doble ${limpio(W.doble)}.urdf.xacro` : 'el world de sim_<id> (el URDF de un solo robot)';
+    return cabecera(m, O, 'celda.scene.txt', 'acompaña a celda.scene; cómo cargarlo, abajo', [
+      `celda.scene está en ${donde}, no en ${F}: un .scene no lleva frame y MoveIt lo lee en el frame del modelo.`,
+      `En ese world, ${F} está en (${d3(W.x)}, ${d3(W.y)}, ${d3(W.z)}) m con yaw ${rad3(W.yaw)} rad (${grados(W.yaw)}): p_world = Rz(yaw)·p_${F} + (x, y, z) [${og(W.doble ? 'pose_doble' : 'orientacion_base_link')}].`,
+      'Los objetos, sus formas y las poses de las formas son los de escena_colision.yaml, con los mismos números; solo la pose de cada objeto pasa a world (a 1 mm, cuaterniones x y z w con 9 decimales).',
+      'Formato (PlanningScene::loadGeometryFromStream, moveit 2.12): el nombre de la escena; por objeto, «* id», su pose (x y z / qx qy qz qw), el número de formas y, por forma, su tipo,',
+      '  sus dimensiones (box x y z, sphere radio, cylinder radio longitud: al revés que SolidPrimitive), su pose relativa (dos líneas) y su color r g b a; luego el número de subframes (0). Al final, «.».',
+      'Carga, con la ruta de dentro del contenedor donde corre move_group: ros2 service call /load_geometry_from_file moveit_msgs/srv/LoadGeometryFromFile "{file_path_and_name: /ruta/celda.scene}"',
+      '  (capacidad de move_group desde MoveIt 2.11), o en RViz: MotionPlanning → Scene Objects → Import [SIN VALIDAR en ROS: U4].',
+      'Aviso: load_geometry_from_file responde success: true aunque el fichero esté mal formado. Comprueba en RViz o con get_planning_scene que están todos los objetos.',
+      'El .scene no admite comentarios: lo que lo explica está en este fichero. Los colores (r g b a) son solo para verlos en RViz.',
+      PLATOS, FUERA, SUELO, ...lineaCajas(E),
+      'Origen de cada objeto (pose · giro · formas · poses de las formas):',
+      ...E.map(o => { const g = org[o.que]; return `  ${o.id}: ${limpio(g.pos(o))} · ${limpio(g.ori(o))} · ${limpio(g.forma)} · ${limpio(g.poseForma)}`; }),
+    ], 'en la lista «Origen de cada objeto»');
+  }
+  function ficherosEscena(m, O) {
+    const E = objetosEscena(m);
+    return [{ nombre: 'escena_colision.yaml', texto: escenaYaml(m, O, E) }, { nombre: 'celda.scene', texto: scene(m, E) }, { nombre: 'celda.scene.txt', texto: sceneTxt(m, O, E) }];
+  }
+
+  // ---------- Cámaras (T2.5): camera_info/camara_<k>.yaml (nominal) y usb_cam/camara_<k>.yaml ----------
+  // K de lente ideal con el modelo de la cámara de render del gemelo (su campo vertical y el aspecto del modo, que salen del
+  // modelo de sensor): fx = (w/2)/tan(hfov/2), fy = (h/2)/tan(vfov/2), cx = (w − 1)/2 y cy = (h − 1)/2 (convenio de OpenCV y
+  // ROS: el centro del píxel (0, 0) está en 0). D = 0 (plumb_bob), R = I y P = [K | 0]. En píxeles, con 3 decimales.
+  function intrinseca(k) {
+    const w = num(k.px.w), h = num(k.px.h), fx = w / 2 / Math.tan(num(k.hfov) / 2), fy = h / 2 / Math.tan(num(k.vfov) / 2), cx = (w - 1) / 2, cy = (h - 1) / 2;
+    return { K: [fx, 0, cx, 0, fy, cy, 0, 0, 1], D: [0, 0, 0, 0, 0], R: [1, 0, 0, 0, 1, 0, 0, 0, 1], P: [fx, 0, cx, 0, 0, fy, cy, 0, 0, 0, 1, 0] };
+  }
+  const nombreCam = k => `camara_${limpio(k.clave)}`;
+  const RUTA_CI = n => `file://\${ROS_HOME}/camera_info/${n}.yaml`; // la de camera_info_manager por defecto
+  function cameraInfo(m, O, k) {
+    const og = x => O.yaml(x, m.ctx), EL = O.ELEGIDO, n = nombreCam(k), I = intrinseca(k), fmtCI = og('formato_camera_info'), modo = `${EL} (modo ${limpio(k.modo)})`;
+    const kO = `${og('campo_vision')}; focal y modo: ${EL}`, s = m.ctx.sensor;
+    const mat = (clave, rows, cols, data, o) => `${clave}:\n  rows: ${ent(rows)}  # ${fmtCI}\n  cols: ${ent(cols)}  # ${fmtCI}\n  data: ${lista(data.map(d3))}  # ${limpio(o)}\n`;
+    return cabecera(m, O, `camera_info/${n}.yaml`, `el camera_info_url de usb_cam/${n}.yaml: cópialo a \${ROS_HOME}/camera_info/${n}.yaml (por defecto ~/.ros/camera_info/)`, [
+      `Cámara ${limpio(k.clave)}: ${limpio(k.modelo)}, focal ${num(k.focal).toFixed(1)} mm (focal_mm, DT19), modo ${limpio(k.modo)} (${ent(k.px.w)} × ${ent(k.px.h)} a ${num(k.px.fps).toFixed(1)} fps), sensor «${limpio(s.nombre)}» de ${fmt(num(s.w), 3)} mm de ancho útil.`,
+      `K en píxeles, de lente ideal y con el modelo de la cámara con la que el gemelo pinta lo que ve: fx = (w/2)/tan(hfov/2) y fy = (h/2)/tan(vfov/2), con hfov ${d3(k.hfov)} rad y vfov ${d3(k.vfov)} rad;`,
+      '  cx = (w − 1)/2 y cy = (h − 1)/2: el píxel (0, 0) tiene su centro en 0, como en OpenCV y ROS. Números de las matrices con 3 decimales.',
+      `D = 0 (plumb_bob), R = I y P = [K | 0]. Nominal: lo sustituye la calibración intrínseca (F4) guardada con el mismo camera_name (${n}) en la misma ruta.`,
+    ]) + `image_width: ${ent(k.px.w)}  # ${modo}\nimage_height: ${ent(k.px.h)}  # ${modo}\ncamera_name: ${cad(n)}  # ${og('nombre_frame')}; el de usb_cam/${n}.yaml\n`
+      + mat('camera_matrix', 3, 3, I.K, kO) + `distortion_model: 'plumb_bob'  # ${og('distorsion_nula')}\n` + mat('distortion_coefficients', 1, 5, I.D, og('distorsion_nula'))
+      + mat('rectification_matrix', 3, 3, I.R, fmtCI) + mat('projection_matrix', 3, 4, I.P, `${kO}: P = [K | 0]`);
+  }
+  // usb_cam/camara_<k>.yaml: ros__parameters de usb_cam 0.8 para --params-file, con los enteros donde usb_cam los declara
+  // (image_width, image_height, exposure y white_balance)
+  function usbCam(m, O, k) {
+    const og = x => O.yaml(x, m.ctx), EL = O.ELEGIDO, n = nombreCam(k), u = k.usb, modo = `${EL} (modo ${limpio(k.modo)})`;
+    const nodos = [
+      hoja('video_device', cad(u.dispositivo), og('dispositivo_video')),
+      hoja('framerate', num(k.px.fps).toFixed(1), modo),
+      hoja('image_width', ent(k.px.w), modo),
+      hoja('image_height', ent(k.px.h), modo),
+      hoja('pixel_format', cad('mjpeg2rgb'), og('formato_pixel')),
+      hoja('camera_name', cad(n), `${og('nombre_frame')}; el de camera_info/${n}.yaml`),
+      hoja('frame_id', cad(`${n}_optical`), `${og('nombre_frame')}; el marco óptico de su TF (tf/${n}_optical.yaml)`),
+      hoja('camera_info_url', cad(RUTA_CI(n)), og('ruta_camera_info')),
+      hoja('autoexposure', 'false', og('exposicion')),
+      hoja('exposure', ent(u.exposicion), og('exposicion')),
+      hoja('auto_white_balance', 'false', og('balance_blancos')),
+      hoja('white_balance', ent(u.balance), og('balance_blancos')),
+    ];
+    return cabecera(m, O, `usb_cam/${n}.yaml`, `ros2 run usb_cam usb_cam_node_exe --ros-args -r __ns:=/${n} --params-file usb_cam/${n}.yaml (un namespace por cámara)`, [
+      `Cámara ${limpio(k.clave)}: frame_id ${n}_optical, el de su TF óptica; camera_name y camera_info_url, los de camera_info/${n}.yaml.`,
+      'Sustituye al camera_frame_id del launch del curso, que usb_cam no declara: con él todas las cámaras salen con frame_id default_cam y buscan el camera_info de default_cam.',
+      `exposure va en unidades de V4L2 (100 µs): ${ent(u.exposicion)} = ${fmt(u.exposicion / 10, 1)} ms, con autoexposure a false; white_balance en K, con auto_white_balance a false.`,
+      'video_device: compruébalo con v4l2-ctl --list-devices; mejor un /dev/v4l/by-id/…, que no cambia al reconectar las cámaras.',
+    ]) + raiz(nodos);
+  }
+  function ficherosCamaras(m, O) {
+    return [...m.camaras.map(k => ({ nombre: `camera_info/${nombreCam(k)}.yaml`, texto: cameraInfo(m, O, k) })), ...m.camaras.map(k => ({ nombre: `usb_cam/${nombreCam(k)}.yaml`, texto: usbCam(m, O, k) }))];
+  }
+  // Todos los ficheros de ROS de la disposición, en orden fijo: los de T2.2 + T2.4, los de la escena (T2.3) y los de las cámaras (T2.5)
+  const todos = (m, O) => [...ficherosRos(m, O), ...ficherosEscena(m, O), ...ficherosCamaras(m, O)];
+
+  // ---------- Paquete .tar (T2.6, decisión 2 de su brief): los ficheros tal cual, bajo una carpeta raíz ----------
+  // Formato ustar (POSIX.1-1988) sin comprimir y determinista: la misma lista da los mismos bytes. Por entrada, una cabecera
+  // de 512 bytes (name 0–99, mode 100, uid 108, gid 116, size 124, mtime 136, chksum 148, typeflag 156, magic «ustar\0» 257,
+  // version «00» 263; uname 265, gname 297, devmajor 329 y devminor 337, vacíos), los datos y ceros hasta el bloque de 512.
+  // mtime = 0, uid = gid = 0, 0644 (0755 los .sh y las carpetas), una entrada de carpeta («<ruta>/», typeflag 5) antes del
+  // primer fichero que la usa y dos bloques de ceros al final. Los números, en octal con ceros a la izquierda y NUL; la suma
+  // de control, de los 512 bytes con su campo en espacios, en 6 cifras, NUL y espacio. El texto va en UTF-8 (sin TextEncoder:
+  // el módulo se prueba en un contexto vm vacío). Una ruta que no cabe en name (100 bytes) se rechaza: no se usa prefix.
+  const BLOQUE = 512, NAME = 100;
+  function utf8(texto) {
+    const out = [];
+    for (const ch of texto) {
+      let c = ch.codePointAt(0); if (c >= 0xd800 && c <= 0xdfff) c = 0xfffd; // una suplente suelta sale como U+FFFD, como en un Blob
+      if (c < 0x80) out.push(c);
+      else if (c < 0x800) out.push(0xc0 | c >> 6, 0x80 | c & 63);
+      else if (c < 0x10000) out.push(0xe0 | c >> 12, 0x80 | c >> 6 & 63, 0x80 | c & 63);
+      else out.push(0xf0 | c >> 18, 0x80 | c >> 12 & 63, 0x80 | c >> 6 & 63, 0x80 | c & 63);
+    }
+    return out;
+  }
+  // Un número en octal para un campo de `ancho` bytes: ancho − 1 cifras y el NUL que ya tiene la cabecera
+  const octal = (v, ancho, campo) => { const s = v.toString(8); if (s.length > ancho - 1) throw new Error(`tar: ${v} no cabe en el campo ${campo} (${ancho - 1} cifras octales)`); return s.padStart(ancho - 1, '0'); };
+  // Una ruta relativa con «/» entre partes: ni vacía, ni absoluta, ni con «.», «..», partes vacías, «\» o caracteres de control
+  function rutaTar(r, que) {
+    if (typeof r !== 'string' || !r) throw new Error(`tar: ${que} vacío o que no es texto`);
+    for (const p of r.split('/')) if (!p || p === '.' || p === '..' || /[\u0000-\u001f\u007f\\]/.test(p)) throw new Error(`tar: ${que} «${r}» no es una ruta relativa válida (sin «/» al principio ni al final, «.», «..», «\\» ni caracteres de control)`);
+    return r;
+  }
+  function cabeceraTar(nombre, tam, modo, tipo) {
+    const h = new Uint8Array(BLOQUE), n = utf8(nombre);
+    if (n.length > NAME) throw new Error(`tar: la ruta «${nombre}» ocupa ${n.length} bytes y el campo name de ustar admite ${NAME}`);
+    const pon = (off, s) => { for (let i = 0; i < s.length; i++) h[off + i] = typeof s === 'string' ? s.charCodeAt(i) : s[i]; };
+    pon(0, n); pon(100, octal(modo, 8, 'mode')); pon(108, octal(0, 8, 'uid')); pon(116, octal(0, 8, 'gid'));
+    pon(124, octal(tam, 12, 'size')); pon(136, octal(0, 12, 'mtime')); pon(148, '        '); pon(156, tipo);
+    pon(257, 'ustar'); pon(263, '00'); // devmajor y devminor, en ceros como los deja GNU tar: solo cuentan en dispositivos
+    let suma = 0; for (const b of h) suma += b;
+    pon(148, octal(suma, 7, 'chksum')); h[154] = 0; h[155] = 0x20;
+    return h;
+  }
+  // ficheros: [{ nombre, texto }] (los de todos(), en su orden); raiz: la carpeta que los contiene en el .tar. Devuelve los
+  // bytes (Uint8Array).
+  function tar(ficheros, raiz) {
+    const partes = [], vistos = new Set(), carpetas = new Set(), r = rutaTar(raiz, 'la carpeta raíz');
+    const entrada = (ruta, datos, modo, tipo) => {
+      partes.push(cabeceraTar(ruta, datos.length, modo, tipo));
+      if (datos.length) { partes.push(Uint8Array.from(datos)); if (datos.length % BLOQUE) partes.push(new Uint8Array(BLOQUE - datos.length % BLOQUE)); }
+    };
+    const carpeta = c => { if (carpetas.has(c)) return; const i = c.lastIndexOf('/'); if (i > 0) carpeta(c.slice(0, i)); carpetas.add(c); entrada(`${c}/`, [], 0o755, '5'); };
+    carpeta(r);
+    for (const f of ficheros) {
+      const ruta = `${r}/${rutaTar(f && f.nombre, 'el nombre del fichero')}`;
+      if (typeof f.texto !== 'string') throw new Error(`tar: el texto de «${f.nombre}» no es texto`);
+      if (vistos.has(ruta)) throw new Error(`tar: «${f.nombre}» está dos veces`);
+      if (carpetas.has(ruta)) throw new Error(`tar: «${ruta}» es un fichero y una carpeta`);
+      vistos.add(ruta); carpeta(ruta.slice(0, ruta.lastIndexOf('/')));
+      for (const c of carpetas) if (vistos.has(c)) throw new Error(`tar: «${c}» es un fichero y una carpeta`);
+      entrada(ruta, utf8(f.texto), /\.sh$/.test(ruta) ? 0o755 : 0o644, '0');
+    }
+    partes.push(new Uint8Array(2 * BLOQUE));
+    const out = new Uint8Array(partes.reduce((s, p) => s + p.length, 0)); let o = 0;
+    for (const p of partes) { out.set(p, o); o += p.length; }
+    return out;
+  }
+
+  return { r3, rad3, huella, cuaternion, posiciones, parametros, ficherosRos, ficherosEscena, ficherosCamaras, todos, tar };
 })();
 // GENERADO por tools/fixtures/fk_desde_xacro.py: no editar a mano (ver tools/fixtures/LEEME.md).
 // Calibración cinemática de los UR3e del laboratorio y su montaje respecto a «world».
@@ -1477,13 +2126,81 @@ function ladoZonas() { // la zona del primero queda del lado del robot
 }
 const BALANCEO = t => ({ dx: 0.55 * Math.sin(2 * PI * 0.33 * t) + 0.35 * Math.sin(2 * PI * 0.87 * t + 1.1), dy: 0.6 * Math.sin(2 * PI * 0.47 * t + 2.0) + 0.25 * Math.sin(2 * PI * 1.1 * t), dz: 0.3 * Math.sin(2 * PI * 0.71 * t + 0.4), dyaw: 0.9 * Math.sin(2 * PI * 0.29 * t + 0.7) });
 const trayState = { subida: 1, balanceo: false };
-function poseBandeja(t) {
-  const P = L.persona, B = L.bandeja; const A = (D.amp || 0) * (trayState.balanceo ? 1 : 0);
-  const o = BALANCEO(t + D.fase); const s = trayState.subida;
+function poseBandeja(t) { return poseBandejaDe(BALANCEO(t + D.fase), (D.amp || 0) * (trayState.balanceo ? 1 : 0), trayState.subida); }
+// Pose de la bandeja con el desplazamiento o de BALANCEO, la amplitud A y la subida s (de 0, bajada, a 1, en recepción)
+function poseBandejaDe(o, A, s) {
+  const P = L.persona, B = L.bandeja;
   const ade = 0.18 + (B.ade - 0.18) * s, alt = (B.alt - 0.22) + 0.22 * s;
   const yaw = P.yaw + o.dyaw * A * 1.6; const lx = ade + o.dx * A, ly = o.dy * A;
   return { x: P.x + Math.cos(P.yaw) * lx - Math.sin(P.yaw) * ly, y: P.y + Math.sin(P.yaw) * lx + Math.cos(P.yaw) * ly, z: alt + o.dz * A, yaw };
 }
+// La bandeja en todo su balanceo (T2.8, DT30): la salida de la bandeja acaba en una postura (qU) en la que la bandeja puede
+// estar en cualquier punto de su recorrido, según cuándo llegue el brazo. BALANCEO es periódico: sus frecuencias son
+// centésimas de hercio (0,33, 0,87, 0,47, 1,1, 0,71 y 0,29 Hz), así que se repite cada BAL_T = 100 s. Se toman muestras de
+// un periodo entero con la amplitud de la demo (D.amp) y en recepción, sin la fase de la demo (D.fase) ni el reloj: el
+// resultado no depende de en qué punto del recorrido esté la bandeja al planificar. El paso es el que mueve cualquier punto
+// de la bandeja (en el obstáculo, con su margen) como mucho BAL_PASO entre dos muestras; la mitad entra como margen extra.
+// Cada muestra es el obstáculo «bandeja» de obstaculos() con la bandeja en esa pose, en base_link.
+const BAL_T = 100, BAL_PASO = 0.001;
+let _balCache = { key: '', b: null };
+function bandejaBalanceo() {
+  const A = D.amp || 0; if (!(A > 0)) return null;
+  const P = L.persona, B = L.bandeja, key = [A, P.x, P.y, P.yaw, B.ade, B.alt, L.robot, ROB.id].join('|'); if (_balCache.key === key) return _balCache.b;
+  const mb = marco(), hx = BAND.d / 2 + 0.008, hy = BAND.w / 2 + 0.008, hz = 0.009, Rm = Math.hypot(hx, hy, hz);
+  const obs = p => { const c = mb.aBase(p.x, p.y, p.z - 0.006), yb = mb.yawABase(p.yaw); return { t: 3, x: c[0], y: c[1], z: c[2], hx, hy, hz, c: Math.cos(yb), s: Math.sin(yb), tag: 'bandeja', m: 0.004, R: Math.hypot(hx, hy, hz) }; };
+  // velocidad máxima de un punto de la bandeja por unidad de amplitud (cota de las derivadas de BALANCEO): da el paso
+  const v = (0.55 * 0.33 + 0.35 * 0.87) + (0.6 * 0.47 + 0.25 * 1.1) + 0.3 * 0.71 + 0.9 * 0.29 * 1.6 * Rm; const n = Math.ceil(BAL_T * 2 * PI * v * A / BAL_PASO);
+  const nominal = obs(poseBandejaDe({ dx: 0, dy: 0, dz: 0, dyaw: 0 }, 0, 1)); const M = new Float64Array(n * 5); let dmax = 0;
+  for (let i = 0; i < n; i++) {
+    const o = obs(poseBandejaDe(BALANCEO(i * BAL_T / n), A, 1)); M.set([o.x, o.y, o.z, o.c, o.s], i * 5);
+    dmax = Math.max(dmax, Math.hypot(o.x - nominal.x, o.y - nominal.y, o.z - nominal.z) + Math.abs(Math.atan2(o.s * nominal.c - o.c * nominal.s, o.c * nominal.c + o.s * nominal.s)) * Rm);
+  }
+  _balCache = { key, b: { nominal, M, n, dmax, extra: BAL_PASO / 2, hx, hy, hz } }; return _balCache.b;
+}
+// ¿Toca la postura q (apertura w, sin carga: el plato ya está en la bandeja) la bandeja en alguna pose de su balanceo? Como
+// choqueEn con el obstáculo «bandeja» (brazo y pinza, mismo margen), más la mitad del paso entre muestras. Solo se miran las
+// esferas que están a menos de lo que se desplaza la bandeja en su balanceo (dmax) de su pose nominal.
+function tocaBandejaEnBalanceo(q, w) {
+  const b = bandejaBalanceo(); if (!b) return false;
+  const n = colocar(q, w, null), X = COL.X, cerca = [];
+  for (let i = COL.ini[2]; i < n; i++) { const k = i * 4; if (distObs(b.nominal, X[k], X[k + 1], X[k + 2]) < X[k + 3] + b.nominal.m + b.extra + b.dmax) cerca.push(k); }
+  // la distancia de distObs a la caja de cada muestra, con un descarte por ejes antes (casi todas quedan fuera en un eje)
+  const M = b.M, m = b.nominal.m + b.extra;
+  for (const k of cerca) {
+    const x = X[k], y = X[k + 1], z = X[k + 2], lim = X[k + 3] + m, ex = b.hx + lim, ey = b.hy + lim, ez = b.hz + lim;
+    for (let j = 0; j < b.n * 5; j += 5) {
+      const lz = z - M[j + 2]; if (lz > ez || lz < -ez) continue;
+      const dx = x - M[j], dy = y - M[j + 1], c = M[j + 3], s = M[j + 4], lx = dx * c + dy * s; if (lx > ex || lx < -ex) continue;
+      const ly = -dx * s + dy * c; if (ly > ey || ly < -ey) continue;
+      const qx = Math.abs(lx) - b.hx, qy = Math.abs(ly) - b.hy, qz = Math.abs(lz) - b.hz, fuera = Math.hypot(Math.max(qx, 0), Math.max(qy, 0), Math.max(qz, 0));
+      if ((fuera > 0 ? fuera : Math.max(qx, qy, qz)) < lim) return true;
+    }
+  }
+  return false;
+}
+// Y el arranque del movimiento siguiente (T2.8, decisión 2): en el barrido de hoy, 6 de los 10 contactos con la bandeja no
+// eran en qU sino en los primeros centímetros del movimiento hacia la postura de reposo (tránsito o reposo final), con la
+// bandeja moviéndose hacia la pinza. Ese movimiento es el camino recto en articulaciones hasta la IK de posReposo() más
+// cercana a qU cuando está libre (planificar); se comprueba su tramo inicial, hasta que el TCP se aleja A_ARRANQUE de qU,
+// en pasos de como mucho PASO_ARRANQUE rad, frente a la bandeja en todo su balanceo. Si no hay IK del reposo, no se mira: el
+// fallo lo da el propio movimiento. [SUPUESTO: si el camino recto choca con la escena del instante, el RRT da otro camino
+// y este tramo no lo cubre; y tras el plato 1 con la muñeca a 45° no hay tránsito (servirPlato): el movimiento siguiente va
+// a la fruta y este tramo es solo una aproximación.]
+const A_ARRANQUE = 0.05, PASO_ARRANQUE = 0.01;
+function arranqueLibreEnBalanceo(qU) {
+  if (!bandejaBalanceo()) return true;
+  const qT = ikTCP(posReposo(), PI / 2, qU, { w: 0.03, carga: null }); if (!qT) return true;
+  const p0 = tcpDeQ(qU, 0.03).p, d = Math.max(...qT.map((v, i) => Math.abs(v - qU[i]))), n = Math.max(1, Math.ceil(d / PASO_ARRANQUE));
+  for (let k = 1; k <= n; k++) {
+    const q = qU.map((v, i) => v + (qT[i] - v) * k / n); if (tocaBandejaEnBalanceo(q, 0.03)) return false;
+    if (tcpDeQ(q, 0.03).p.distanceTo(p0) > A_ARRANQUE) break;
+  }
+  return true;
+}
+// Pose de plan de la bandeja (DT35): la de recepción, sin balanceo y subida, con la que se planifica cada plato (pasosPlan).
+// Fuera de la demo es poseBandeja(t); durante la demo, poseBandeja(0) lleva el balanceo de la fase D.fase. La exportan la TF
+// bandeja, bandeja_recepcion y sus zonas (modeloExportacion). No cambia trayState: lo deja como estaba.
+function poseBandejaPlan() { const b = trayState.balanceo, s = trayState.subida; trayState.balanceo = false; trayState.subida = 1; try { return poseBandeja(0); } finally { trayState.balanceo = b; trayState.subida = s; } }
 function aplicarBandeja(t) {
   const p = poseBandeja(t); bandeja.position.set(p.x, p.y, p.z); bandeja.rotation.set(0, 0, p.yaw); bandeja.updateMatrixWorld(true);
   persona.position.set(L.persona.x + D.personaOff * Math.cos(L.persona.yaw + PI), L.persona.y + D.personaOff * Math.sin(L.persona.yaw + PI), 0); persona.rotation.z = L.persona.yaw; persona.updateMatrixWorld(true);
@@ -2324,9 +3041,11 @@ function planColocar(zw, qRef, flip, carga = null, pitch = 0, todos = false) {
     const q = ikTCP(tcp, yaw, qPre, { ...o, permitir: ['bandeja'] }); if (!q) continue;
     const salida = tcp.clone().addScaledVector(eje, -0.08); const qS = ikTCP(salida, yaw, q, { ...o, w: 0.03, carga: null, permitir: ['bandeja'] }); if (!qS) continue;
     // la subida tras la salida (T1.9, decisión 3): tiene que tener IK y acabar libre con el contexto del movimiento
-    // siguiente (sin nada permitido); si no, la entrada se descarta y el fallo sale en la comprobación previa
+    // siguiente (sin nada permitido), con la bandeja en su pose de ahora y en todas las de su balanceo con la amplitud de la
+    // demo (T2.8, DT30): cuando el brazo llegue a qU, la bandeja puede estar en cualquier punto de su recorrido. Si no, la
+    // entrada se descarta y el fallo sale en la comprobación previa
     const subida = salida.clone(); subida.z += H_SALIDA; const qU = ikTCP(subida, yaw, qS, { ...o, w: 0.03, carga: null, permitir: ['bandeja'] });
-    if (!qU || choqueEn(qU, ctxDe({ w: 0.03, carga: null }))) continue;
+    if (!qU || choqueEn(qU, ctxDe({ w: 0.03, carga: null })) || tocaBandejaEnBalanceo(qU, 0.03) || !arranqueLibreEnBalanceo(qU)) continue;
     const c = { yaw, pitch, d, eje, tcp, pre, salida, subida, q, qPre, qS, qU, k, flip: Math.sign(CIN.fk(q)[8]) || flip || 1 }; if (!todos) return c; lista.push(c);
   }
   return todos ? lista : null;
@@ -2373,15 +3092,21 @@ function calcularMapa() {
 const tctl = new TransformControls(cam, renderer.domElement); tctl.setSize(0.75); scene.add(tctl);
 tctl.addEventListener('dragging-changed', e => { orbit.enabled = !e.value; EDITANDO = e.value; if (e.value) prepararEdicion(); else { guardarLocal(); recalcular(); } });
 function recalcular() { actualizarPlatos(); evaluar(); pintarCalc(); vigilarEscena(); } // soltar un objeto solo refresca lo ligero; los planes se calculan con el botón
-// Mover algo con la demo a medias la deja incoherente: se reinicia antes del primer movimiento
-function prepararEdicion() { if (D.activo && !D.playing) { D.activo = false; reiniciarDemo(); toast('Demo reiniciada para mover objetos'); } }
+// Mover algo con la demo a medias la deja incoherente: se reinicia antes del primer movimiento. aviso: el motivo que se
+// enseña (la capa del otro robot da el suyo, DT31)
+function prepararEdicion(aviso = 'Demo reiniciada para mover objetos') { if (D.activo && !D.playing) { D.activo = false; reiniciarDemo(); toast(aviso); } }
 const CALC = { activo: false };
+// Estado de la sección «Exportar a ROS» del panel «Datos» (T2.6): el modelo y los ficheros que muestra, y si sus descargas
+// están desactivadas por un cálculo o una búsqueda (vigilarRos, desde pintarCalc)
+const ROSX = { m: null, ficheros: [], lista: null, huella: '', giro: null, ver: null, ocupado: null };
 // La barra dice si las trayectorias de explorar («gemelo») están al día; debajo, la de validar (pintarVal, T1.8).
 // El texto de progreso se conserva hasta que acaba el cálculo (el repintado periódico no lo borra).
+// #btnCalc sigue a CALC.activo también cuando la barra se oculta (DT41): si no, al acabar un cálculo con los planes al día se
+// quedaba desactivado hasta que el repintado periódico volvía a enseñar la barra, y un clic en ese rato se perdía.
 function pintarCalc(txt) {
-  if (txt) CALC.txt = txt; pintarVal();
+  if (txt) CALC.txt = txt; pintarVal(); vigilarRos(); $('#btnCalc').disabled = CALC.activo;
   const el = $('#calcBar'); const ver = !!robot && (VAL.activo || !D.activo) && (CALC.activo || !planesAlDia(PERFIL_EXPLORA)); el.hidden = !ver; if (!ver) return;
-  $('#calcTxt').textContent = CALC.activo ? (CALC.txt || 'Calculando…') : 'Hay cambios sin calcular'; $('#calcSpin').hidden = !CALC.activo; $('#btnCalc').disabled = CALC.activo;
+  $('#calcTxt').textContent = CALC.activo ? (CALC.txt || 'Calculando…') : 'Hay cambios sin calcular'; $('#calcSpin').hidden = !CALC.activo;
 }
 // Calcula las trayectorias de los platos con un perfil (T1.6). Sin argumento, el de explorar: la barra «Calcular»,
 // soltar un objeto y el primer cálculo al cargar usan siempre «gemelo» (decisión 2 del brief). La demo, guardar y validar
@@ -2948,10 +3673,10 @@ function enBase(p) { return mundoABase(p); } // punto del mundo en base_link: la
 // con «gemelo» ni al revés. cachePlan crea la del perfil si no existe (un test puede vaciar CACHE_PLAN entero).
 const CACHE_PLAN = { gemelo: {}, curso: {} };
 const cachePlan = pf => CACHE_PLAN[PERFIL.de(pf).nombre] || (CACHE_PLAN[pf] = {});
-// todo lo que entra en la escena de colisión o en la cadena: robot (posición A/B y cinemática, T1.4), plato, el otro plato, caja (y su altura), zona de fruta, persona, bandeja, cámaras (posición y hacia dónde miran) y pedido, más el perfil (T1.6) y si se ve el robot del otro puesto (H4)
+// todo lo que entra en la escena de colisión o en la cadena: robot (posición A/B y cinemática, T1.4), plato, el otro plato, caja (y su altura), zona de fruta, persona, bandeja, cámaras (posición y hacia dónde miran) y pedido, más el perfil (T1.6) y si se ve el robot del otro puesto (H4), y la amplitud del balanceo de la demo, con la que se comprueba la salida de la bandeja (T2.8)
 function clavePlan(pk, pf) {
   const P = L.persona, B = L.bandeja; const r3 = v => (+v).toFixed(3), ps = o => `${r3(o.x)},${r3(o.y)}`;
-  return [PERFIL.de(pf).nombre, L.robot, ROB.id, r3(L[pk].x), r3(L[pk].y), r3(zPlato()), L.caja.on, r3(L.caja.h), ps(L.plato1), ps(L.plato2), ps(L.zona), r3(L.zona.yaw), ps(P), r3(P.yaw), B.alt, B.ade, L.pedido, Object.values(L.cams).map(c => ps(c.pos) + ',' + r3(c.pos.z) + ',' + ps(c.mira) + ',' + r3(c.roll || 0)).join(';'), otroVisible() ? 'otro' : 'sin otro'].join('|');
+  return [PERFIL.de(pf).nombre, L.robot, ROB.id, r3(L[pk].x), r3(L[pk].y), r3(zPlato()), L.caja.on, r3(L.caja.h), ps(L.plato1), ps(L.plato2), ps(L.zona), r3(L.zona.yaw), ps(P), r3(P.yaw), B.alt, B.ade, L.pedido, Object.values(L.cams).map(c => ps(c.pos) + ',' + r3(c.pos.z) + ',' + ps(c.mira) + ',' + r3(c.roll || 0)).join(';'), otroVisible() ? 'otro' : 'sin otro', (+(D.amp || 0)).toFixed(4)].join('|');
 }
 const planAlDia = (pk, pf) => cachePlan(pf)[pk]?.key === clavePlan(pk, pf);
 // ======================= Escena de partida (H3, DT24) =======================
@@ -3261,7 +3986,7 @@ function otroVisible() { return !!(otro && otro.root.visible); } // declaración
 function cambiarOtro(v) {
   if (!otro) return;
   if (D.playing || CALC.activo || VAL.activo || D.buscando) { $('#lyOtro').checked = otro.root.visible; toast('Espera a que termine la demo o el cálculo para cambiar el robot del otro puesto'); return; }
-  prepararEdicion(); otro.root.visible = v; VERSION_ESCENA++; actualizarPlatos(); evaluar(); pintarCalc();
+  prepararEdicion('Demo reiniciada: ha cambiado el robot del otro puesto'); otro.root.visible = v; VERSION_ESCENA++; actualizarPlatos(); evaluar(); pintarCalc(); // cambian los obstáculos (DT31)
 }
 const capas = { lyCol: v => volCol.forEach(m => m.visible = v), lyFoto: v => foto.visible = v, lyOtro: v => cambiarOtro(v), lyTF: v => TF.forEach(t => { t.visible = v; t.userData.lbl.visible = v; }), lyEtq: v => labels.domElement.style.display = v ? '' : 'none', lyCirc: v => circ.visible = v, lyFrus: v => Object.values(CAMS).forEach(R => { R.frus.visible = R.huella.visible = v; }) };
 for (const id in capas) $('#' + id).addEventListener('change', e => capas[id](e.target.checked));
@@ -3387,45 +4112,174 @@ $('#hAlc').addEventListener('input', e => { ALC.h = e.target.value / 100; $('#hA
 $$('[data-h]').forEach(b => b.addEventListener('click', () => { let h = b.dataset.h === 'tray' ? Math.round((poseBandeja(simT).z - MESA.h + 0.022) * 200) / 2 : b.dataset.h === 'plato' ? Math.round((zPlato() - MESA.h + 0.09) * 200) / 2 : +b.dataset.h; h = clamp(h, 0, 40); $('#hAlc').value = h; $('#hAlc').dispatchEvent(new Event('input')); }));
 
 // ======================= Datos: YAML, importar, propuestas =======================
-function r3(v) { return (Math.round(v * 1000) / 1000).toFixed(3); }
-const rad3 = a => r3(angDiff(a, 0)); // ángulo en [−π, π], redondeado a 0,001 rad (I7)
 // posiciones.yaml (T1.5, I7): todo en el base_link del robot elegido con la conversión de la planificación (enBase), en
-// metros y radianes, con redondeo fijo de 1 mm y 0,001 rad y el origen de cada valor al final de su línea
-function generarYaml() {
-  const B = o => enBase({ x: o.x, y: o.y, z: o.z ?? MESA.h }), P = o => { const b = B(o); return `{x: ${r3(b.x)}, y: ${r3(b.y)}, z: ${r3(b.z)}}`; };
-  const tp = poseBandeja(0); bandeja.updateMatrixWorld(true); const zw = k => zonasB[k].getWorldPosition(new THREE.Vector3());
-  const id = ROB.id, d = ROB.datos, pf = L.prefijoFrames || '', frame = `${pf}base_link`, sup = '# SUPUESTO (disposición propuesta, sin medir)';
+// metros y radianes, con redondeo fijo de 1 mm y 0,001 rad (EXPORTAR.r3 y rad3) y el origen de cada valor al final de su línea
+// El origen de cada valor (T2.1) sale de ORIGEN (src/origen.js) con este contexto: el robot cuya cinemática se usa, su giro,
+// el sensor de la escena y el TCP de la pinza cerrada
+function ctxOrigen() { const s = sensorEscena(); return { robotId: ROB.id, sospechoso: !!ROB.datos.sospechoso, yaw: ROB.yaw, sensor: { id: s, ...SENSOR.de(s) }, tcpZ: pinza.tcpZ(0) }; }
+// Modelo de exportación (T2.2–T2.4, decisión 1 de su brief): todo lo que exportan los ficheros, calculado una vez, sin
+// redondear y en base_link con la conversión de la planificación (enBase, marco()). Un objeto plano, serializable con JSON,
+// con el contexto de origen (ctx) y la disposición (layoutJson). Lo convierte en texto src/exportar.js (EXPORTAR), que no ve
+// nada del gemelo: posiciones.yaml, parametros_celda.yaml y las TF estáticas salen de los mismos números.
+function modeloExportacion() {
+  const v = p => ({ x: p.x, y: p.y, z: p.z }), B = o => v(enBase({ x: o.x, y: o.y, z: o.z ?? MESA.h }));
+  // La bandeja en su pose de plan (poseBandejaPlan) y sus zonas llevadas a ella con su posición en la bandeja, la de su TF
+  // (DT35): durante la demo, la bandeja dibujada se balancea y lo exportado no la sigue
+  const tp = poseBandejaPlan(), enPlan = l => ({ x: tp.x + Math.cos(tp.yaw) * l.x - Math.sin(tp.yaw) * l.y, y: tp.y + Math.sin(tp.yaw) * l.x + Math.cos(tp.yaw) * l.y, z: tp.z + l.z });
+  const id = ROB.id, d = ROB.datos, pf = L.prefijoFrames || '';
   // Una disposición de solo lectura puede traer un robot que esta versión no conoce: se dice y se usa el nominal (corrección 5)
-  const desconocido = L.robotId !== id, doble = pf && d.doble ? d.doble.fichero.split('/').pop().replace('.urdf.xacro', '') : null;
-  // Lo que depende del giro world → base_link (mount_yaw − π) es SUPUESTO mientras no se valide en ROS (corrección 6)
-  const conGiro = ROB.yaw !== 0, giroSup = 'SUPUESTO (giro world→base_link sin validar en ROS)';
-  let y = `# posiciones.yaml · gemelo de la celda UR3e · BORRADOR (generado por IA)\n`;
-  y += `# Robot: ${desconocido ? `«${L.robotId}» (desconocido para esta versión del gemelo: se usa la cinemática nominal)` : id === 'nominal' ? 'nominal (sin identificar: cinemática nominal del UR3e)' : `${id} (calibration_${id}.yaml del curso${d.sospechoso ? '; calibración sospechosa, SIN VALIDAR' : ''})`}, en la posición ${L.robot} de la celda (${L.robot === 'B' ? 'derecha' : 'izquierda'} en la foto cenital).\n`;
-  y += `# Frame: ${frame}${doble ? ` (prefijo «${pf}» del URDF doble ${doble}.urdf.xacro)` : pf ? ` (prefijo «${pf}» de la disposición; esta versión del gemelo no conoce su URDF doble)` : ' (sin prefijo, como en sim_<id>)'}. Metros y radianes (REP-103), redondeo a 1 mm y 0,001 rad.\n`;
-  y += `# world: el world del gemelo, con los ejes de la mesa y el origen en el centro de la base sobre el tablero [SUPUESTO hasta comprobarlo en el laboratorio].\n`;
-  y += `# ${frame} está girado ${rad3(ROB.yaw)} rad (${gradosTxt(ROB.yaw)}) respecto a ese world: mount_yaw − π del xacro del curso [SIN VALIDAR en ROS; docs/estado/frames.md].\n`;
-  y += `# Origen de cada valor, al final de su línea: MEDIDO, FABRICANTE o SUPUESTO. Las cámaras dan el giro desde +y de ${frame} hacia +x.\n`;
-  y += `fecha: ${new Date().toISOString().slice(0, 10)}\nrobot: ${L.robot}  # MEDIDO (posición de la base en la celda)\nrobot_id: ${desconocido ? `${L.robotId}  # de la disposición; el gemelo no lo conoce y usa la cinemática nominal` : `${id}  # elegido en el gemelo`}\n`;
-  y += `frame: ${frame}\nprefijo_frames: '${pf}'\nworld_a_base_link: {x: 0.000, y: 0.000, z: 0.000, yaw_rad: ${rad3(ROB.yaw)}}  # world del gemelo (ejes de la mesa): SUPUESTO · giro: mount_yaw − π del xacro del curso, SUPUESTO (sin validar en ROS)\n`;
-  if (doble) y += `pose_en_world_doble: {frame: ${frame}, x: ${r3(d.doble.x)}, y: ${r3(d.doble.y)}, z: 0.000, yaw_rad: ${rad3(d.doble.yaw - PI)}}  # xacro del curso, ${doble}: SUPUESTO (sin validar en ROS)\n`;
-  y += `pinza: {modelo: OnRobot RG2, tcp_z_m: ${r3(pinza.tcpZ(0))}, carrera_m: 0.110}  # tcp_z: SUPUESTO (modelo simplificado) · carrera: MEDIDO\n`;
-  const mc = B({ x: 0, y: 0 });
-  y += `mesa: {ancho_m: 1.180, fondo_m: 0.830, alto_m: 0.760, centro_en_base_link: {x: ${r3(mc.x)}, y: ${r3(mc.y)}}, yaw_rad: ${rad3(yawABase(0))}}  # ${conGiro ? `medidas: MEDIDO · centro_en_base_link y yaw_rad: ${giroSup}` : 'MEDIDO'}\n`;
-  y += `pedido: ${L.pedido === 1 ? 'un_plato  # al centro de la bandeja' : 'dos_platos  # primero y segundo'} · elegido en el gemelo\n`;
-  y += `platos: {sobre_caja: ${L.caja.on}, caja_alto_m: ${r3(L.caja.h)}, caja_lado_m: ${r3(CAJA_LADO)}, agarre: horizontal_por_el_borde, radio_agarre_m: ${r3(R_AGARRE)}}  # SUPUESTO\n`;
-  const zf = B(L.zona);
-  y += `objetos:\n  zona_fruta: {x: ${r3(zf.x)}, y: ${r3(zf.y)}, z: ${r3(zf.z)}, yaw_rad: ${rad3(yawABase(L.zona.yaw))}, ancho_m: ${r3(L.zona.w)}, fondo_m: ${r3(L.zona.d)}}  ${sup}\n`;
-  for (const pk of ['plato1', 'plato2']) y += `  ${pk.replace('plato', 'plato_')}: ${P({ x: L[pk].x, y: L[pk].y, z: zPlato() })}  ${sup}\n`;
-  L.arucoE.forEach((a, i) => { const m = B(a); y += `  marcador_entrega_${i + 1}: {id: ${4 + i}, diccionario: DICT_4X4_50, x: ${r3(m.x)}, y: ${r3(m.y)}, z: ${r3(m.z)}}  ${sup}\n`; });
-  const bt = B(tp); y += `  bandeja_recepcion: {x: ${r3(bt.x)}, y: ${r3(bt.y)}, z: ${r3(bt.z)}, yaw_rad: ${rad3(yawABase(tp.yaw))}}  ${sup}\n`;
-  y += `  zona_primero: ${P(zw('zona_primero'))}  ${sup}\n  zona_segundo: ${P(zw('zona_segundo'))}  ${sup}\n`;
-  const pe = B(L.persona); y += `  persona: {x: ${r3(pe.x)}, y: ${r3(pe.y)}, yaw_rad: ${rad3(yawABase(L.persona.yaw))}}  ${sup}\ncamaras:\n`;
-  for (const k in L.cams) { const c = L.cams[k], o = orientDe({ pos: B(c.pos), mira: B(c.mira), roll: c.roll }); y += `  camara_${k}: {grupo: ${c.grupo}, modelo: ELP-USB12MP01-UFV, focal_mm: ${c.f.toFixed(1)}, modo: ${c.modo}, hfov_rad: ${r3(hfovDe(c))}, posicion: ${P(c.pos)}, mira: ${P(c.mira)}, orientacion_rad: {giro: ${rad3(o.pan)}, inclinacion: ${rad3(o.tilt)}, alabeo: ${rad3(o.roll)}}, pinza_mesa: ${P(c.clamp)}}  # pose: SUPUESTO · modelo: MEDIDO · focal y modo: elegidos · hfov: SUPUESTO (lente ideal, sensor ${sensorEscena()})\n`; }
-  y += `# layout-json: ${JSON.stringify(L)}\n`;
-  return y;
+  const doble = pf && d.doble ? { nombre: d.doble.fichero.split('/').pop().replace('.urdf.xacro', ''), x: d.doble.x, y: d.doble.y, z: 0, yaw: d.doble.yaw - PI } : null;
+  const mc = B({ x: 0, y: 0 }), zf = B(L.zona), bt = B(tp), pe = B(L.persona);
+  // orient: giro (desde +y hacia +x), inclinación (positiva hacia abajo) y alabeo, en base_link (orientDe). rpy: el marco del
+  // cuerpo de la cámara (REP-103: x hacia donde mira, y a la izquierda, z arriba) con setRPY. La cámara de three mira con lookAt
+  // (y horizontal) y gira la imagen con rotateZ(alabeo) sobre su +z, que apunta hacia atrás: en el cuerpo es −alabeo en x.
+  // px y vfov: el modo y el campo vertical de la cámara de render (camera_info, T2.5); usb: dispositivo, exposición (en
+  // unidades de 100 µs de V4L2) y balance de blancos (K) de usb_cam, supuestos (ORIGEN: dispositivo_video, exposicion y
+  // balance_blancos).
+  const camaras = Object.keys(L.cams).map((k, i) => {
+    const c = L.cams[k], o = orientDe({ pos: B(c.pos), mira: B(c.mira), roll: c.roll }), md = MODOS[c.modo];
+    return { clave: k, grupo: c.grupo, modelo: 'ELP-USB12MP01-UFV', focal: c.f, modo: c.modo, hfov: hfovDe(c), vfov: vfovDe(c), px: { w: md.w, h: md.h, fps: md.fps }, pos: B(c.pos), mira: B(c.mira), clamp: B(c.clamp), orient: { pan: o.pan, tilt: o.tilt, roll: o.roll }, rpy: [-o.roll, o.tilt, PI / 2 - o.pan], usb: { dispositivo: `/dev/video${2 * i}`, exposicion: 50, balance: 4000 } };
+  });
+  return {
+    ctx: ctxOrigen(), layoutJson: JSON.stringify(L),
+    robot: { posicion: L.robot, id, idLayout: L.robotId, desconocido: L.robotId !== id, sospechoso: !!d.sospechoso, yaw: ROB.yaw, prefijo: pf, frame: `${pf}base_link`, worldABase: { x: 0, y: 0, z: 0 }, doble },
+    pinza: { modelo: 'OnRobot RG2', tcpZ: pinza.tcpZ(0), carrera: RG2.carrera },
+    mesa: { ancho: MESA.w, fondo: MESA.d, alto: MESA.h, ...mc, yaw: yawABase(0) },
+    pedido: L.pedido,
+    platos: { sobreCaja: L.caja.on, cajaAlto: L.caja.h, cajaLado: CAJA_LADO, agarre: 'horizontal_por_el_borde', radioAgarre: R_AGARRE, lista: ['plato1', 'plato2'].map(pk => ({ clave: pk.replace('plato', 'plato_'), ...B({ x: L[pk].x, y: L[pk].y, z: zPlato() }) })) },
+    zona: { ...zf, yaw: yawABase(L.zona.yaw), ancho: L.zona.w, fondo: L.zona.d },
+    // marcadores de entrega: planos sobre la mesa y con sus ejes (OBJ.arucoE no gira), de 6 cm (aruco(4 + i, 0.06))
+    marcadores: L.arucoE.map((a, i) => ({ id: 4 + i, diccionario: 'DICT_4X4_50', lado: 0.06, ...B(a), yaw: yawABase(0) })),
+    bandeja: { ...bt, yaw: yawABase(tp.yaw), zonas: ['zona_primero', 'zona_segundo', 'zona_centro'].map(k => ({ clave: k, base: B(enPlan(zonasB[k].position)), local: v(zonasB[k].position) })) }, // zona_centro siempre (DT36)
+    persona: { ...pe, yaw: yawABase(L.persona.yaw) },
+    camaras,
+    escena: escenaExportacion(B, mc, bt, yawABase(tp.yaw), camaras),
+  };
 }
-function pintarDatos() { $('#yaml').value = generarYaml(); pintarFuentes(); }
+// Escena de colisión (T2.3, decisión 2 de su brief): los objetos de obstaculos() que se exportan, sin márgenes de roce, en
+// base_link y sin redondear. La mesa y los platos, desde la disposición; las cajas, la bandeja y cada cámara con su brazo,
+// desde obstaculos() (el modelo de colisión del gemelo). La bandeja, en su pose de plan (poseBandeja(0), la de su TF), con la
+// caja de obstaculos() en su marco. Fuera: la persona, la fruta, la zona de fruta y el otro robot (lo dice la cabecera).
+// giro de cada caja: 'plan' (el del agarre de un plan al día), 'base' (el provisional, hacia la base) o 'calculo' (a medias)
+const HOLGURA_MESA = 0.001; // la cara de arriba de la mesa, 1 mm por debajo de base_link (como el suelo del profesor)
+function escenaExportacion(B, mc, bt, yawBandeja, camaras) {
+  const obs = obstaculos(), deTag = t => obs.filter(o => o.tag === t), P = o => ({ x: o.x, y: o.y, z: o.z });
+  const grosor = Math.max(...platoPts.map(p => p[1])); // el perfil del plato dibujado (lathe)
+  const objetos = [{ id: 'mesa', que: 'mesa', pose: { ...mc, rpy: [0, 0, yawABase(0)] }, formas: [{ tipo: 'caja', dims: [MESA.w, MESA.d, MESA.h], local: { x: 0, y: 0, z: -HOLGURA_MESA - MESA.h / 2 } }] }];
+  const giroCaja = (pk, yaw) => {
+    for (const pf of [PERFIL_EXPLORA, perfilEscena()]) { const pl = planAlDia(pk, pf) && cachePlan(pf)[pk].pl; if (pl && Math.abs(angDiff(pl.yaw, yaw)) < 1e-9) return 'plan'; }
+    const b = BASES[L.robot]; return Math.abs(angDiff(Math.atan2(L[pk].y - b.y, L[pk].x - b.x), yaw)) < 1e-9 ? 'base' : 'calculo';
+  };
+  for (const n of ['1', '2']) for (const o of deTag(`caja:plato${n}`)) objetos.push({ id: `caja_plato_${n}`, que: 'caja', giro: giroCaja(`plato${n}`, OBJ['caja' + n].rotation.z), pose: { ...P(o), rpy: [0, 0, Math.atan2(o.s, o.c)] }, formas: [{ tipo: 'caja', dims: [2 * o.hx, 2 * o.hy, 2 * o.hz] }] });
+  for (const pk of ['plato1', 'plato2']) if (pk === 'plato1' || L.pedido !== 1) objetos.push({ id: pk.replace('plato', 'plato_'), que: 'plato', pose: { ...B({ x: L[pk].x, y: L[pk].y, z: zPlato() }), rpy: [0, 0, yawABase(0)] }, formas: [{ tipo: 'cilindro', radio: PLATO_R, altura: grosor, local: { x: 0, y: 0, z: grosor / 2 } }] });
+  { // la caja de la bandeja en el marco de la bandeja de ahora (la que usa obstaculos()), llevada a la pose de plan
+    const o = deTag('bandeja')[0], cur = B(bandeja.position), yc = yawABase(bandeja.rotation.z), dx = o.x - cur.x, dy = o.y - cur.y;
+    const local = { x: Math.cos(yc) * dx + Math.sin(yc) * dy, y: -Math.sin(yc) * dx + Math.cos(yc) * dy, z: o.z - cur.z };
+    objetos.push({ id: 'bandeja', que: 'bandeja', pose: { ...bt, rpy: [0, 0, yawBandeja] }, formas: [{ tipo: 'caja', dims: [2 * o.hx, 2 * o.hy, 2 * o.hz], local }] });
+  }
+  for (const k of camaras) objetos.push({ id: `camara_${k.clave}`, que: 'camara', pose: { ...k.pos, rpy: k.rpy }, formas: deTag(`camara:${k.clave}`).map(o => o.t === 1 ? { tipo: 'esfera', radio: o.r, centro: P(o) } : { tipo: 'capsula', radio: o.r, a: { x: o.ax, y: o.ay, z: o.az }, b: { x: o.cx, y: o.cy, z: o.cz } }) });
+  return { objetos };
+}
+function generarYaml(m = modeloExportacion()) { return EXPORTAR.posiciones(m, ORIGEN, new Date().toISOString().slice(0, 10)); }
+// Ficheros de ROS de la disposición actual: [{ nombre, texto }] en orden fijo, deterministas (sin fecha): los de T2.2 + T2.4,
+// los de la escena (T2.3) y los de las cámaras (T2.5). Los muestra y descarga la sección «Exportar a ROS» (T2.6) y los leen
+// los tests con window.__g.ficherosRos()
+function ficherosRos(m = modeloExportacion()) { return EXPORTAR.todos(m, ORIGEN); }
+// posiciones.yaml, la tabla de fuentes y la sección «Exportar a ROS», con un mismo modelo de exportación
+function pintarDatos() { const m = modeloExportacion(); $('#yaml').value = generarYaml(m); pintarFuentes(); pintarRos(m); }
 $('#btnCopy').addEventListener('click', async () => { const t = $('#yaml'); try { await navigator.clipboard.writeText(t.value); toast('Copiado'); } catch (e) { t.focus(); t.select(); toast('Selecciona y copia con Ctrl+C'); } });
+
+// ======================= Exportar a ROS (T2.6) =======================
+// Sección «Exportar a ROS» del panel «Datos» (decisiones 1, 4 y 5 del brief de T2.6): los ficheros de ficherosRos() de la
+// disposición abierta, en su orden y agrupados por carpeta (cada tramo seguido de ficheros de una misma carpeta, bajo su
+// nombre), cada uno con Ver, Copiar y Descargar, y «Descargar todo (.tar)», con todos bajo celda_ros/ (EXPORTAR.tar). Solo
+// genera texto y descargas: no habla con ROS (I4). Se repinta con pintarDatos: al abrir el panel, al cambiar el prefijo o el
+// robot (aplicarLayout) y al terminar un cálculo (evaluar). Nunca calcula planes. Lo que se ve, se copia y se descarga sale
+// de la misma llamada a modeloExportacion() que da el giro de las cajas (DT38). Mientras se calcula (CALC.activo, también al
+// validar) o se busca una disposición (D.buscando: L es un candidato), «Descargar» y «Descargar todo» están desactivados;
+// pintarCalc lo vigila (vigilarRos) y, al terminar, la sección se repinta con la disposición de ahora y los reactiva.
+const RAIZ_TAR = 'celda_ros';
+// Para qué sirve cada fichero, en una línea (las TF dicen su arista: el padre y el hijo de su propio texto)
+const aristaTF = t => { const p = /^ {4}frame_id: '([^']*)'/m.exec(t), h = /^ {4}child_frame_id: '([^']*)'/m.exec(t); return p && h ? `${p[1]} → ${h[1]}` : null; };
+const QUE_ROS = [
+  [/^parametros_celda\.yaml$/, () => 'Poses y medidas de la celda, para --params-file'],
+  [/^tf\/(.+)\.yaml$/, (m, t) => `TF estática ${aristaTF(t) || `hacia ${m[1]}`}`],
+  [/^tf_estaticas\.sh$/, () => 'Todas las TF con static_transform_publisher (bash)'],
+  [/^escena_colision\.yaml$/, () => 'CollisionObject para un nodo del grupo (no se carga en U4)'],
+  [/^celda\.scene$/, () => 'Escena de MoveIt en world: load_geometry_from_file o RViz'],
+  [/^celda\.scene\.txt$/, () => 'Explica celda.scene: su world, cómo cargarla y el origen'],
+  [/^camera_info\/(.+)\.yaml$/, () => 'Intrínseca nominal, para ~/.ros/camera_info/'],
+  [/^usb_cam\/(.+)\.yaml$/, () => 'Parámetros de usb_cam: frame_id, camera_info_url y exposición'],
+];
+function queEsRos(f) { for (const [re, t] of QUE_ROS) { const m = re.exec(f.nombre); if (m) return t(m, f.texto); } return 'Fichero de ROS de la disposición'; }
+const nombreDescarga = n => n.replace(/\//g, '_'); // un navegador no descarga carpetas: tf/mesa.yaml → tf_mesa.yaml (el .tar las conserva)
+const rosOcupado = () => CALC.activo ? 'calculo' : D.buscando ? 'busqueda' : null;
+// Giro de las cajas de la escena (DT38), del modelo que da los ficheros: 'plan', 'base', 'calculo' o 'sin-cajas'
+function giroCajas(m) { const g = new Set(m.escena.objetos.filter(o => o.que === 'caja').map(o => o.giro || 'calculo')); return !g.size ? 'sin-cajas' : g.has('calculo') ? 'calculo' : g.has('base') ? 'base' : 'plan'; }
+const TXT_GIRO = {
+  plan: ['ok', 'giro del plan', 'Las cajas de los platos llevan el giro del plan: el del agarre que eligió el gemelo al calcular las trayectorias.'],
+  base: ['warn', 'giro provisional', 'Las cajas llevan el giro provisional, hacia la base del robot, porque las trayectorias no están al día. «Calcular trayectorias» pone el del plan.'],
+  calculo: ['warn', 'giro a medias', 'Las cajas llevan el giro de un cálculo a medias, que ningún plan usa. «Calcular trayectorias» pone el del plan.'],
+  'sin-cajas': ['ok', 'sin cajas', 'Los platos van sobre la mesa: la escena no lleva cajas.'],
+};
+const TXT_OCUPADO = {
+  calculo: ['calculando', 'Hay un cálculo de trayectorias en marcha: «Descargar» y «Descargar todo» se activan cuando termine, porque las cajas llevarían un giro que ningún plan usa. «Ver» y «Copiar» enseñan lo que hay ahora.'],
+  busqueda: ['buscando', 'Hay una búsqueda de una disposición en marcha: «Descargar» y «Descargar todo» se activan cuando termine, porque los ficheros serían los de una disposición candidata. «Ver» y «Copiar» enseñan lo que hay ahora.'],
+};
+function pintarRos(m = modeloExportacion()) {
+  const F = ficherosRos(m), lista = listaRos(F); // la lista solo se vuelve a escribir si cambia (nombres o líneas de las TF)
+  Object.assign(ROSX, { m, ficheros: F, huella: EXPORTAR.huella(m.layoutJson), giro: giroCajas(m) });
+  $('#rosHuella').textContent = ROSX.huella; $('#rosFrame').textContent = m.robot.frame; $('#rosCuenta').textContent = String(F.length);
+  $('#rosTarTxt').innerHTML = `Se descarga como <code>${RAIZ_TAR}_${ROSX.huella}.tar</code>: los ${F.length} ficheros bajo <code>${RAIZ_TAR}/</code>, con sus carpetas. «Descargar» de un fichero suelto cambia «/» por «_» en su nombre (<code>tf/mesa.yaml</code> → <code>tf_mesa.yaml</code>).`;
+  if (lista !== ROSX.lista) { ROSX.lista = lista; $('#rosLista').innerHTML = lista; }
+  verRos(ROSX.ver);
+  pintarRosEstado(rosOcupado());
+}
+// La lista: un grupo por tramo seguido de ficheros de una misma carpeta, en el orden de ficherosRos()
+function listaRos(F) {
+  const grupos = [];
+  for (const f of F) { const i = f.nombre.lastIndexOf('/'), c = f.nombre.slice(0, i + 1), g = grupos[grupos.length - 1]; if (g && g.c === c) g.f.push(f); else grupos.push({ c, f: [f] }); }
+  const fila = (f, c) => { const n = esc(f.nombre); return `<li data-nombre="${n}"><code>${esc(f.nombre.slice(c.length)).replace(/_/g, '_<wbr>')}</code><div class="btns"><button class="btn" data-ros="ver" aria-label="Ver ${n}">Ver</button><button class="btn" data-ros="copiar" aria-label="Copiar ${n}">Copiar</button><button class="btn" data-ros="dl" aria-label="Descargar ${n}" title="Se descarga como ${esc(nombreDescarga(f.nombre))}">Descargar</button></div><small>${esc(queEsRos(f))}</small></li>`; };
+  return grupos.map(g => `<div class="rosGrupo" data-carpeta="${esc(g.c)}"><h3><code>${RAIZ_TAR}/${esc(g.c)}</code></h3><ul class="props rosLista">${g.f.map(f => fila(f, g.c)).join('')}</ul></div>`).join('');
+}
+// La línea del estado (el giro de las cajas o lo que está en marcha) y las descargas, activas o no
+function pintarRosEstado(oc) {
+  ROSX.ocupado = oc; const el = $('#rosEstado'), [cls, tag, txt] = oc ? ['warn', ...TXT_OCUPADO[oc]] : TXT_GIRO[ROSX.giro];
+  el.dataset.giro = ROSX.giro; el.dataset.ocupado = oc || ''; el.innerHTML = `<span class="pill ${cls}">${tag}</span> ${txt}`;
+  $$('#btnRosTar, #rosLista [data-ros="dl"]').forEach(b => { b.disabled = !!oc; });
+}
+// Desde pintarCalc (al empezar, durante y al terminar un cálculo, y cada 18 fotogramas): si cambia lo que está en marcha y
+// el panel está a la vista, desactiva las descargas o, al terminar, repinta la sección con la disposición de ahora
+function vigilarRos() {
+  const oc = rosOcupado(); if (oc === ROSX.ocupado || !ROSX.m || $('[data-panel="datos"]').hidden) return;
+  if (oc) pintarRosEstado(oc); else pintarRos();
+}
+// «Ver»: el fichero en el textarea de solo lectura de la sección (nombre null: lo cierra)
+function verRos(nombre, mostrar = false) {
+  const f = nombre ? ROSX.ficheros.find(x => x.nombre === nombre) : null; ROSX.ver = f ? f.nombre : null;
+  $('#rosVerCaja').hidden = !f; $('#rosVer').value = f ? f.texto : ''; $('#rosVerNombre').textContent = f ? `${f.nombre} · solo lectura` : '';
+  $$('#rosLista li').forEach(li => li.setAttribute('aria-current', String(li.dataset.nombre === ROSX.ver)));
+  if (f && mostrar) $('#rosVerCaja').scrollIntoView({ block: 'nearest' });
+  return f;
+}
+// «Copiar»: al portapapeles o, si no hay, el fichero seleccionado en el textarea para copiarlo a mano (como #btnCopy)
+async function copiarRos(nombre) {
+  const f = ROSX.ficheros.find(x => x.nombre === nombre); if (!f) return;
+  try { await navigator.clipboard.writeText(f.texto); toast(`Copiado: ${f.nombre}`); } catch (e) { verRos(nombre, true); const t = $('#rosVer'); t.focus(); t.select(); toast('Selecciona y copia con Ctrl+C'); }
+}
+// Las descargas vuelven a leer la disposición (pintarRos) para bajar justo lo que se ve; nunca durante un cálculo o una búsqueda
+function puedeDescargarRos() { const oc = rosOcupado(); if (oc) { pintarRosEstado(oc); toast(oc === 'calculo' ? 'Espera a que termine el cálculo para descargar' : 'Espera a que termine la búsqueda para descargar'); return false; } pintarRos(); return true; }
+$('#rosLista').addEventListener('click', e => {
+  const b = e.target.closest('button[data-ros]'), li = b && b.closest('li[data-nombre]'); if (!li) return; const n = li.dataset.nombre;
+  if (b.dataset.ros === 'ver') verRos(n, true);
+  else if (b.dataset.ros === 'copiar') copiarRos(n);
+  else if (puedeDescargarRos()) { const f = ROSX.ficheros.find(x => x.nombre === n); if (f) descargar(nombreDescarga(f.nombre), f.texto); else toast('Ese fichero ya no está en la disposición'); }
+});
+$('#btnRosTar').addEventListener('click', () => {
+  if (!puedeDescargarRos()) return; let bytes;
+  try { bytes = EXPORTAR.tar(ROSX.ficheros, RAIZ_TAR); } catch (e) { toast(`No se ha podido crear el .tar: ${e.message}`); return; }
+  descargar(`${RAIZ_TAR}_${ROSX.huella}.tar`, new Blob([bytes], { type: 'application/x-tar' }));
+});
 // ======================= Escenas del grupo =======================
 // Dos almacenes con la misma interfaz:
 //  · 'claude': la página es un artefacto de claude.ai. Cada persona guarda sus escenas en propuestas/<su id> (lista «items»).
@@ -3815,41 +4669,8 @@ function aplicarLayout() {
   colocarRobots(); actualizarZona(); actualizarPlatos(); actualizarAruco(); for (const k in L.cams) actualizarCam(k); aplicarBandeja(simT);
   reiniciarDemo(); pintarCaja(); pintarPerfil(); pintarSensor(); evaluar(); calcularMapa(); pintarSoloLectura(); guardarLocal(); if (!$('[data-panel="datos"]').hidden) pintarDatos();
 }
-const FUENTES = [
-  ['Mesa', '1180 × 830 mm, superficie a 760 mm', 'm', 'Cinta + foto (regla y A4, error < 2 %)'],
-  ['Base del robot B (grupo)', '9 y 8 cm del borde de la base a los bordes de la mesa', 'm', 'Cinta; centro con radio de base de 66 mm (supuesto)'],
-  ['Base del robot A', 'centro a 151 y 115 mm de los bordes', 'm', 'Foto ±10 mm'],
-  ['UR3e', 'alcance 500 mm, carga 3 kg, 11,2 kg, 2020', 'f', 'Placa del robot'],
-  ['Cinemática del UR3e', 'DH oficiales, IK analítica de 8 soluciones', 'f', 'ur_description; verificada con 2000 posturas'],
-  ['Pinza', 'OnRobot RG2, 0–110 mm, 0,78 kg, 3–40 N', 'm', 'Apertura medida 110 mm + ficha'],
-  ['TCP de la pinza', `${mm(pinza.tcpZ(0))} mm cerrada`, 's', 'Modelo simplificado; medir en PolyScope'],
-  ['Agarre del plato', 'horizontal por el borde, un dedo encima y otro debajo del ala', 'm', 'Decisión del grupo (12-11)'],
-  ['Caja bajo el plato', '10 × 10 cm, altura regulable', 's', 'Propuesta del grupo; tamaño sin medir'],
-  ['Orientación de base_link', 'eje x paralelo al lado largo de la mesa', 's', 'Comprobar en PolyScope'],
-  ['Cámaras', 'ELP-USB12MP01-UFV, IMX577, 3,6–10 mm, USB 2.0', 'm', 'Caja de la cámara + web del fabricante'],
-  ['Campo de visión', 'lente ideal sobre el ancho del sensor', 's', 'Medir en la calibración intrínseca'], // la fila la completa fuentesRobot con el sensor de la escena (T1.7)
-  ['Marcadores', 'ArUco DICT_4X4_50: zona 0–3, entrega 4–5, bandeja 6–9 (dibujados con su patrón real)', 's', 'Ids propuestos'],
-  ['Soportes de cámara', 'Manfrotto 035 + brazo 244 de 53 cm', 'm', 'Foto + ficha'],
-  ['Fruta', 'piezas de plástico de 4,5–7 cm', 's', 'Foto de referencia del grupo'],
-  ['Plato, bandeja y persona', 'plato Ø160 mm · bandeja 450 × 330 mm a 1,00 m del suelo · persona en el lateral derecho, de frente, con la bandeja a la derecha del robot y fuera de la mesa', 's', 'Sin medir; posición elegida porque es donde el robot puede dejar los platos nivelados'],
-  ['Modelo de colisión', '162 esferas ajustadas a las mallas de colisión oficiales del UR3e y a la RG2; límites articulares de joint_limits.yaml (codo ±180°)', 'f', 'ur_description (Universal Robots)'],
-  ['Planificación', 'RRT-Connect con atajos para movimientos libres; rectas cada 4 mm sin saltos (perfil «gemelo») o cada 1 cm con el punto medio a 1 mm y 0,01 rad (perfil «curso»); plato siempre nivelado', 'm', 'Equivalente a lo que hará MoveIt 2; sin validar en el robot'],
-  ['Aceleración articular (perfil «gemelo»)', '3 rad/s² al 100 %', 's', 'El yaml del UR3e no fija aceleraciones'],
-  ['Perfil «curso»', 'escala 0,1 de velocidad y aceleración, 5 rad/s², cartesiana de MoveIt 2.11+ y arranque en contacto = fallo', 's', 'config/joint_limits.yaml y el ejemplo del profesor (repo del curso); tiempos con un trapecio por articulación, no TOTG (DT4)'],
-  ['Agarre del plato', 'muñeca inclinada hasta 45° respecto a la horizontal', 's', 'Probar con el plato real que no gira ni resbala'],
-  ['Bandeja en M0 / M1', 'pausa a 25 mm, aborto a 10 s; latencia 120 ms', 's', 'DEC-04 sin cifras'],
-  ['Velocidades', '180°/s (base, hombro, codo), 360°/s (muñecas)', 'f', 'Ficha del UR3e'],
-  ['Nodos de Robótica', 'coordinador, pedidos, movimiento, pinza, seguridad', 's', 'Propuesta; D3 sin congelar'],
-  ['Topics de Visión', '/v1/*, /v2/*, /menu, /service_state', 'm', 'Contexto de Visión del 7-11'],
-];
-// Filas que dependen del robot elegido (T1.4 y T1.5): cinemática y orientación de base_link
-function fuentesRobot() {
-  const id = ROB.id, d = ROB.datos;
-  return FUENTES.map(f => f[0] === 'Cinemática del UR3e' && id !== 'nominal' ? [f[0], `calibración del robot ${id}; IK analítica nominal refinada con Levenberg–Marquardt (1e-6 m y 1e-6 rad)`, d.sospechoso ? 's' : 'm', `calibration_${id}.yaml del repo del curso (4e4e1a7)${d.sospechoso ? ', sospechosa' : ''}; SIN VALIDAR en ROS`]
-    : f[0] === 'Campo de visión' ? [f[0], `lente ideal sobre el ancho del sensor «${SENSOR.de(sensorEscena()).nombre}» (${fmt(SENSOR.de(sensorEscena()).w, 3)} mm), completo en todos los modos`, 's', `${SENSOR.de(sensorEscena()).origen}; medir en la calibración intrínseca (F4)`]
-    : f[0] === 'Orientación de base_link' ? [f[0], `girado ${gradosTxt(ROB.yaw)} respecto a world; world con los ejes de la mesa`, 's', 'Giro: mount_yaw − π del xacro del curso. Ejes de world: comprobar en el laboratorio (docs/estado/frames.md)'] : f);
-}
-function pintarFuentes() { $('#srcTbl tbody').innerHTML = fuentesRobot().map(([a, b, t, c]) => `<tr><td>${a}<br><span class="hint">${c}</span></td><td>${b}</td><td><span class="tag ${t}">${{ m: 'MEDIDO', f: 'FABRICANTE', s: 'SUPUESTO' }[t]}</span></td></tr>`).join(''); }
+// Tabla de fuentes del panel «Datos» (T2.1): las filas de ORIGEN con el robot, el giro, el sensor y la pinza de ahora
+function pintarFuentes() { $('#srcTbl tbody').innerHTML = ORIGEN.panel(ctxOrigen()).map(e => `<tr><td>${e.nombre}<br><span class="hint">${e.fuente}</span></td><td>${e.valor}</td><td><span class="tag ${ORIGEN.CLASE[e.tipo]}">${e.tipo}</span></td></tr>`).join(''); }
 
 // ======================= Colocación y evaluación =======================
 function colocarRobots() {
@@ -3951,7 +4772,7 @@ function cargado(g) {
   robot.setCinematica(CIN); REF_MANIP = CIN.manip(Q_REF_MANIP); // el robot de la disposición abierta (T1.4)
   colocarRobots(); aplicarBandeja(simT); iniciarColision(); crearVolumenes(); pintarCalidad(); robot.setQ(qReposo()); sincronizarSliders();
   marcoTF('mesa', scene).position.set(0, 0, MESA.h + 0.002); marcoTF('base_link', robot.root); marcoTF('tool0', robot.tool0); marcoTF('tcp', pinza.tcp);
-  for (const k in CAMS) marcoTF('camara_' + k, CAMS[k].optical);
+  for (const k in CAMS) marcoTF(`camara_${k}_optical`, CAMS[k].optical); // el marco óptico de REP-103, con el nombre de su TF (T2.4)
   marcoTF('bandeja', bandeja); for (const k in zonasB) marcoTF(k, zonasB[k]).userData.lbl.element.textContent = '';
   ladoZonas(); calcularPerfil(); calcularMapa(); dibujarSolape(); vista('iso'); camAnim.s = 0.999;
   $('#loading').remove(); evaluar(); pintarPip(); D_ready = true; calcularPlanes(); // primer cálculo sin bloquear la página

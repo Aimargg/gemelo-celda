@@ -1,0 +1,29 @@
+# celda.scene.txt · gemelo de la celda UR3e · generado por el gemelo (IA), BORRADOR
+# Robot: 203 (calibration_203.yaml del curso), en la posición B de la celda (derecha en la foto cenital).
+# Frame: 203_base_link (prefijo «203_» del URDF doble doble_ur3e_203_204.urdf.xacro). Metros y radianes (REP-103), redondeo a 1 mm y 0,001 rad.
+# Huella de la disposición: 33ea70cd (FNV-1a de 32 bits de JSON.stringify(L), en UTF-8): casa este fichero con su disposición.
+# Carga: acompaña a celda.scene; cómo cargarlo, abajo [SIN VALIDAR en ROS: U4].
+# celda.scene está en el world del URDF doble doble_ur3e_203_204.urdf.xacro, no en 203_base_link: un .scene no lleva frame y MoveIt lo lee en el frame del modelo.
+# En ese world, 203_base_link está en (0.000, 0.000, 0.000) m con yaw -2.356 rad (−135,0°): p_world = Rz(yaw)·p_203_base_link + (x, y, z) [SUPUESTO (sin validar en ROS)].
+# Los objetos, sus formas y las poses de las formas son los de escena_colision.yaml, con los mismos números; solo la pose de cada objeto pasa a world (a 1 mm, cuaterniones x y z w con 9 decimales).
+# Formato (PlanningScene::loadGeometryFromStream, moveit 2.12): el nombre de la escena; por objeto, «* id», su pose (x y z / qx qy qz qw), el número de formas y, por forma, su tipo,
+#   sus dimensiones (box x y z, sphere radio, cylinder radio longitud: al revés que SolidPrimitive), su pose relativa (dos líneas) y su color r g b a; luego el número de subframes (0). Al final, «.».
+# Carga, con la ruta de dentro del contenedor donde corre move_group: ros2 service call /load_geometry_from_file moveit_msgs/srv/LoadGeometryFromFile "{file_path_and_name: /ruta/celda.scene}"
+#   (capacidad de move_group desde MoveIt 2.11), o en RViz: MotionPlanning → Scene Objects → Import [SIN VALIDAR en ROS: U4].
+# Aviso: load_geometry_from_file responde success: true aunque el fichero esté mal formado. Comprueba en RViz o con get_planning_scene que están todos los objetos.
+# El .scene no admite comentarios: lo que lo explica está en este fichero. Los colores (r g b a) son solo para verlos en RViz.
+# plato_1 y plato_2 son obstáculos hasta que se cogen: para cogerlos, adjúntalos a la pinza (AttachedCollisionObject) o permite el contacto en la ACM.
+# Fuera de la escena: la persona y la fruta (se mueven o son lo que se coge), la zona de fruta y el otro robot (ya está en el URDF doble, DT16).
+# El id suelo es el de la caja del ejemplo del profesor: aquí no se usa (un ADD con el mismo id la sustituiría).
+# Giro de las cajas: provisional, hacia la base del robot: las trayectorias no están al día (Calcular).
+# Origen de cada objeto (pose · giro · formas · poses de las formas):
+#   mesa: SUPUESTO (giro world→base_link sin validar en ROS); la de su TF mesa (centro de la cara de arriba) · SUPUESTO (giro world→base_link sin validar en ROS) · MEDIDO · SUPUESTO (cara de arriba 1 mm por debajo de base_link, como el suelo del profesor); centro a media altura de la mesa
+#   caja_plato_1: SUPUESTO (disposición propuesta, sin medir): bajo su plato; z: SUPUESTO, media altura de la caja · SUPUESTO (giro del plan del gemelo, sin validar): provisional, hacia la base del robot: las trayectorias no están al día (Calcular) · SUPUESTO · SUPUESTO: en la pose del objeto
+#   caja_plato_2: SUPUESTO (disposición propuesta, sin medir): bajo su plato; z: SUPUESTO, media altura de la caja · SUPUESTO (giro del plan del gemelo, sin validar): provisional, hacia la base del robot: las trayectorias no están al día (Calcular) · SUPUESTO · SUPUESTO: en la pose del objeto
+#   plato_1: SUPUESTO (disposición propuesta, sin medir); la de su TF plato_1_inicio · SUPUESTO (disposición propuesta, sin medir); la de su TF plato_1_inicio · SUPUESTO (sin medir): radio · SUPUESTO (perfil del plato del gemelo, sin medir): altura · SUPUESTO (perfil del plato del gemelo, sin medir): medio grosor por encima de su TF
+#   plato_2: SUPUESTO (disposición propuesta, sin medir); la de su TF plato_2_inicio · SUPUESTO (disposición propuesta, sin medir); la de su TF plato_2_inicio · SUPUESTO (sin medir): radio · SUPUESTO (perfil del plato del gemelo, sin medir): altura · SUPUESTO (perfil del plato del gemelo, sin medir): medio grosor por encima de su TF
+#   bandeja: SUPUESTO (disposición propuesta, sin medir); la de su TF bandeja (pose de plan, sin balanceo) · nominal: la sustituye la pose que publique Visión · SUPUESTO (disposición propuesta, sin medir); la de su TF bandeja · SUPUESTO (sin medir) · SUPUESTO (sin medir)
+#   camara_cenital: SUPUESTO (disposición propuesta, sin medir); la de su TF camara_cenital · nominal: la sustituye la calibración · SUPUESTO (disposición propuesta, sin medir); la de su TF camara_cenital · SUPUESTO (modelo de colisión del gemelo, sin medir) · SUPUESTO (modelo de colisión del gemelo, sin medir)
+#   camara_entrega: SUPUESTO (disposición propuesta, sin medir); la de su TF camara_entrega · nominal: la sustituye la calibración · SUPUESTO (disposición propuesta, sin medir); la de su TF camara_entrega · SUPUESTO (modelo de colisión del gemelo, sin medir) · SUPUESTO (modelo de colisión del gemelo, sin medir)
+#   camara_persona: SUPUESTO (disposición propuesta, sin medir); la de su TF camara_persona · nominal: la sustituye la calibración · SUPUESTO (disposición propuesta, sin medir); la de su TF camara_persona · SUPUESTO (modelo de colisión del gemelo, sin medir) · SUPUESTO (modelo de colisión del gemelo, sin medir)
+# Origen de cada valor, en la lista «Origen de cada objeto»: MEDIDO, FABRICANTE o SUPUESTO; lo que se elige en el gemelo, «elegido en el gemelo».

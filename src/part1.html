@@ -212,6 +212,15 @@ textarea{width:100%;min-height:120px;border:1px solid var(--line);border-radius:
 .props li{border:1px solid var(--line);border-radius:6px;padding:8px;display:flex;justify-content:space-between;gap:8px;align-items:center}
 .props li div{min-width:0}
 .props li small{display:block;color:var(--muted);font-size:11.5px}
+.rosLista li{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:3px 8px;align-items:center;padding:6px 8px}
+.rosLista li > small{grid-column:1 / -1}
+.rosLista li[aria-current="true"]{border-color:var(--accent);background:var(--accent-soft)}
+.rosLista code,.rosGrupo h3 code{font:500 12px/1.35 var(--f-mono);overflow-wrap:anywhere}
+.rosGrupo{display:flex;flex-direction:column;gap:6px}
+.rosGrupo h3 code{color:var(--muted)}
+#rosLista{display:flex;flex-direction:column;gap:12px}
+.rosLista .btns{flex:none;gap:4px;flex-wrap:nowrap}
+.rosLista .btn{padding:5px 8px;font-size:12px}
 .foot{font-size:11.5px;color:var(--muted)}
 .foot a{color:var(--accent)}
 @media (max-width:900px){
@@ -420,6 +429,16 @@ textarea{width:100%;min-height:120px;border:1px solid var(--line);border-radius:
           <p class="hint" id="prefijoTxt">Con <code>sim_&lt;id&gt;</code> (un robot) los frames van sin prefijo: <code>base_link</code>, <code>tool0</code>… Solo los URDF dobles del curso (<code>doble_ur3e_&lt;a&gt;_&lt;b&gt;</code>) añaden <code>&lt;id&gt;_</code> (<code>203_base_link</code>…), según la expansión de su xacro. SIN VALIDAR en ROS: se comprueba con <code>ros2 run tf2_tools view_frames</code> en <code>sim_&lt;id&gt;</code>. Más en <a id="prefijoDoc" href="https://github.com/Aimargg/gemelo-celda/blob/main/docs/estado/frames.md" target="_blank" rel="noopener">docs/estado/frames.md</a>.</p>
           <textarea id="yaml" readonly spellcheck="false"></textarea>
           <div class="btns"><button class="btn" id="btnCopy">Copiar</button><button class="btn" id="btnDlYaml">Descargar</button><button class="btn" id="btnPng">Captura PNG</button></div>
+        </div>
+        <div class="sec" id="rosSec">
+          <h2>Exportar a ROS</h2>
+          <p class="hint" id="rosQue">Ficheros de datos para ROS 2 Jazzy, BORRADOR generado por IA, en el <code>base_link</code> del robot y con el prefijo elegidos arriba. Solo texto y descargas: el gemelo no envía nada a ROS. Cómo comprobarlos en <code>sim_&lt;id&gt;</code>: <a id="rosGuia" href="https://github.com/Aimargg/gemelo-celda/blob/main/docs/validar-en-ros.md" target="_blank" rel="noopener">docs/validar-en-ros.md</a>.</p>
+          <dl class="kv"><dt>Huella de la disposición</dt><dd id="rosHuella">—</dd><dt>Frame raíz</dt><dd id="rosFrame">—</dd><dt>Ficheros</dt><dd id="rosCuenta">—</dd></dl>
+          <p class="hint" id="rosEstado" role="status"></p>
+          <div class="btns"><button class="btn pri" id="btnRosTar">Descargar todo (.tar)</button></div>
+          <p class="hint" id="rosTarTxt"></p>
+          <div class="field2" id="rosVerCaja" hidden><label for="rosVer" id="rosVerNombre"></label><textarea id="rosVer" readonly spellcheck="false"></textarea></div>
+          <div id="rosLista"></div>
         </div>
         <div class="sec">
           <h2>Importar una distribución</h2>

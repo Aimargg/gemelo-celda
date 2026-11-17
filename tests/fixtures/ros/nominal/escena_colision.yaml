@@ -1,0 +1,153 @@
+# escena_colision.yaml · gemelo de la celda UR3e · generado por el gemelo (IA), BORRADOR
+# Robot: nominal (sin identificar: cinemática nominal del UR3e), en la posición B de la celda (derecha en la foto cenital).
+# Frame: base_link (sin prefijo, como en sim_<id>). Metros y radianes (REP-103), redondeo a 1 mm y 0,001 rad.
+# Huella de la disposición: 4ed74ed6 (FNV-1a de 32 bits de JSON.stringify(L), en UTF-8): casa este fichero con su disposición.
+# Carga: un nodo del grupo lo lee con yaml.safe_load, rellena cada moveit_msgs/CollisionObject con rosidl_runtime_py.set_message_fields y los envía con el servicio apply_planning_scene (is_diff: true) [SIN VALIDAR en ROS: U4].
+# objetos: lista de moveit_msgs/CollisionObject (moveit_msgs 2.6) en base_link, con header.frame_id, id, pose (la del objeto), primitives y primitive_poses (relativas a pose).
+# Sin operation: vale ADD (0) por defecto y ADD con un id que ya existe sustituye el objeto; un byte escrito como entero no pasa por set_message_fields.
+# SolidPrimitive: type 1 = BOX [x, y, z], 2 = SPHERE [radio] y 3 = CYLINDER [altura, radio], en m (celda.scene escribe el cilindro al revés: cylinder radio longitud).
+# Posiciones a 1 mm; cuaterniones (x, y, z, w) normalizados con 9 decimales, de setRPY con los ángulos a 0,001 rad (los mismos que las TF). Las poses de las formas salen de la pose del objeto ya redondeada.
+# Objetos: mesa (BOX), caja_plato_<n> (BOX, solo con los platos sobre caja), plato_<n> (CYLINDER), bandeja (BOX) y camara_<k> (SPHERE y CYLINDER: la cámara y su brazo), sin márgenes de roce.
+# La cara de arriba de la mesa queda 1 mm por debajo de base_link, como el suelo del ejemplo del profesor: así la base del robot no arranca en contacto con la mesa.
+# plato_1 y plato_2 son obstáculos hasta que se cogen: para cogerlos, adjúntalos a la pinza (AttachedCollisionObject) o permite el contacto en la ACM.
+# Fuera de la escena: la persona y la fruta (se mueven o son lo que se coge), la zona de fruta y el otro robot (ya está en el URDF doble, DT16).
+# El id suelo es el de la caja del ejemplo del profesor: aquí no se usa (un ADD con el mismo id la sustituiría).
+# Giro de las cajas: el del agarre que eligió el plan del gemelo.
+# La bandeja va en su pose de plan y cada cámara en la de su TF: las dos son nominales.
+# Origen de cada valor, al final de su línea: MEDIDO, FABRICANTE o SUPUESTO; lo que se elige en el gemelo, «elegido en el gemelo».
+objetos:
+  - header: {frame_id: 'base_link'}  # elegido en el gemelo (el prefijo; base_link es el del URDF)
+    id: 'mesa'  # SUPUESTO (id propuesto)
+    pose:
+      position: {'x': -0.434, 'y': -0.269, 'z': 0.000}  # MEDIDO; la de su TF mesa (centro de la cara de arriba)
+      orientation: {'x': 0.000000000, 'y': 0.000000000, 'z': 0.000000000, 'w': 1.000000000}  # MEDIDO
+    primitives:
+      - {type: 1, dimensions: [1.180, 0.830, 0.760]}  # MEDIDO · BOX [x, y, z]
+    primitive_poses:
+      - {position: {'x': 0.000, 'y': 0.000, 'z': -0.381}, orientation: {'x': 0.000000000, 'y': 0.000000000, 'z': 0.000000000, 'w': 1.000000000}}  # SUPUESTO (cara de arriba 1 mm por debajo de base_link, como el suelo del profesor); centro a media altura de la mesa
+  - header: {frame_id: 'base_link'}  # elegido en el gemelo (el prefijo; base_link es el del URDF)
+    id: 'caja_plato_1'  # SUPUESTO (id propuesto)
+    pose:
+      position: {'x': -0.169, 'y': -0.318, 'z': 0.050}  # SUPUESTO (disposición propuesta, sin medir): bajo su plato; z: SUPUESTO, media altura de la caja
+      orientation: {'x': 0.000000000, 'y': 0.000000000, 'z': -0.999841650, 'w': 0.017795386}  # SUPUESTO (giro del plan del gemelo, sin validar): el del agarre que eligió el plan del gemelo
+    primitives:
+      - {type: 1, dimensions: [0.100, 0.100, 0.100]}  # SUPUESTO · BOX [x, y, z]
+    primitive_poses:
+      - {position: {'x': 0.000, 'y': 0.000, 'z': 0.000}, orientation: {'x': 0.000000000, 'y': 0.000000000, 'z': 0.000000000, 'w': 1.000000000}}  # SUPUESTO: en la pose del objeto
+  - header: {frame_id: 'base_link'}  # elegido en el gemelo (el prefijo; base_link es el del URDF)
+    id: 'caja_plato_2'  # SUPUESTO (id propuesto)
+    pose:
+      position: {'x': -0.312, 'y': -0.180, 'z': 0.050}  # SUPUESTO (disposición propuesta, sin medir): bajo su plato; z: SUPUESTO, media altura de la caja
+      orientation: {'x': 0.000000000, 'y': 0.000000000, 'z': -0.793476380, 'w': 0.608601047}  # SUPUESTO (giro del plan del gemelo, sin validar): el del agarre que eligió el plan del gemelo
+    primitives:
+      - {type: 1, dimensions: [0.100, 0.100, 0.100]}  # SUPUESTO · BOX [x, y, z]
+    primitive_poses:
+      - {position: {'x': 0.000, 'y': 0.000, 'z': 0.000}, orientation: {'x': 0.000000000, 'y': 0.000000000, 'z': 0.000000000, 'w': 1.000000000}}  # SUPUESTO: en la pose del objeto
+  - header: {frame_id: 'base_link'}  # elegido en el gemelo (el prefijo; base_link es el del URDF)
+    id: 'plato_1'  # SUPUESTO (id propuesto)
+    pose:
+      position: {'x': -0.169, 'y': -0.318, 'z': 0.100}  # SUPUESTO (disposición propuesta, sin medir); la de su TF plato_1_inicio
+      orientation: {'x': 0.000000000, 'y': 0.000000000, 'z': 0.000000000, 'w': 1.000000000}  # SUPUESTO (disposición propuesta, sin medir); la de su TF plato_1_inicio
+    primitives:
+      - {type: 3, dimensions: [0.025, 0.080]}  # SUPUESTO (sin medir): radio · SUPUESTO (perfil del plato del gemelo, sin medir): altura · CYLINDER [altura, radio]
+    primitive_poses:
+      - {position: {'x': 0.000, 'y': 0.000, 'z': 0.013}, orientation: {'x': 0.000000000, 'y': 0.000000000, 'z': 0.000000000, 'w': 1.000000000}}  # SUPUESTO (perfil del plato del gemelo, sin medir): medio grosor por encima de su TF
+  - header: {frame_id: 'base_link'}  # elegido en el gemelo (el prefijo; base_link es el del URDF)
+    id: 'plato_2'  # SUPUESTO (id propuesto)
+    pose:
+      position: {'x': -0.312, 'y': -0.180, 'z': 0.100}  # SUPUESTO (disposición propuesta, sin medir); la de su TF plato_2_inicio
+      orientation: {'x': 0.000000000, 'y': 0.000000000, 'z': 0.000000000, 'w': 1.000000000}  # SUPUESTO (disposición propuesta, sin medir); la de su TF plato_2_inicio
+    primitives:
+      - {type: 3, dimensions: [0.025, 0.080]}  # SUPUESTO (sin medir): radio · SUPUESTO (perfil del plato del gemelo, sin medir): altura · CYLINDER [altura, radio]
+    primitive_poses:
+      - {position: {'x': 0.000, 'y': 0.000, 'z': 0.013}, orientation: {'x': 0.000000000, 'y': 0.000000000, 'z': 0.000000000, 'w': 1.000000000}}  # SUPUESTO (perfil del plato del gemelo, sin medir): medio grosor por encima de su TF
+  - header: {frame_id: 'base_link'}  # elegido en el gemelo (el prefijo; base_link es el del URDF)
+    id: 'bandeja'  # SUPUESTO (id propuesto)
+    pose:
+      position: {'x': 0.446, 'y': 0.051, 'z': 0.240}  # SUPUESTO (disposición propuesta, sin medir); la de su TF bandeja (pose de plan, sin balanceo) · nominal: la sustituye la pose que publique Visión
+      orientation: {'x': 0.000000000, 'y': 0.000000000, 'z': 0.999999979, 'w': -0.000203674}  # SUPUESTO (disposición propuesta, sin medir); la de su TF bandeja
+    primitives:
+      - {type: 1, dimensions: [0.346, 0.466, 0.018]}  # SUPUESTO (sin medir) · BOX [x, y, z]
+    primitive_poses:
+      - {position: {'x': 0.000, 'y': 0.000, 'z': -0.006}, orientation: {'x': 0.000000000, 'y': 0.000000000, 'z': 0.000000000, 'w': 1.000000000}}  # SUPUESTO (sin medir)
+  - header: {frame_id: 'base_link'}  # elegido en el gemelo (el prefijo; base_link es el del URDF)
+    id: 'camara_cenital'  # SUPUESTO (id propuesto)
+    pose:
+      position: {'x': -0.264, 'y': -0.439, 'z': 0.410}  # SUPUESTO (disposición propuesta, sin medir); la de su TF camara_cenital · nominal: la sustituye la calibración
+      orientation: {'x': -0.329050851, 'y': 0.341387069, 'z': 0.611008613, 'w': 0.633915516}  # SUPUESTO (disposición propuesta, sin medir); la de su TF camara_cenital
+    primitives:
+      - {type: 2, dimensions: [0.032]}  # SUPUESTO (modelo de colisión del gemelo, sin medir) · SPHERE [radio]
+      - {type: 2, dimensions: [0.022]}  # SUPUESTO (modelo de colisión del gemelo, sin medir) · SPHERE [radio]
+      - {type: 3, dimensions: [0.265, 0.012]}  # SUPUESTO (modelo de colisión del gemelo, sin medir) · CYLINDER [altura, radio]: tramo de una cápsula
+      - {type: 2, dimensions: [0.012]}  # SUPUESTO (modelo de colisión del gemelo, sin medir) · SPHERE [radio]: extremo de una cápsula
+      - {type: 2, dimensions: [0.012]}  # SUPUESTO (modelo de colisión del gemelo, sin medir) · SPHERE [radio]: extremo de una cápsula
+      - {type: 3, dimensions: [0.265, 0.012]}  # SUPUESTO (modelo de colisión del gemelo, sin medir) · CYLINDER [altura, radio]: tramo de una cápsula
+      - {type: 2, dimensions: [0.012]}  # SUPUESTO (modelo de colisión del gemelo, sin medir) · SPHERE [radio]: extremo de una cápsula
+      - {type: 2, dimensions: [0.012]}  # SUPUESTO (modelo de colisión del gemelo, sin medir) · SPHERE [radio]: extremo de una cápsula
+      - {type: 2, dimensions: [0.030]}  # SUPUESTO (modelo de colisión del gemelo, sin medir) · SPHERE [radio]
+      - {type: 2, dimensions: [0.045]}  # SUPUESTO (modelo de colisión del gemelo, sin medir) · SPHERE [radio]
+    primitive_poses:
+      - {position: {'x': -0.008, 'y': 0.000, 'z': 0.000}, orientation: {'x': 0.000000000, 'y': 0.000000000, 'z': 0.000000000, 'w': 1.000000000}}  # SUPUESTO (modelo de colisión del gemelo, sin medir)
+      - {position: {'x': 0.020, 'y': 0.000, 'z': 0.000}, orientation: {'x': 0.000000000, 'y': 0.000000000, 'z': 0.000000000, 'w': 1.000000000}}  # SUPUESTO (modelo de colisión del gemelo, sin medir)
+      - {position: {'x': 0.063, 'y': -0.009, 'z': -0.336}, orientation: {'x': 0.000202036, 'y': -0.478102910, 'z': 0.000000000, 'w': 0.878303801}}  # SUPUESTO (modelo de colisión del gemelo, sin medir)
+      - {position: {'x': 0.174, 'y': -0.009, 'z': -0.408}, orientation: {'x': 0.000000000, 'y': 0.000000000, 'z': 0.000000000, 'w': 1.000000000}}  # SUPUESTO (modelo de colisión del gemelo, sin medir)
+      - {position: {'x': -0.048, 'y': -0.009, 'z': -0.264}, orientation: {'x': 0.000000000, 'y': 0.000000000, 'z': 0.000000000, 'w': 1.000000000}}  # SUPUESTO (modelo de colisión del gemelo, sin medir)
+      - {position: {'x': -0.039, 'y': -0.005, 'z': -0.132}, orientation: {'x': -0.017203118, 'y': 0.034708228, 'z': 0.000000000, 'w': 0.999249414}}  # SUPUESTO (modelo de colisión del gemelo, sin medir)
+      - {position: {'x': -0.048, 'y': -0.009, 'z': -0.264}, orientation: {'x': 0.000000000, 'y': 0.000000000, 'z': 0.000000000, 'w': 1.000000000}}  # SUPUESTO (modelo de colisión del gemelo, sin medir)
+      - {position: {'x': -0.030, 'y': 0.000, 'z': 0.000}, orientation: {'x': 0.000000000, 'y': 0.000000000, 'z': 0.000000000, 'w': 1.000000000}}  # SUPUESTO (modelo de colisión del gemelo, sin medir)
+      - {position: {'x': -0.048, 'y': -0.009, 'z': -0.264}, orientation: {'x': 0.000000000, 'y': 0.000000000, 'z': 0.000000000, 'w': 1.000000000}}  # SUPUESTO (modelo de colisión del gemelo, sin medir)
+      - {position: {'x': 0.212, 'y': -0.009, 'z': -0.433}, orientation: {'x': 0.000000000, 'y': 0.000000000, 'z': 0.000000000, 'w': 1.000000000}}  # SUPUESTO (modelo de colisión del gemelo, sin medir)
+  - header: {frame_id: 'base_link'}  # elegido en el gemelo (el prefijo; base_link es el del URDF)
+    id: 'camara_entrega'  # SUPUESTO (id propuesto)
+    pose:
+      position: {'x': 0.116, 'y': -0.664, 'z': 0.490}  # SUPUESTO (disposición propuesta, sin medir); la de su TF camara_entrega · nominal: la sustituye la calibración
+      orientation: {'x': -0.180487229, 'y': 0.234001180, 'z': 0.583466142, 'w': 0.756462206}  # SUPUESTO (disposición propuesta, sin medir); la de su TF camara_entrega
+    primitives:
+      - {type: 2, dimensions: [0.032]}  # SUPUESTO (modelo de colisión del gemelo, sin medir) · SPHERE [radio]
+      - {type: 2, dimensions: [0.022]}  # SUPUESTO (modelo de colisión del gemelo, sin medir) · SPHERE [radio]
+      - {type: 3, dimensions: [0.265, 0.012]}  # SUPUESTO (modelo de colisión del gemelo, sin medir) · CYLINDER [altura, radio]: tramo de una cápsula
+      - {type: 2, dimensions: [0.012]}  # SUPUESTO (modelo de colisión del gemelo, sin medir) · SPHERE [radio]: extremo de una cápsula
+      - {type: 2, dimensions: [0.012]}  # SUPUESTO (modelo de colisión del gemelo, sin medir) · SPHERE [radio]: extremo de una cápsula
+      - {type: 3, dimensions: [0.265, 0.012]}  # SUPUESTO (modelo de colisión del gemelo, sin medir) · CYLINDER [altura, radio]: tramo de una cápsula
+      - {type: 2, dimensions: [0.012]}  # SUPUESTO (modelo de colisión del gemelo, sin medir) · SPHERE [radio]: extremo de una cápsula
+      - {type: 2, dimensions: [0.012]}  # SUPUESTO (modelo de colisión del gemelo, sin medir) · SPHERE [radio]: extremo de una cápsula
+      - {type: 2, dimensions: [0.030]}  # SUPUESTO (modelo de colisión del gemelo, sin medir) · SPHERE [radio]
+      - {type: 2, dimensions: [0.045]}  # SUPUESTO (modelo de colisión del gemelo, sin medir) · SPHERE [radio]
+    primitive_poses:
+      - {position: {'x': -0.008, 'y': 0.000, 'z': 0.000}, orientation: {'x': 0.000000000, 'y': 0.000000000, 'z': 0.000000000, 'w': 1.000000000}}  # SUPUESTO (modelo de colisión del gemelo, sin medir)
+      - {position: {'x': 0.020, 'y': 0.000, 'z': 0.000}, orientation: {'x': 0.000000000, 'y': 0.000000000, 'z': 0.000000000, 'w': 1.000000000}}  # SUPUESTO (modelo de colisión del gemelo, sin medir)
+      - {position: {'x': 0.208, 'y': -0.047, 'z': -0.260}, orientation: {'x': 0.160043763, 'y': -0.114979029, 'z': 0.000000000, 'w': 0.980390645}}  # SUPUESTO (modelo de colisión del gemelo, sin medir)
+      - {position: {'x': 0.238, 'y': -0.005, 'z': -0.382}, orientation: {'x': 0.000000000, 'y': 0.000000000, 'z': 0.000000000, 'w': 1.000000000}}  # SUPUESTO (modelo de colisión del gemelo, sin medir)
+      - {position: {'x': 0.178, 'y': -0.088, 'z': -0.138}, orientation: {'x': 0.000000000, 'y': 0.000000000, 'z': 0.000000000, 'w': 1.000000000}}  # SUPUESTO (modelo de colisión del gemelo, sin medir)
+      - {position: {'x': 0.074, 'y': -0.044, 'z': -0.069}, orientation: {'x': -0.190954572, 'y': -0.450939983, 'z': 0.000000000, 'w': 0.871888458}}  # SUPUESTO (modelo de colisión del gemelo, sin medir)
+      - {position: {'x': 0.178, 'y': -0.088, 'z': -0.138}, orientation: {'x': 0.000000000, 'y': 0.000000000, 'z': 0.000000000, 'w': 1.000000000}}  # SUPUESTO (modelo de colisión del gemelo, sin medir)
+      - {position: {'x': -0.030, 'y': 0.000, 'z': 0.000}, orientation: {'x': 0.000000000, 'y': 0.000000000, 'z': 0.000000000, 'w': 1.000000000}}  # SUPUESTO (modelo de colisión del gemelo, sin medir)
+      - {position: {'x': 0.178, 'y': -0.088, 'z': -0.138}, orientation: {'x': 0.000000000, 'y': 0.000000000, 'z': 0.000000000, 'w': 1.000000000}}  # SUPUESTO (modelo de colisión del gemelo, sin medir)
+      - {position: {'x': 0.264, 'y': -0.005, 'z': -0.419}, orientation: {'x': 0.000000000, 'y': 0.000000000, 'z': 0.000000000, 'w': 1.000000000}}  # SUPUESTO (modelo de colisión del gemelo, sin medir)
+  - header: {frame_id: 'base_link'}  # elegido en el gemelo (el prefijo; base_link es el del URDF)
+    id: 'camara_persona'  # SUPUESTO (id propuesto)
+    pose:
+      position: {'x': -0.134, 'y': -0.634, 'z': 0.490}  # SUPUESTO (disposición propuesta, sin medir); la de su TF camara_persona · nominal: la sustituye la calibración
+      orientation: {'x': 0.007034650, 'y': -0.020843120, 'z': 0.319705187, 'w': 0.947261670}  # SUPUESTO (disposición propuesta, sin medir); la de su TF camara_persona
+    primitives:
+      - {type: 2, dimensions: [0.032]}  # SUPUESTO (modelo de colisión del gemelo, sin medir) · SPHERE [radio]
+      - {type: 2, dimensions: [0.022]}  # SUPUESTO (modelo de colisión del gemelo, sin medir) · SPHERE [radio]
+      - {type: 3, dimensions: [0.265, 0.012]}  # SUPUESTO (modelo de colisión del gemelo, sin medir) · CYLINDER [altura, radio]: tramo de una cápsula
+      - {type: 2, dimensions: [0.012]}  # SUPUESTO (modelo de colisión del gemelo, sin medir) · SPHERE [radio]: extremo de una cápsula
+      - {type: 2, dimensions: [0.012]}  # SUPUESTO (modelo de colisión del gemelo, sin medir) · SPHERE [radio]: extremo de una cápsula
+      - {type: 3, dimensions: [0.265, 0.012]}  # SUPUESTO (modelo de colisión del gemelo, sin medir) · CYLINDER [altura, radio]: tramo de una cápsula
+      - {type: 2, dimensions: [0.012]}  # SUPUESTO (modelo de colisión del gemelo, sin medir) · SPHERE [radio]: extremo de una cápsula
+      - {type: 2, dimensions: [0.012]}  # SUPUESTO (modelo de colisión del gemelo, sin medir) · SPHERE [radio]: extremo de una cápsula
+      - {type: 2, dimensions: [0.030]}  # SUPUESTO (modelo de colisión del gemelo, sin medir) · SPHERE [radio]
+      - {type: 2, dimensions: [0.045]}  # SUPUESTO (modelo de colisión del gemelo, sin medir) · SPHERE [radio]
+    primitive_poses:
+      - {position: {'x': -0.008, 'y': 0.000, 'z': 0.000}, orientation: {'x': 0.000000000, 'y': 0.000000000, 'z': 0.000000000, 'w': 1.000000000}}  # SUPUESTO (modelo de colisión del gemelo, sin medir)
+      - {position: {'x': 0.020, 'y': 0.000, 'z': 0.000}, orientation: {'x': 0.000000000, 'y': 0.000000000, 'z': 0.000000000, 'w': 1.000000000}}  # SUPUESTO (modelo de colisión del gemelo, sin medir)
+      - {position: {'x': -0.045, 'y': -0.099, 'z': -0.330}, orientation: {'x': 0.231221113, 'y': 0.018286096, 'z': 0.000000000, 'w': 0.972729364}}  # SUPUESTO (modelo de colisión del gemelo, sin medir)
+      - {position: {'x': -0.050, 'y': -0.040, 'z': -0.448}, orientation: {'x': 0.000000000, 'y': 0.000000000, 'z': 0.000000000, 'w': 1.000000000}}  # SUPUESTO (modelo de colisión del gemelo, sin medir)
+      - {position: {'x': -0.041, 'y': -0.159, 'z': -0.212}, orientation: {'x': 0.000000000, 'y': 0.000000000, 'z': 0.000000000, 'w': 1.000000000}}  # SUPUESTO (modelo de colisión del gemelo, sin medir)
+      - {position: {'x': -0.035, 'y': -0.079, 'z': -0.106}, orientation: {'x': -0.316298204, 'y': 0.021159371, 'z': 0.000000000, 'w': 0.948423812}}  # SUPUESTO (modelo de colisión del gemelo, sin medir)
+      - {position: {'x': -0.041, 'y': -0.159, 'z': -0.212}, orientation: {'x': 0.000000000, 'y': 0.000000000, 'z': 0.000000000, 'w': 1.000000000}}  # SUPUESTO (modelo de colisión del gemelo, sin medir)
+      - {position: {'x': -0.030, 'y': 0.000, 'z': 0.000}, orientation: {'x': 0.000000000, 'y': 0.000000000, 'z': 0.000000000, 'w': 1.000000000}}  # SUPUESTO (modelo de colisión del gemelo, sin medir)
+      - {position: {'x': -0.041, 'y': -0.159, 'z': -0.212}, orientation: {'x': 0.000000000, 'y': 0.000000000, 'z': 0.000000000, 'w': 1.000000000}}  # SUPUESTO (modelo de colisión del gemelo, sin medir)
+      - {position: {'x': -0.052, 'y': -0.040, 'z': -0.493}, orientation: {'x': 0.000000000, 'y': 0.000000000, 'z': 0.000000000, 'w': 1.000000000}}  # SUPUESTO (modelo de colisión del gemelo, sin medir)

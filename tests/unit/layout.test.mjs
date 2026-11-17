@@ -156,3 +156,23 @@ test('noGuardable: hasta 50.000 caracteres se puede guardar; uno más, no, con u
   assert.equal(noGuardable('x'.repeat(50000)), null);
   assert.equal(noGuardable('x'.repeat(50001)), 'la disposición ocupa 50.001 caracteres y el máximo es 50.000');
 });
+
+// DT35 (T2.7): los nombres de fichero de la exportación (tf/, camera_info/, usb_cam/) llevan la clave de cada cámara, y los
+// marcadores y los platos, nombres fijos. Una disposición, también de solo lectura (una versión más nueva), no puede traer una
+// cámara que no esté en la de partida ni otro número de marcadores (validarLayout, antes de mirar la versión): así ninguna
+// clave con «/» o con un salto de línea llega a un nombre de fichero. El robotId y el prefijo de una v10 sí pueden ser
+// cualquier texto, pero no forman ningún nombre de fichero.
+test('DT35: una v10 de solo lectura no trae claves de cámara nuevas ni otro número de marcadores; su robotId y su prefijo, sí cualquier texto', () => {
+  const base = { ...copia(ESQ.ref), version: VERSION + 1 };
+  for (const k of ['a/b', 'cenital\n', '../x', '__proto__']) { // la clave, como la trae un JSON (JSON.parse crea «__proto__» propia)
+    const txt = JSON.stringify(base), i = txt.indexOf('"cams":{') + 8, l = JSON.parse(`${txt.slice(0, i)}${JSON.stringify(k)}:${JSON.stringify(base.cams.cenital)},${txt.slice(i)}`);
+    assert.ok(Object.hasOwn(l.cams, k), JSON.stringify(k));
+    assert.match(validarLayout(l, ESQ) || '', /^cámara desconocida/, JSON.stringify(k));
+  }
+  const ren = copia(base); ren.cams['a/b'] = ren.cams.cenital; delete ren.cams.cenital;
+  assert.match(validarLayout(ren, ESQ) || '', /^falta «cams\.cenital»/, 'renombrar una cámara');
+  const mk = copia(base); mk.arucoE.push({ x: 0, y: 0 });
+  assert.match(validarLayout(mk, ESQ) || '', /arucoE» tiene 3 elementos/);
+  const raro = { ...copia(base), robotId: "x/\n# 'y'", prefijoFrames: 'a/b\n#_' };
+  assert.deepEqual(migrarLayout(raro, ESQ), { layout: raro, soloLectura: true });
+});

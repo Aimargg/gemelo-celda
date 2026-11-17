@@ -1,0 +1,23 @@
+# tf/mesa.yaml · gemelo de la celda UR3e · generado por el gemelo (IA), BORRADOR
+# Robot: 203 (calibration_203.yaml del curso), en la posición B de la celda (derecha en la foto cenital).
+# Frame: base_link (sin prefijo, como en sim_<id>). Metros y radianes (REP-103), redondeo a 1 mm y 0,001 rad.
+# Huella de la disposición: 38b05d41 (FNV-1a de 32 bits de JSON.stringify(L), en UTF-8): casa este fichero con su disposición.
+# Carga: ros2 component standalone tf2_ros tf2_ros::StaticTransformBroadcasterNode --ros-args --params-file tf/mesa.yaml -r __node:=tf_mesa [SIN VALIDAR en ROS: U4].
+# TF estática base_link → mesa: centro de la cara de arriba de la mesa, con su giro.
+# Giro: roll 0.000, pitch 0.000, yaw 2.356 rad (setRPY: R = Rz(yaw)·Ry(pitch)·Rx(roll), ejes fijos), en cuaternión (x, y, z, w) normalizado con 9 decimales.
+# Las claves x, y, z y w van entre comillas: YAML 1.1 lee una «y» suelta como true.
+# En una escena doble, carga las TF de un solo robot: cada frame admite un único padre.
+# Origen de cada valor, al final de su línea: MEDIDO, FABRICANTE o SUPUESTO; lo que se elige en el gemelo, «elegido en el gemelo».
+/**:
+  ros__parameters:
+    frame_id: 'base_link'  # elegido en el gemelo (el prefijo; base_link es el del URDF)
+    child_frame_id: 'mesa'  # SUPUESTO (nombre propuesto)
+    translation:
+      'x': 0.497  # SUPUESTO (giro world→base_link sin validar en ROS)
+      'y': -0.117  # SUPUESTO (giro world→base_link sin validar en ROS)
+      'z': 0.000  # SUPUESTO (giro world→base_link sin validar en ROS)
+    rotation:
+      'x': 0.000000000  # SUPUESTO (giro world→base_link sin validar en ROS)
+      'y': 0.000000000  # SUPUESTO (giro world→base_link sin validar en ROS)
+      'z': 0.923842314  # SUPUESTO (giro world→base_link sin validar en ROS)
+      'w': 0.382773273  # SUPUESTO (giro world→base_link sin validar en ROS)

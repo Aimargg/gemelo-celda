@@ -1,0 +1,23 @@
+# tf/zona_segundo.yaml · gemelo de la celda UR3e · generado por el gemelo (IA), BORRADOR
+# Robot: 203 (calibration_203.yaml del curso), en la posición B de la celda (derecha en la foto cenital).
+# Frame: base_link (sin prefijo, como en sim_<id>). Metros y radianes (REP-103), redondeo a 1 mm y 0,001 rad.
+# Huella de la disposición: 38b05d41 (FNV-1a de 32 bits de JSON.stringify(L), en UTF-8): casa este fichero con su disposición.
+# Carga: ros2 component standalone tf2_ros tf2_ros::StaticTransformBroadcasterNode --ros-args --params-file tf/zona_segundo.yaml -r __node:=tf_zona_segundo [SIN VALIDAR en ROS: U4].
+# TF estática bandeja → zona_segundo: zona_segundo, donde se deja un plato en la bandeja: cuelga de la bandeja para seguirla cuando Visión publique su pose.
+# Giro: roll 0.000, pitch 0.000, yaw 0.000 rad (setRPY: R = Rz(yaw)·Ry(pitch)·Rx(roll), ejes fijos), en cuaternión (x, y, z, w) normalizado con 9 decimales.
+# Las claves x, y, z y w van entre comillas: YAML 1.1 lee una «y» suelta como true.
+# En una escena doble, carga las TF de un solo robot: cada frame admite un único padre.
+# Origen de cada valor, al final de su línea: MEDIDO, FABRICANTE o SUPUESTO; lo que se elige en el gemelo, «elegido en el gemelo».
+/**:
+  ros__parameters:
+    frame_id: 'bandeja'  # SUPUESTO (nombre propuesto)
+    child_frame_id: 'zona_segundo'  # SUPUESTO (nombre propuesto)
+    translation:
+      'x': -0.020  # SUPUESTO (sin medir)
+      'y': -0.100  # SUPUESTO (sin medir)
+      'z': 0.001  # SUPUESTO (sin medir)
+    rotation:
+      'x': 0.000000000  # SUPUESTO (sin medir)
+      'y': 0.000000000  # SUPUESTO (sin medir)
+      'z': 0.000000000  # SUPUESTO (sin medir)
+      'w': 1.000000000  # SUPUESTO (sin medir)

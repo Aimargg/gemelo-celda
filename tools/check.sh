@@ -1,7 +1,15 @@
 #!/bin/bash
-# Comprobación única antes de entregar: clave del grupo fuera de git (I3), build de los dos destinos y npm test.
-# Uso: bash tools/check.sh   (desde cualquier carpeta). Sale con código distinto de 0 ante cualquier fallo.
+# Comprobación única antes de entregar: clave del grupo fuera de git (I3), build de los dos destinos y la suite de pruebas.
+# Uso: bash tools/check.sh            (desde cualquier carpeta) → nivel de tarea: npm test (cada tarea, < 15 min)
+#      bash tools/check.sh --puerta   → nivel de puerta: npm run test:puerta (los dos niveles, en las puertas de fase)
+# Qué hay en cada nivel: tests/README.md (T2.0). Sale con código distinto de 0 ante cualquier fallo.
 set -euo pipefail
+NIVEL=tarea
+case "${1:-}" in
+  '') ;;
+  --puerta) NIVEL=puerta ;;
+  *) echo "uso: bash tools/check.sh [--puerta]" >&2; exit 2 ;;
+esac
 R=$(cd "$(dirname "$0")/.." && pwd); cd "$R"
 export LC_ALL=C.UTF-8 # «›» y los acentos como un solo carácter en grep y sed
 
@@ -46,7 +54,7 @@ echo "sin claves reales"
 echo "== 2/3 Build"
 bash tools/build_web.sh
 
-# 3) Suite completa
-echo "== 3/3 npm test"
-npm test
-echo "check: OK"
+# 3) Suite del nivel pedido (T2.0): la de tarea o la completa
+if [ "$NIVEL" = puerta ]; then echo "== 3/3 npm run test:puerta (nivel de puerta: todos los tests)"; else echo "== 3/3 npm test (nivel de tarea)"; fi
+if [ "$NIVEL" = puerta ]; then npm run test:puerta; else npm test; fi
+echo "check: OK (nivel de $NIVEL)"

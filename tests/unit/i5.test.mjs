@@ -19,13 +19,16 @@ function leer(rel) {
   return fs.readFileSync(f, 'utf8');
 }
 // Problemas de I5 de un HTML (lista vacía si cumple). destino: 'artefacto' | 'web'
+// El HTML sin el contenido de sus <script> (DT37): como el navegador, cada script acaba en el primer «</script» (también si
+// está dentro de un string de JS) y uno sin cerrar llega hasta el final. Quedan las etiquetas de apertura y de cierre.
+export const sinScripts = html => html.replace(/(<script\b[^>]*>)[\s\S]*?(<\/script\s*>|$)/gi, '$1$2');
 export function problemasI5(html, destino) {
-  const mal = [];
+  const mal = [], etiquetas = sinScripts(html); // los elementos HTML se buscan fuera de los scripts; los src y los import, en todo
   // un solo HTML: como mucho un <html> (el artefacto no lleva: claude.ai lo envuelve) y nada que cargue otra página
-  const nHtml = (html.match(/<html[\s>]/gi) || []).length; if (nHtml > (destino === 'web' ? 1 : 0)) mal.push(`${nHtml} elementos <html>`);
+  const nHtml = (etiquetas.match(/<html[\s>]/gi) || []).length; if (nHtml > (destino === 'web' ? 1 : 0)) mal.push(`${nHtml} elementos <html>`);
   if (destino === 'web' && nHtml !== 1) mal.push('la web no tiene su elemento <html>');
-  for (const m of html.matchAll(/<(iframe|frame|frameset|object|embed|portal)\b/gi)) mal.push(`carga otra página con <${m[1]}>`);
-  for (const m of html.matchAll(/<link\b[^>]*\brel\s*=\s*["']?(import|modulepreload|preload)\b[^>]*>/gi)) mal.push(`<link rel="${m[1]}">`);
+  for (const m of etiquetas.matchAll(/<(iframe|frame|frameset|object|embed|portal)\b/gi)) mal.push(`carga otra página con <${m[1]}>`);
+  for (const m of etiquetas.matchAll(/<link\b[^>]*\brel\s*=\s*["']?(import|modulepreload|preload)\b[^>]*>/gi)) mal.push(`<link rel="${m[1]}">`);
   // URL de un script externo: https://cdn.jsdelivr.net/npm/<paquete>@<versión exacta>/…, con la versión prevista
   const externo = (u, donde) => {
     const m = /^https:\/\/cdn\.jsdelivr\.net\/npm\/((?:@[a-z0-9._-]+\/)?[a-z0-9._-]+)@([^/]+)\//i.exec(u);
@@ -89,4 +92,24 @@ test('I5: el análisis acepta una muestra correcta y rechaza un src sin versión
   assert.ok(local.some(t => /locales/.test(t)), `script local no previsto en la web: ${JSON.stringify(local)}`);
   const pagina = problemasI5(MUESTRA('<iframe src="otra.html"></iframe>\n'), 'artefacto');
   assert.ok(pagina.some(t => /iframe/.test(t)), `otra página: ${JSON.stringify(pagina)}`);
+});
+
+// DT37: lo que va dentro de un <script> es código, no HTML: un '<frame' en un string de JS no es una etiqueta. Un <iframe> real
+// sigue fallando, también detrás de un script o tras un '</script>' escrito en un string (el navegador cierra ahí el script)
+test('I5 (DT37): un «<frame» dentro de un string de un script pasa; un <iframe> real en el HTML sigue fallando', () => {
+  assert.deepEqual(problemasI5(MUESTRA('<script>const etiqueta = \'<frame\', otra = "<iframe src=x>";</script>\n'), 'artefacto'), [], 'strings de un script');
+  assert.deepEqual(problemasI5(MUESTRA('<SCRIPT type="text/plain">\n<object data="x"></object>\n</SCRIPT >\n'), 'artefacto'), [], 'mayúsculas y espacio antes del >');
+  const real = problemasI5(MUESTRA('<script>const a = 1;</script>\n<iframe src="otra.html"></iframe>\n'), 'artefacto');
+  assert.ok(real.some(t => /<iframe>/.test(t)), `un <iframe> detrás de un script: ${JSON.stringify(real)}`);
+  const cerrado = problemasI5(MUESTRA('<script>const s = \'</script><frame src="x">\';</script>\n'), 'artefacto');
+  assert.ok(cerrado.some(t => /<frame>/.test(t)), `un </script> en un string cierra el script: lo que sigue es HTML: ${JSON.stringify(cerrado)}`);
+  const abierto = problemasI5(MUESTRA('<embed src="x">\n<script>const s = 1;\n'), 'artefacto');
+  assert.ok(abierto.some(t => /<embed>/.test(t)), `un <embed> antes de un script sin cerrar: ${JSON.stringify(abierto)}`);
+  const html = problemasI5(MUESTRA('<html><html>\n'), 'web');
+  assert.ok(html.some(t => /2 elementos <html>/.test(t)), `dos <html> fuera de los scripts: ${JSON.stringify(html)}`);
+  const link = problemasI5(MUESTRA('<link rel="modulepreload" href="https://unpkg.com/x.js">\n'), 'artefacto');
+  assert.ok(link.some(t => /modulepreload/.test(t)), `un <link rel="modulepreload">: ${JSON.stringify(link)}`);
+  // los <script src> y los import se siguen leyendo en todo el texto: un import de otro dominio dentro de un módulo falla
+  const imp = problemasI5(MUESTRA('<script type="module">import x from "https://unpkg.com/x@1.0.0/x.js";</script>\n'), 'artefacto');
+  assert.ok(imp.some(t => /unpkg\.com/.test(t)), `import de otro dominio dentro de un script: ${JSON.stringify(imp)}`);
 });

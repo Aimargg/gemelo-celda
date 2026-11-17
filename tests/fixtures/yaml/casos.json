@@ -1,0 +1,634 @@
+{
+  "descripcion": "Caracterización del panel «Datos» (T2.1, decisión 7): posiciones.yaml (<caso>.yaml) y las filas de la tabla de fuentes de cada caso de CASOS_YAML (tests/medir.mjs), en este orden y en una página recién cargada. El test (tests/e2e/datos.test.mjs) compara el YAML byte a byte salvo la línea «fecha:» y cada fila de la tabla (texto, fuente, etiqueta, clase y HTML).",
+  "fuente_src": "ebb6a8c",
+  "comando": "npm run caracterizar -- --yaml",
+  "casos": [
+    {
+      "id": "nominal",
+      "descripcion": "disposición de partida con el robot nominal, sin prefijo de frames",
+      "robot": "nominal",
+      "prefijo": "",
+      "yaml": "nominal.yaml",
+      "panel": [
+        {
+          "dato": "Mesa",
+          "fuente": "Cinta + foto (regla y A4, error < 2 %)",
+          "valor": "1180 × 830 mm, superficie a 760 mm",
+          "etiqueta": "MEDIDO",
+          "clase": "tag m",
+          "html": "<td>Mesa<br><span class=\"hint\">Cinta + foto (regla y A4, error &lt; 2 %)</span></td><td>1180 × 830 mm, superficie a 760 mm</td><td><span class=\"tag m\">MEDIDO</span></td>"
+        },
+        {
+          "dato": "Base del robot B (grupo)",
+          "fuente": "Cinta; centro con radio de base de 66 mm (supuesto)",
+          "valor": "9 y 8 cm del borde de la base a los bordes de la mesa",
+          "etiqueta": "MEDIDO",
+          "clase": "tag m",
+          "html": "<td>Base del robot B (grupo)<br><span class=\"hint\">Cinta; centro con radio de base de 66 mm (supuesto)</span></td><td>9 y 8 cm del borde de la base a los bordes de la mesa</td><td><span class=\"tag m\">MEDIDO</span></td>"
+        },
+        {
+          "dato": "Base del robot A",
+          "fuente": "Foto ±10 mm",
+          "valor": "centro a 151 y 115 mm de los bordes",
+          "etiqueta": "MEDIDO",
+          "clase": "tag m",
+          "html": "<td>Base del robot A<br><span class=\"hint\">Foto ±10 mm</span></td><td>centro a 151 y 115 mm de los bordes</td><td><span class=\"tag m\">MEDIDO</span></td>"
+        },
+        {
+          "dato": "UR3e",
+          "fuente": "Placa del robot",
+          "valor": "alcance 500 mm, carga 3 kg, 11,2 kg, 2020",
+          "etiqueta": "FABRICANTE",
+          "clase": "tag f",
+          "html": "<td>UR3e<br><span class=\"hint\">Placa del robot</span></td><td>alcance 500 mm, carga 3 kg, 11,2 kg, 2020</td><td><span class=\"tag f\">FABRICANTE</span></td>"
+        },
+        {
+          "dato": "Cinemática del UR3e",
+          "fuente": "ur_description; verificada con 2000 posturas",
+          "valor": "DH oficiales, IK analítica de 8 soluciones",
+          "etiqueta": "FABRICANTE",
+          "clase": "tag f",
+          "html": "<td>Cinemática del UR3e<br><span class=\"hint\">ur_description; verificada con 2000 posturas</span></td><td>DH oficiales, IK analítica de 8 soluciones</td><td><span class=\"tag f\">FABRICANTE</span></td>"
+        },
+        {
+          "dato": "Pinza",
+          "fuente": "Apertura medida 110 mm + ficha",
+          "valor": "OnRobot RG2, 0–110 mm, 0,78 kg, 3–40 N",
+          "etiqueta": "MEDIDO",
+          "clase": "tag m",
+          "html": "<td>Pinza<br><span class=\"hint\">Apertura medida 110 mm + ficha</span></td><td>OnRobot RG2, 0–110 mm, 0,78 kg, 3–40 N</td><td><span class=\"tag m\">MEDIDO</span></td>"
+        },
+        {
+          "dato": "TCP de la pinza",
+          "fuente": "Modelo simplificado; medir en PolyScope",
+          "valor": "200 mm cerrada",
+          "etiqueta": "SUPUESTO",
+          "clase": "tag s",
+          "html": "<td>TCP de la pinza<br><span class=\"hint\">Modelo simplificado; medir en PolyScope</span></td><td>200 mm cerrada</td><td><span class=\"tag s\">SUPUESTO</span></td>"
+        },
+        {
+          "dato": "Agarre del plato",
+          "fuente": "Decisión del grupo (12-11)",
+          "valor": "horizontal por el borde, un dedo encima y otro debajo del ala",
+          "etiqueta": "decisión del grupo",
+          "clase": "tag g",
+          "html": "<td>Agarre del plato<br><span class=\"hint\">Decisión del grupo (12-11)</span></td><td>horizontal por el borde, un dedo encima y otro debajo del ala</td><td><span class=\"tag g\">decisión del grupo</span></td>"
+        },
+        {
+          "dato": "Caja bajo el plato",
+          "fuente": "Propuesta del grupo; tamaño sin medir",
+          "valor": "10 × 10 cm, altura regulable",
+          "etiqueta": "SUPUESTO",
+          "clase": "tag s",
+          "html": "<td>Caja bajo el plato<br><span class=\"hint\">Propuesta del grupo; tamaño sin medir</span></td><td>10 × 10 cm, altura regulable</td><td><span class=\"tag s\">SUPUESTO</span></td>"
+        },
+        {
+          "dato": "Orientación de base_link",
+          "fuente": "Giro: mount_yaw − π del xacro del curso. Ejes de world: comprobar en el laboratorio (docs/estado/frames.md)",
+          "valor": "girado 0,0° respecto a world; world con los ejes de la mesa",
+          "etiqueta": "SUPUESTO",
+          "clase": "tag s",
+          "html": "<td>Orientación de base_link<br><span class=\"hint\">Giro: mount_yaw − π del xacro del curso. Ejes de world: comprobar en el laboratorio (docs/estado/frames.md)</span></td><td>girado 0,0° respecto a world; world con los ejes de la mesa</td><td><span class=\"tag s\">SUPUESTO</span></td>"
+        },
+        {
+          "dato": "Cámaras",
+          "fuente": "Caja de la cámara + web del fabricante",
+          "valor": "ELP-USB12MP01-UFV, IMX577, 3,6–10 mm, USB 2.0",
+          "etiqueta": "MEDIDO",
+          "clase": "tag m",
+          "html": "<td>Cámaras<br><span class=\"hint\">Caja de la cámara + web del fabricante</span></td><td>ELP-USB12MP01-UFV, IMX577, 3,6–10 mm, USB 2.0</td><td><span class=\"tag m\">MEDIDO</span></td>"
+        },
+        {
+          "dato": "Campo de visión",
+          "fuente": "«image size» de la ficha de la ELP AFKV100 (5,952 × 4,71 mm) [SIN VALIDAR]; medir en la calibración intrínseca (F4)",
+          "valor": "lente ideal sobre el ancho del sensor «ELP ficha» (5,952 mm), completo en todos los modos",
+          "etiqueta": "SUPUESTO",
+          "clase": "tag s",
+          "html": "<td>Campo de visión<br><span class=\"hint\">«image size» de la ficha de la ELP AFKV100 (5,952 × 4,71 mm) [SIN VALIDAR]; medir en la calibración intrínseca (F4)</span></td><td>lente ideal sobre el ancho del sensor «ELP ficha» (5,952 mm), completo en todos los modos</td><td><span class=\"tag s\">SUPUESTO</span></td>"
+        },
+        {
+          "dato": "Marcadores",
+          "fuente": "Ids propuestos",
+          "valor": "ArUco DICT_4X4_50: zona 0–3, entrega 4–5, bandeja 6–9 (dibujados con su patrón real)",
+          "etiqueta": "SUPUESTO",
+          "clase": "tag s",
+          "html": "<td>Marcadores<br><span class=\"hint\">Ids propuestos</span></td><td>ArUco DICT_4X4_50: zona 0–3, entrega 4–5, bandeja 6–9 (dibujados con su patrón real)</td><td><span class=\"tag s\">SUPUESTO</span></td>"
+        },
+        {
+          "dato": "Soportes de cámara",
+          "fuente": "Foto + ficha",
+          "valor": "Manfrotto 035 + brazo 244 de 53 cm",
+          "etiqueta": "MEDIDO",
+          "clase": "tag m",
+          "html": "<td>Soportes de cámara<br><span class=\"hint\">Foto + ficha</span></td><td>Manfrotto 035 + brazo 244 de 53 cm</td><td><span class=\"tag m\">MEDIDO</span></td>"
+        },
+        {
+          "dato": "Fruta",
+          "fuente": "Foto de referencia del grupo",
+          "valor": "piezas de plástico de 4,5–7 cm",
+          "etiqueta": "SUPUESTO",
+          "clase": "tag s",
+          "html": "<td>Fruta<br><span class=\"hint\">Foto de referencia del grupo</span></td><td>piezas de plástico de 4,5–7 cm</td><td><span class=\"tag s\">SUPUESTO</span></td>"
+        },
+        {
+          "dato": "Plato, bandeja y persona",
+          "fuente": "Sin medir; posición elegida porque es donde el robot puede dejar los platos nivelados",
+          "valor": "plato Ø160 mm · bandeja 450 × 330 mm a 1,00 m del suelo · persona en el lateral derecho, de frente, con la bandeja a la derecha del robot y fuera de la mesa",
+          "etiqueta": "SUPUESTO",
+          "clase": "tag s",
+          "html": "<td>Plato, bandeja y persona<br><span class=\"hint\">Sin medir; posición elegida porque es donde el robot puede dejar los platos nivelados</span></td><td>plato Ø160 mm · bandeja 450 × 330 mm a 1,00 m del suelo · persona en el lateral derecho, de frente, con la bandeja a la derecha del robot y fuera de la mesa</td><td><span class=\"tag s\">SUPUESTO</span></td>"
+        },
+        {
+          "dato": "Modelo de colisión",
+          "fuente": "ur_description (Universal Robots)",
+          "valor": "162 esferas ajustadas a las mallas de colisión oficiales del UR3e y a la RG2; límites articulares de joint_limits.yaml (codo ±180°)",
+          "etiqueta": "FABRICANTE",
+          "clase": "tag f",
+          "html": "<td>Modelo de colisión<br><span class=\"hint\">ur_description (Universal Robots)</span></td><td>162 esferas ajustadas a las mallas de colisión oficiales del UR3e y a la RG2; límites articulares de joint_limits.yaml (codo ±180°)</td><td><span class=\"tag f\">FABRICANTE</span></td>"
+        },
+        {
+          "dato": "Planificación",
+          "fuente": "Equivalente a lo que hará MoveIt 2; sin validar en el robot",
+          "valor": "RRT-Connect con atajos para movimientos libres; rectas cada 4 mm sin saltos (perfil «gemelo») o cada 1 cm con el punto medio a 1 mm y 0,01 rad (perfil «curso»); plato siempre nivelado",
+          "etiqueta": "MEDIDO",
+          "clase": "tag m",
+          "html": "<td>Planificación<br><span class=\"hint\">Equivalente a lo que hará MoveIt 2; sin validar en el robot</span></td><td>RRT-Connect con atajos para movimientos libres; rectas cada 4 mm sin saltos (perfil «gemelo») o cada 1 cm con el punto medio a 1 mm y 0,01 rad (perfil «curso»); plato siempre nivelado</td><td><span class=\"tag m\">MEDIDO</span></td>"
+        },
+        {
+          "dato": "Aceleración articular (perfil «gemelo»)",
+          "fuente": "El yaml del UR3e no fija aceleraciones",
+          "valor": "3 rad/s² al 100 %",
+          "etiqueta": "SUPUESTO",
+          "clase": "tag s",
+          "html": "<td>Aceleración articular (perfil «gemelo»)<br><span class=\"hint\">El yaml del UR3e no fija aceleraciones</span></td><td>3 rad/s² al 100 %</td><td><span class=\"tag s\">SUPUESTO</span></td>"
+        },
+        {
+          "dato": "Perfil «curso»",
+          "fuente": "config/joint_limits.yaml y el ejemplo del profesor (repo del curso); tiempos con un trapecio por articulación, no TOTG (DT4)",
+          "valor": "escala 0,1 de velocidad y aceleración, 5 rad/s², cartesiana de MoveIt 2.11+ y arranque en contacto = fallo",
+          "etiqueta": "SUPUESTO",
+          "clase": "tag s",
+          "html": "<td>Perfil «curso»<br><span class=\"hint\">config/joint_limits.yaml y el ejemplo del profesor (repo del curso); tiempos con un trapecio por articulación, no TOTG (DT4)</span></td><td>escala 0,1 de velocidad y aceleración, 5 rad/s², cartesiana de MoveIt 2.11+ y arranque en contacto = fallo</td><td><span class=\"tag s\">SUPUESTO</span></td>"
+        },
+        {
+          "dato": "Agarre del plato",
+          "fuente": "Probar con el plato real que no gira ni resbala",
+          "valor": "muñeca inclinada hasta 45° respecto a la horizontal",
+          "etiqueta": "SUPUESTO",
+          "clase": "tag s",
+          "html": "<td>Agarre del plato<br><span class=\"hint\">Probar con el plato real que no gira ni resbala</span></td><td>muñeca inclinada hasta 45° respecto a la horizontal</td><td><span class=\"tag s\">SUPUESTO</span></td>"
+        },
+        {
+          "dato": "Bandeja en M0 / M1",
+          "fuente": "DEC-04 sin cifras",
+          "valor": "pausa a 25 mm, aborto a 10 s; latencia 120 ms",
+          "etiqueta": "SUPUESTO",
+          "clase": "tag s",
+          "html": "<td>Bandeja en M0 / M1<br><span class=\"hint\">DEC-04 sin cifras</span></td><td>pausa a 25 mm, aborto a 10 s; latencia 120 ms</td><td><span class=\"tag s\">SUPUESTO</span></td>"
+        },
+        {
+          "dato": "Velocidades",
+          "fuente": "Ficha del UR3e",
+          "valor": "180°/s (base, hombro, codo), 360°/s (muñecas)",
+          "etiqueta": "FABRICANTE",
+          "clase": "tag f",
+          "html": "<td>Velocidades<br><span class=\"hint\">Ficha del UR3e</span></td><td>180°/s (base, hombro, codo), 360°/s (muñecas)</td><td><span class=\"tag f\">FABRICANTE</span></td>"
+        },
+        {
+          "dato": "Nodos de Robótica",
+          "fuente": "Propuesta; D3 sin congelar",
+          "valor": "coordinador, pedidos, movimiento, pinza, seguridad",
+          "etiqueta": "SUPUESTO",
+          "clase": "tag s",
+          "html": "<td>Nodos de Robótica<br><span class=\"hint\">Propuesta; D3 sin congelar</span></td><td>coordinador, pedidos, movimiento, pinza, seguridad</td><td><span class=\"tag s\">SUPUESTO</span></td>"
+        },
+        {
+          "dato": "Topics de Visión",
+          "fuente": "Contexto de Visión del 7-11",
+          "valor": "/v1/*, /v2/*, /menu, /service_state",
+          "etiqueta": "MEDIDO",
+          "clase": "tag m",
+          "html": "<td>Topics de Visión<br><span class=\"hint\">Contexto de Visión del 7-11</span></td><td>/v1/*, /v2/*, /menu, /service_state</td><td><span class=\"tag m\">MEDIDO</span></td>"
+        }
+      ]
+    },
+    {
+      "id": "203",
+      "descripcion": "la misma con el 203 («Mantener la mesa»: los objetos no se mueven en world), sin prefijo",
+      "robot": "203",
+      "prefijo": "",
+      "yaml": "203.yaml",
+      "panel": [
+        {
+          "dato": "Mesa",
+          "fuente": "Cinta + foto (regla y A4, error < 2 %)",
+          "valor": "1180 × 830 mm, superficie a 760 mm",
+          "etiqueta": "MEDIDO",
+          "clase": "tag m",
+          "html": "<td>Mesa<br><span class=\"hint\">Cinta + foto (regla y A4, error &lt; 2 %)</span></td><td>1180 × 830 mm, superficie a 760 mm</td><td><span class=\"tag m\">MEDIDO</span></td>"
+        },
+        {
+          "dato": "Base del robot B (grupo)",
+          "fuente": "Cinta; centro con radio de base de 66 mm (supuesto)",
+          "valor": "9 y 8 cm del borde de la base a los bordes de la mesa",
+          "etiqueta": "MEDIDO",
+          "clase": "tag m",
+          "html": "<td>Base del robot B (grupo)<br><span class=\"hint\">Cinta; centro con radio de base de 66 mm (supuesto)</span></td><td>9 y 8 cm del borde de la base a los bordes de la mesa</td><td><span class=\"tag m\">MEDIDO</span></td>"
+        },
+        {
+          "dato": "Base del robot A",
+          "fuente": "Foto ±10 mm",
+          "valor": "centro a 151 y 115 mm de los bordes",
+          "etiqueta": "MEDIDO",
+          "clase": "tag m",
+          "html": "<td>Base del robot A<br><span class=\"hint\">Foto ±10 mm</span></td><td>centro a 151 y 115 mm de los bordes</td><td><span class=\"tag m\">MEDIDO</span></td>"
+        },
+        {
+          "dato": "UR3e",
+          "fuente": "Placa del robot",
+          "valor": "alcance 500 mm, carga 3 kg, 11,2 kg, 2020",
+          "etiqueta": "FABRICANTE",
+          "clase": "tag f",
+          "html": "<td>UR3e<br><span class=\"hint\">Placa del robot</span></td><td>alcance 500 mm, carga 3 kg, 11,2 kg, 2020</td><td><span class=\"tag f\">FABRICANTE</span></td>"
+        },
+        {
+          "dato": "Cinemática del UR3e",
+          "fuente": "calibration_203.yaml del repo del curso (4e4e1a7); SIN VALIDAR en ROS",
+          "valor": "calibración del robot 203; IK analítica nominal refinada con Levenberg–Marquardt (1e-6 m y 1e-6 rad)",
+          "etiqueta": "MEDIDO",
+          "clase": "tag m",
+          "html": "<td>Cinemática del UR3e<br><span class=\"hint\">calibration_203.yaml del repo del curso (4e4e1a7); SIN VALIDAR en ROS</span></td><td>calibración del robot 203; IK analítica nominal refinada con Levenberg–Marquardt (1e-6 m y 1e-6 rad)</td><td><span class=\"tag m\">MEDIDO</span></td>"
+        },
+        {
+          "dato": "Pinza",
+          "fuente": "Apertura medida 110 mm + ficha",
+          "valor": "OnRobot RG2, 0–110 mm, 0,78 kg, 3–40 N",
+          "etiqueta": "MEDIDO",
+          "clase": "tag m",
+          "html": "<td>Pinza<br><span class=\"hint\">Apertura medida 110 mm + ficha</span></td><td>OnRobot RG2, 0–110 mm, 0,78 kg, 3–40 N</td><td><span class=\"tag m\">MEDIDO</span></td>"
+        },
+        {
+          "dato": "TCP de la pinza",
+          "fuente": "Modelo simplificado; medir en PolyScope",
+          "valor": "200 mm cerrada",
+          "etiqueta": "SUPUESTO",
+          "clase": "tag s",
+          "html": "<td>TCP de la pinza<br><span class=\"hint\">Modelo simplificado; medir en PolyScope</span></td><td>200 mm cerrada</td><td><span class=\"tag s\">SUPUESTO</span></td>"
+        },
+        {
+          "dato": "Agarre del plato",
+          "fuente": "Decisión del grupo (12-11)",
+          "valor": "horizontal por el borde, un dedo encima y otro debajo del ala",
+          "etiqueta": "decisión del grupo",
+          "clase": "tag g",
+          "html": "<td>Agarre del plato<br><span class=\"hint\">Decisión del grupo (12-11)</span></td><td>horizontal por el borde, un dedo encima y otro debajo del ala</td><td><span class=\"tag g\">decisión del grupo</span></td>"
+        },
+        {
+          "dato": "Caja bajo el plato",
+          "fuente": "Propuesta del grupo; tamaño sin medir",
+          "valor": "10 × 10 cm, altura regulable",
+          "etiqueta": "SUPUESTO",
+          "clase": "tag s",
+          "html": "<td>Caja bajo el plato<br><span class=\"hint\">Propuesta del grupo; tamaño sin medir</span></td><td>10 × 10 cm, altura regulable</td><td><span class=\"tag s\">SUPUESTO</span></td>"
+        },
+        {
+          "dato": "Orientación de base_link",
+          "fuente": "Giro: mount_yaw − π del xacro del curso. Ejes de world: comprobar en el laboratorio (docs/estado/frames.md)",
+          "valor": "girado −135,0° respecto a world; world con los ejes de la mesa",
+          "etiqueta": "SUPUESTO",
+          "clase": "tag s",
+          "html": "<td>Orientación de base_link<br><span class=\"hint\">Giro: mount_yaw − π del xacro del curso. Ejes de world: comprobar en el laboratorio (docs/estado/frames.md)</span></td><td>girado −135,0° respecto a world; world con los ejes de la mesa</td><td><span class=\"tag s\">SUPUESTO</span></td>"
+        },
+        {
+          "dato": "Cámaras",
+          "fuente": "Caja de la cámara + web del fabricante",
+          "valor": "ELP-USB12MP01-UFV, IMX577, 3,6–10 mm, USB 2.0",
+          "etiqueta": "MEDIDO",
+          "clase": "tag m",
+          "html": "<td>Cámaras<br><span class=\"hint\">Caja de la cámara + web del fabricante</span></td><td>ELP-USB12MP01-UFV, IMX577, 3,6–10 mm, USB 2.0</td><td><span class=\"tag m\">MEDIDO</span></td>"
+        },
+        {
+          "dato": "Campo de visión",
+          "fuente": "«image size» de la ficha de la ELP AFKV100 (5,952 × 4,71 mm) [SIN VALIDAR]; medir en la calibración intrínseca (F4)",
+          "valor": "lente ideal sobre el ancho del sensor «ELP ficha» (5,952 mm), completo en todos los modos",
+          "etiqueta": "SUPUESTO",
+          "clase": "tag s",
+          "html": "<td>Campo de visión<br><span class=\"hint\">«image size» de la ficha de la ELP AFKV100 (5,952 × 4,71 mm) [SIN VALIDAR]; medir en la calibración intrínseca (F4)</span></td><td>lente ideal sobre el ancho del sensor «ELP ficha» (5,952 mm), completo en todos los modos</td><td><span class=\"tag s\">SUPUESTO</span></td>"
+        },
+        {
+          "dato": "Marcadores",
+          "fuente": "Ids propuestos",
+          "valor": "ArUco DICT_4X4_50: zona 0–3, entrega 4–5, bandeja 6–9 (dibujados con su patrón real)",
+          "etiqueta": "SUPUESTO",
+          "clase": "tag s",
+          "html": "<td>Marcadores<br><span class=\"hint\">Ids propuestos</span></td><td>ArUco DICT_4X4_50: zona 0–3, entrega 4–5, bandeja 6–9 (dibujados con su patrón real)</td><td><span class=\"tag s\">SUPUESTO</span></td>"
+        },
+        {
+          "dato": "Soportes de cámara",
+          "fuente": "Foto + ficha",
+          "valor": "Manfrotto 035 + brazo 244 de 53 cm",
+          "etiqueta": "MEDIDO",
+          "clase": "tag m",
+          "html": "<td>Soportes de cámara<br><span class=\"hint\">Foto + ficha</span></td><td>Manfrotto 035 + brazo 244 de 53 cm</td><td><span class=\"tag m\">MEDIDO</span></td>"
+        },
+        {
+          "dato": "Fruta",
+          "fuente": "Foto de referencia del grupo",
+          "valor": "piezas de plástico de 4,5–7 cm",
+          "etiqueta": "SUPUESTO",
+          "clase": "tag s",
+          "html": "<td>Fruta<br><span class=\"hint\">Foto de referencia del grupo</span></td><td>piezas de plástico de 4,5–7 cm</td><td><span class=\"tag s\">SUPUESTO</span></td>"
+        },
+        {
+          "dato": "Plato, bandeja y persona",
+          "fuente": "Sin medir; posición elegida porque es donde el robot puede dejar los platos nivelados",
+          "valor": "plato Ø160 mm · bandeja 450 × 330 mm a 1,00 m del suelo · persona en el lateral derecho, de frente, con la bandeja a la derecha del robot y fuera de la mesa",
+          "etiqueta": "SUPUESTO",
+          "clase": "tag s",
+          "html": "<td>Plato, bandeja y persona<br><span class=\"hint\">Sin medir; posición elegida porque es donde el robot puede dejar los platos nivelados</span></td><td>plato Ø160 mm · bandeja 450 × 330 mm a 1,00 m del suelo · persona en el lateral derecho, de frente, con la bandeja a la derecha del robot y fuera de la mesa</td><td><span class=\"tag s\">SUPUESTO</span></td>"
+        },
+        {
+          "dato": "Modelo de colisión",
+          "fuente": "ur_description (Universal Robots)",
+          "valor": "162 esferas ajustadas a las mallas de colisión oficiales del UR3e y a la RG2; límites articulares de joint_limits.yaml (codo ±180°)",
+          "etiqueta": "FABRICANTE",
+          "clase": "tag f",
+          "html": "<td>Modelo de colisión<br><span class=\"hint\">ur_description (Universal Robots)</span></td><td>162 esferas ajustadas a las mallas de colisión oficiales del UR3e y a la RG2; límites articulares de joint_limits.yaml (codo ±180°)</td><td><span class=\"tag f\">FABRICANTE</span></td>"
+        },
+        {
+          "dato": "Planificación",
+          "fuente": "Equivalente a lo que hará MoveIt 2; sin validar en el robot",
+          "valor": "RRT-Connect con atajos para movimientos libres; rectas cada 4 mm sin saltos (perfil «gemelo») o cada 1 cm con el punto medio a 1 mm y 0,01 rad (perfil «curso»); plato siempre nivelado",
+          "etiqueta": "MEDIDO",
+          "clase": "tag m",
+          "html": "<td>Planificación<br><span class=\"hint\">Equivalente a lo que hará MoveIt 2; sin validar en el robot</span></td><td>RRT-Connect con atajos para movimientos libres; rectas cada 4 mm sin saltos (perfil «gemelo») o cada 1 cm con el punto medio a 1 mm y 0,01 rad (perfil «curso»); plato siempre nivelado</td><td><span class=\"tag m\">MEDIDO</span></td>"
+        },
+        {
+          "dato": "Aceleración articular (perfil «gemelo»)",
+          "fuente": "El yaml del UR3e no fija aceleraciones",
+          "valor": "3 rad/s² al 100 %",
+          "etiqueta": "SUPUESTO",
+          "clase": "tag s",
+          "html": "<td>Aceleración articular (perfil «gemelo»)<br><span class=\"hint\">El yaml del UR3e no fija aceleraciones</span></td><td>3 rad/s² al 100 %</td><td><span class=\"tag s\">SUPUESTO</span></td>"
+        },
+        {
+          "dato": "Perfil «curso»",
+          "fuente": "config/joint_limits.yaml y el ejemplo del profesor (repo del curso); tiempos con un trapecio por articulación, no TOTG (DT4)",
+          "valor": "escala 0,1 de velocidad y aceleración, 5 rad/s², cartesiana de MoveIt 2.11+ y arranque en contacto = fallo",
+          "etiqueta": "SUPUESTO",
+          "clase": "tag s",
+          "html": "<td>Perfil «curso»<br><span class=\"hint\">config/joint_limits.yaml y el ejemplo del profesor (repo del curso); tiempos con un trapecio por articulación, no TOTG (DT4)</span></td><td>escala 0,1 de velocidad y aceleración, 5 rad/s², cartesiana de MoveIt 2.11+ y arranque en contacto = fallo</td><td><span class=\"tag s\">SUPUESTO</span></td>"
+        },
+        {
+          "dato": "Agarre del plato",
+          "fuente": "Probar con el plato real que no gira ni resbala",
+          "valor": "muñeca inclinada hasta 45° respecto a la horizontal",
+          "etiqueta": "SUPUESTO",
+          "clase": "tag s",
+          "html": "<td>Agarre del plato<br><span class=\"hint\">Probar con el plato real que no gira ni resbala</span></td><td>muñeca inclinada hasta 45° respecto a la horizontal</td><td><span class=\"tag s\">SUPUESTO</span></td>"
+        },
+        {
+          "dato": "Bandeja en M0 / M1",
+          "fuente": "DEC-04 sin cifras",
+          "valor": "pausa a 25 mm, aborto a 10 s; latencia 120 ms",
+          "etiqueta": "SUPUESTO",
+          "clase": "tag s",
+          "html": "<td>Bandeja en M0 / M1<br><span class=\"hint\">DEC-04 sin cifras</span></td><td>pausa a 25 mm, aborto a 10 s; latencia 120 ms</td><td><span class=\"tag s\">SUPUESTO</span></td>"
+        },
+        {
+          "dato": "Velocidades",
+          "fuente": "Ficha del UR3e",
+          "valor": "180°/s (base, hombro, codo), 360°/s (muñecas)",
+          "etiqueta": "FABRICANTE",
+          "clase": "tag f",
+          "html": "<td>Velocidades<br><span class=\"hint\">Ficha del UR3e</span></td><td>180°/s (base, hombro, codo), 360°/s (muñecas)</td><td><span class=\"tag f\">FABRICANTE</span></td>"
+        },
+        {
+          "dato": "Nodos de Robótica",
+          "fuente": "Propuesta; D3 sin congelar",
+          "valor": "coordinador, pedidos, movimiento, pinza, seguridad",
+          "etiqueta": "SUPUESTO",
+          "clase": "tag s",
+          "html": "<td>Nodos de Robótica<br><span class=\"hint\">Propuesta; D3 sin congelar</span></td><td>coordinador, pedidos, movimiento, pinza, seguridad</td><td><span class=\"tag s\">SUPUESTO</span></td>"
+        },
+        {
+          "dato": "Topics de Visión",
+          "fuente": "Contexto de Visión del 7-11",
+          "valor": "/v1/*, /v2/*, /menu, /service_state",
+          "etiqueta": "MEDIDO",
+          "clase": "tag m",
+          "html": "<td>Topics de Visión<br><span class=\"hint\">Contexto de Visión del 7-11</span></td><td>/v1/*, /v2/*, /menu, /service_state</td><td><span class=\"tag m\">MEDIDO</span></td>"
+        }
+      ]
+    },
+    {
+      "id": "203-prefijo",
+      "descripcion": "la misma con el 203 y el prefijo «203_» del URDF doble (doble_ur3e_203_204)",
+      "robot": "203",
+      "prefijo": "203_",
+      "yaml": "203-prefijo.yaml",
+      "panel": [
+        {
+          "dato": "Mesa",
+          "fuente": "Cinta + foto (regla y A4, error < 2 %)",
+          "valor": "1180 × 830 mm, superficie a 760 mm",
+          "etiqueta": "MEDIDO",
+          "clase": "tag m",
+          "html": "<td>Mesa<br><span class=\"hint\">Cinta + foto (regla y A4, error &lt; 2 %)</span></td><td>1180 × 830 mm, superficie a 760 mm</td><td><span class=\"tag m\">MEDIDO</span></td>"
+        },
+        {
+          "dato": "Base del robot B (grupo)",
+          "fuente": "Cinta; centro con radio de base de 66 mm (supuesto)",
+          "valor": "9 y 8 cm del borde de la base a los bordes de la mesa",
+          "etiqueta": "MEDIDO",
+          "clase": "tag m",
+          "html": "<td>Base del robot B (grupo)<br><span class=\"hint\">Cinta; centro con radio de base de 66 mm (supuesto)</span></td><td>9 y 8 cm del borde de la base a los bordes de la mesa</td><td><span class=\"tag m\">MEDIDO</span></td>"
+        },
+        {
+          "dato": "Base del robot A",
+          "fuente": "Foto ±10 mm",
+          "valor": "centro a 151 y 115 mm de los bordes",
+          "etiqueta": "MEDIDO",
+          "clase": "tag m",
+          "html": "<td>Base del robot A<br><span class=\"hint\">Foto ±10 mm</span></td><td>centro a 151 y 115 mm de los bordes</td><td><span class=\"tag m\">MEDIDO</span></td>"
+        },
+        {
+          "dato": "UR3e",
+          "fuente": "Placa del robot",
+          "valor": "alcance 500 mm, carga 3 kg, 11,2 kg, 2020",
+          "etiqueta": "FABRICANTE",
+          "clase": "tag f",
+          "html": "<td>UR3e<br><span class=\"hint\">Placa del robot</span></td><td>alcance 500 mm, carga 3 kg, 11,2 kg, 2020</td><td><span class=\"tag f\">FABRICANTE</span></td>"
+        },
+        {
+          "dato": "Cinemática del UR3e",
+          "fuente": "calibration_203.yaml del repo del curso (4e4e1a7); SIN VALIDAR en ROS",
+          "valor": "calibración del robot 203; IK analítica nominal refinada con Levenberg–Marquardt (1e-6 m y 1e-6 rad)",
+          "etiqueta": "MEDIDO",
+          "clase": "tag m",
+          "html": "<td>Cinemática del UR3e<br><span class=\"hint\">calibration_203.yaml del repo del curso (4e4e1a7); SIN VALIDAR en ROS</span></td><td>calibración del robot 203; IK analítica nominal refinada con Levenberg–Marquardt (1e-6 m y 1e-6 rad)</td><td><span class=\"tag m\">MEDIDO</span></td>"
+        },
+        {
+          "dato": "Pinza",
+          "fuente": "Apertura medida 110 mm + ficha",
+          "valor": "OnRobot RG2, 0–110 mm, 0,78 kg, 3–40 N",
+          "etiqueta": "MEDIDO",
+          "clase": "tag m",
+          "html": "<td>Pinza<br><span class=\"hint\">Apertura medida 110 mm + ficha</span></td><td>OnRobot RG2, 0–110 mm, 0,78 kg, 3–40 N</td><td><span class=\"tag m\">MEDIDO</span></td>"
+        },
+        {
+          "dato": "TCP de la pinza",
+          "fuente": "Modelo simplificado; medir en PolyScope",
+          "valor": "200 mm cerrada",
+          "etiqueta": "SUPUESTO",
+          "clase": "tag s",
+          "html": "<td>TCP de la pinza<br><span class=\"hint\">Modelo simplificado; medir en PolyScope</span></td><td>200 mm cerrada</td><td><span class=\"tag s\">SUPUESTO</span></td>"
+        },
+        {
+          "dato": "Agarre del plato",
+          "fuente": "Decisión del grupo (12-11)",
+          "valor": "horizontal por el borde, un dedo encima y otro debajo del ala",
+          "etiqueta": "decisión del grupo",
+          "clase": "tag g",
+          "html": "<td>Agarre del plato<br><span class=\"hint\">Decisión del grupo (12-11)</span></td><td>horizontal por el borde, un dedo encima y otro debajo del ala</td><td><span class=\"tag g\">decisión del grupo</span></td>"
+        },
+        {
+          "dato": "Caja bajo el plato",
+          "fuente": "Propuesta del grupo; tamaño sin medir",
+          "valor": "10 × 10 cm, altura regulable",
+          "etiqueta": "SUPUESTO",
+          "clase": "tag s",
+          "html": "<td>Caja bajo el plato<br><span class=\"hint\">Propuesta del grupo; tamaño sin medir</span></td><td>10 × 10 cm, altura regulable</td><td><span class=\"tag s\">SUPUESTO</span></td>"
+        },
+        {
+          "dato": "Orientación de base_link",
+          "fuente": "Giro: mount_yaw − π del xacro del curso. Ejes de world: comprobar en el laboratorio (docs/estado/frames.md)",
+          "valor": "girado −135,0° respecto a world; world con los ejes de la mesa",
+          "etiqueta": "SUPUESTO",
+          "clase": "tag s",
+          "html": "<td>Orientación de base_link<br><span class=\"hint\">Giro: mount_yaw − π del xacro del curso. Ejes de world: comprobar en el laboratorio (docs/estado/frames.md)</span></td><td>girado −135,0° respecto a world; world con los ejes de la mesa</td><td><span class=\"tag s\">SUPUESTO</span></td>"
+        },
+        {
+          "dato": "Cámaras",
+          "fuente": "Caja de la cámara + web del fabricante",
+          "valor": "ELP-USB12MP01-UFV, IMX577, 3,6–10 mm, USB 2.0",
+          "etiqueta": "MEDIDO",
+          "clase": "tag m",
+          "html": "<td>Cámaras<br><span class=\"hint\">Caja de la cámara + web del fabricante</span></td><td>ELP-USB12MP01-UFV, IMX577, 3,6–10 mm, USB 2.0</td><td><span class=\"tag m\">MEDIDO</span></td>"
+        },
+        {
+          "dato": "Campo de visión",
+          "fuente": "«image size» de la ficha de la ELP AFKV100 (5,952 × 4,71 mm) [SIN VALIDAR]; medir en la calibración intrínseca (F4)",
+          "valor": "lente ideal sobre el ancho del sensor «ELP ficha» (5,952 mm), completo en todos los modos",
+          "etiqueta": "SUPUESTO",
+          "clase": "tag s",
+          "html": "<td>Campo de visión<br><span class=\"hint\">«image size» de la ficha de la ELP AFKV100 (5,952 × 4,71 mm) [SIN VALIDAR]; medir en la calibración intrínseca (F4)</span></td><td>lente ideal sobre el ancho del sensor «ELP ficha» (5,952 mm), completo en todos los modos</td><td><span class=\"tag s\">SUPUESTO</span></td>"
+        },
+        {
+          "dato": "Marcadores",
+          "fuente": "Ids propuestos",
+          "valor": "ArUco DICT_4X4_50: zona 0–3, entrega 4–5, bandeja 6–9 (dibujados con su patrón real)",
+          "etiqueta": "SUPUESTO",
+          "clase": "tag s",
+          "html": "<td>Marcadores<br><span class=\"hint\">Ids propuestos</span></td><td>ArUco DICT_4X4_50: zona 0–3, entrega 4–5, bandeja 6–9 (dibujados con su patrón real)</td><td><span class=\"tag s\">SUPUESTO</span></td>"
+        },
+        {
+          "dato": "Soportes de cámara",
+          "fuente": "Foto + ficha",
+          "valor": "Manfrotto 035 + brazo 244 de 53 cm",
+          "etiqueta": "MEDIDO",
+          "clase": "tag m",
+          "html": "<td>Soportes de cámara<br><span class=\"hint\">Foto + ficha</span></td><td>Manfrotto 035 + brazo 244 de 53 cm</td><td><span class=\"tag m\">MEDIDO</span></td>"
+        },
+        {
+          "dato": "Fruta",
+          "fuente": "Foto de referencia del grupo",
+          "valor": "piezas de plástico de 4,5–7 cm",
+          "etiqueta": "SUPUESTO",
+          "clase": "tag s",
+          "html": "<td>Fruta<br><span class=\"hint\">Foto de referencia del grupo</span></td><td>piezas de plástico de 4,5–7 cm</td><td><span class=\"tag s\">SUPUESTO</span></td>"
+        },
+        {
+          "dato": "Plato, bandeja y persona",
+          "fuente": "Sin medir; posición elegida porque es donde el robot puede dejar los platos nivelados",
+          "valor": "plato Ø160 mm · bandeja 450 × 330 mm a 1,00 m del suelo · persona en el lateral derecho, de frente, con la bandeja a la derecha del robot y fuera de la mesa",
+          "etiqueta": "SUPUESTO",
+          "clase": "tag s",
+          "html": "<td>Plato, bandeja y persona<br><span class=\"hint\">Sin medir; posición elegida porque es donde el robot puede dejar los platos nivelados</span></td><td>plato Ø160 mm · bandeja 450 × 330 mm a 1,00 m del suelo · persona en el lateral derecho, de frente, con la bandeja a la derecha del robot y fuera de la mesa</td><td><span class=\"tag s\">SUPUESTO</span></td>"
+        },
+        {
+          "dato": "Modelo de colisión",
+          "fuente": "ur_description (Universal Robots)",
+          "valor": "162 esferas ajustadas a las mallas de colisión oficiales del UR3e y a la RG2; límites articulares de joint_limits.yaml (codo ±180°)",
+          "etiqueta": "FABRICANTE",
+          "clase": "tag f",
+          "html": "<td>Modelo de colisión<br><span class=\"hint\">ur_description (Universal Robots)</span></td><td>162 esferas ajustadas a las mallas de colisión oficiales del UR3e y a la RG2; límites articulares de joint_limits.yaml (codo ±180°)</td><td><span class=\"tag f\">FABRICANTE</span></td>"
+        },
+        {
+          "dato": "Planificación",
+          "fuente": "Equivalente a lo que hará MoveIt 2; sin validar en el robot",
+          "valor": "RRT-Connect con atajos para movimientos libres; rectas cada 4 mm sin saltos (perfil «gemelo») o cada 1 cm con el punto medio a 1 mm y 0,01 rad (perfil «curso»); plato siempre nivelado",
+          "etiqueta": "MEDIDO",
+          "clase": "tag m",
+          "html": "<td>Planificación<br><span class=\"hint\">Equivalente a lo que hará MoveIt 2; sin validar en el robot</span></td><td>RRT-Connect con atajos para movimientos libres; rectas cada 4 mm sin saltos (perfil «gemelo») o cada 1 cm con el punto medio a 1 mm y 0,01 rad (perfil «curso»); plato siempre nivelado</td><td><span class=\"tag m\">MEDIDO</span></td>"
+        },
+        {
+          "dato": "Aceleración articular (perfil «gemelo»)",
+          "fuente": "El yaml del UR3e no fija aceleraciones",
+          "valor": "3 rad/s² al 100 %",
+          "etiqueta": "SUPUESTO",
+          "clase": "tag s",
+          "html": "<td>Aceleración articular (perfil «gemelo»)<br><span class=\"hint\">El yaml del UR3e no fija aceleraciones</span></td><td>3 rad/s² al 100 %</td><td><span class=\"tag s\">SUPUESTO</span></td>"
+        },
+        {
+          "dato": "Perfil «curso»",
+          "fuente": "config/joint_limits.yaml y el ejemplo del profesor (repo del curso); tiempos con un trapecio por articulación, no TOTG (DT4)",
+          "valor": "escala 0,1 de velocidad y aceleración, 5 rad/s², cartesiana de MoveIt 2.11+ y arranque en contacto = fallo",
+          "etiqueta": "SUPUESTO",
+          "clase": "tag s",
+          "html": "<td>Perfil «curso»<br><span class=\"hint\">config/joint_limits.yaml y el ejemplo del profesor (repo del curso); tiempos con un trapecio por articulación, no TOTG (DT4)</span></td><td>escala 0,1 de velocidad y aceleración, 5 rad/s², cartesiana de MoveIt 2.11+ y arranque en contacto = fallo</td><td><span class=\"tag s\">SUPUESTO</span></td>"
+        },
+        {
+          "dato": "Agarre del plato",
+          "fuente": "Probar con el plato real que no gira ni resbala",
+          "valor": "muñeca inclinada hasta 45° respecto a la horizontal",
+          "etiqueta": "SUPUESTO",
+          "clase": "tag s",
+          "html": "<td>Agarre del plato<br><span class=\"hint\">Probar con el plato real que no gira ni resbala</span></td><td>muñeca inclinada hasta 45° respecto a la horizontal</td><td><span class=\"tag s\">SUPUESTO</span></td>"
+        },
+        {
+          "dato": "Bandeja en M0 / M1",
+          "fuente": "DEC-04 sin cifras",
+          "valor": "pausa a 25 mm, aborto a 10 s; latencia 120 ms",
+          "etiqueta": "SUPUESTO",
+          "clase": "tag s",
+          "html": "<td>Bandeja en M0 / M1<br><span class=\"hint\">DEC-04 sin cifras</span></td><td>pausa a 25 mm, aborto a 10 s; latencia 120 ms</td><td><span class=\"tag s\">SUPUESTO</span></td>"
+        },
+        {
+          "dato": "Velocidades",
+          "fuente": "Ficha del UR3e",
+          "valor": "180°/s (base, hombro, codo), 360°/s (muñecas)",
+          "etiqueta": "FABRICANTE",
+          "clase": "tag f",
+          "html": "<td>Velocidades<br><span class=\"hint\">Ficha del UR3e</span></td><td>180°/s (base, hombro, codo), 360°/s (muñecas)</td><td><span class=\"tag f\">FABRICANTE</span></td>"
+        },
+        {
+          "dato": "Nodos de Robótica",
+          "fuente": "Propuesta; D3 sin congelar",
+          "valor": "coordinador, pedidos, movimiento, pinza, seguridad",
+          "etiqueta": "SUPUESTO",
+          "clase": "tag s",
+          "html": "<td>Nodos de Robótica<br><span class=\"hint\">Propuesta; D3 sin congelar</span></td><td>coordinador, pedidos, movimiento, pinza, seguridad</td><td><span class=\"tag s\">SUPUESTO</span></td>"
+        },
+        {
+          "dato": "Topics de Visión",
+          "fuente": "Contexto de Visión del 7-11",
+          "valor": "/v1/*, /v2/*, /menu, /service_state",
+          "etiqueta": "MEDIDO",
+          "clase": "tag m",
+          "html": "<td>Topics de Visión<br><span class=\"hint\">Contexto de Visión del 7-11</span></td><td>/v1/*, /v2/*, /menu, /service_state</td><td><span class=\"tag m\">MEDIDO</span></td>"
+        }
+      ]
+    }
+  ]
+}

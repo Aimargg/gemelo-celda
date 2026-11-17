@@ -1,6 +1,6 @@
 {
   "descripcion": "Los mismos 8 casos de matriz-base.json con perfil: 'curso' (T1.9): en este orden, en una página recién cargada (tras el primer calcularPlanes), con la fase de la bandeja al empezar cada ensayo y la semilla del RRT por petición. El test compara fin, choques, roces y pausas en orden directo y todos los campos en orden inverso.",
-  "fuente_src": "4b80043",
+  "fuente_src": "493e29a",
   "comando": "npm run caracterizar -- --curso",
   "casos": [
     {
@@ -18,8 +18,8 @@
       "fin": "ok",
       "estado": "HECHO",
       "paso": 8,
-      "t_sim": 127.6,
-      "t_mov": 113.7,
+      "t_sim": 125.4,
+      "t_mov": 111.6,
       "errores_mm": [
         0,
         0
@@ -28,7 +28,7 @@
       "roces": 0,
       "pausas": 0,
       "autocol": 0,
-      "planes": 5,
+      "planes": 4,
       "sust": 0,
       "fallo": ""
     },
@@ -47,17 +47,17 @@
       "fin": "ok",
       "estado": "HECHO",
       "paso": 8,
-      "t_sim": 124.1,
-      "t_mov": 109.3,
+      "t_sim": 130.2,
+      "t_mov": 114.7,
       "errores_mm": [
         16,
-        8
+        14
       ],
       "choques": 0,
       "roces": 0,
-      "pausas": 1,
+      "pausas": 2,
       "autocol": 0,
-      "planes": 5,
+      "planes": 4,
       "sust": 0,
       "fallo": ""
     },
@@ -76,8 +76,8 @@
       "fin": "ok",
       "estado": "HECHO",
       "paso": 8,
-      "t_sim": 127.6,
-      "t_mov": 113.7,
+      "t_sim": 125.4,
+      "t_mov": 111.6,
       "errores_mm": [
         0,
         0
@@ -86,7 +86,7 @@
       "roces": 0,
       "pausas": 0,
       "autocol": 0,
-      "planes": 5,
+      "planes": 4,
       "sust": 0,
       "fallo": ""
     },
@@ -105,17 +105,17 @@
       "fin": "ok",
       "estado": "HECHO",
       "paso": 8,
-      "t_sim": 126.4,
+      "t_sim": 126.3,
       "t_mov": 112.5,
       "errores_mm": [
         3,
-        4
+        3
       ],
       "choques": 0,
       "roces": 0,
       "pausas": 0,
       "autocol": 0,
-      "planes": 5,
+      "planes": 4,
       "sust": 0,
       "fallo": ""
     },

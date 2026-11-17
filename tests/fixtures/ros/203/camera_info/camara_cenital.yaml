@@ -1,0 +1,30 @@
+# camera_info/camara_cenital.yaml · gemelo de la celda UR3e · generado por el gemelo (IA), BORRADOR
+# Robot: 203 (calibration_203.yaml del curso), en la posición B de la celda (derecha en la foto cenital).
+# Frame: base_link (sin prefijo, como en sim_<id>). Metros y radianes (REP-103), redondeo a 1 mm y 0,001 rad.
+# Huella de la disposición: 38b05d41 (FNV-1a de 32 bits de JSON.stringify(L), en UTF-8): casa este fichero con su disposición.
+# Carga: el camera_info_url de usb_cam/camara_cenital.yaml: cópialo a ${ROS_HOME}/camera_info/camara_cenital.yaml (por defecto ~/.ros/camera_info/) [SIN VALIDAR en ROS: U4].
+# Cámara cenital: ELP-USB12MP01-UFV, focal 3.6 mm (focal_mm, DT19), modo 1920x1080 (1920 × 1080 a 120.0 fps), sensor «ELP ficha» de 5,952 mm de ancho útil.
+# K en píxeles, de lente ideal y con el modelo de la cámara con la que el gemelo pinta lo que ve: fx = (w/2)/tan(hfov/2) y fy = (h/2)/tan(vfov/2), con hfov 1.382 rad y vfov 0.871 rad;
+#   cx = (w − 1)/2 y cy = (h − 1)/2: el píxel (0, 0) tiene su centro en 0, como en OpenCV y ROS. Números de las matrices con 3 decimales.
+# D = 0 (plumb_bob), R = I y P = [K | 0]. Nominal: lo sustituye la calibración intrínseca (F4) guardada con el mismo camera_name (camara_cenital) en la misma ruta.
+# Origen de cada valor, al final de su línea: MEDIDO, FABRICANTE o SUPUESTO; lo que se elige en el gemelo, «elegido en el gemelo».
+image_width: 1920  # elegido en el gemelo (modo 1920x1080)
+image_height: 1080  # elegido en el gemelo (modo 1920x1080)
+camera_name: 'camara_cenital'  # SUPUESTO (nombre propuesto); el de usb_cam/camara_cenital.yaml
+camera_matrix:
+  rows: 3  # FABRICANTE (formato de camera_info)
+  cols: 3  # FABRICANTE (formato de camera_info)
+  data: [1161.290, 0.000, 959.500, 0.000, 1161.290, 539.500, 0.000, 0.000, 1.000]  # SUPUESTO (lente ideal, sensor elp-ficha); focal y modo: elegido en el gemelo
+distortion_model: 'plumb_bob'  # SUPUESTO (lente ideal, sin distorsión)
+distortion_coefficients:
+  rows: 1  # FABRICANTE (formato de camera_info)
+  cols: 5  # FABRICANTE (formato de camera_info)
+  data: [0.000, 0.000, 0.000, 0.000, 0.000]  # SUPUESTO (lente ideal, sin distorsión)
+rectification_matrix:
+  rows: 3  # FABRICANTE (formato de camera_info)
+  cols: 3  # FABRICANTE (formato de camera_info)
+  data: [1.000, 0.000, 0.000, 0.000, 1.000, 0.000, 0.000, 0.000, 1.000]  # FABRICANTE (formato de camera_info)
+projection_matrix:
+  rows: 3  # FABRICANTE (formato de camera_info)
+  cols: 4  # FABRICANTE (formato de camera_info)
+  data: [1161.290, 0.000, 959.500, 0.000, 0.000, 1161.290, 539.500, 0.000, 0.000, 0.000, 1.000, 0.000]  # SUPUESTO (lente ideal, sensor elp-ficha); focal y modo: elegido en el gemelo: P = [K | 0]
