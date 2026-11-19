@@ -49,6 +49,7 @@ const ARUCO = ['1011010100110010', '0000111110011010', '0011001100101101', '1001
 // @@PERFIL@@
 // @@SENSOR@@
 // @@TAREAS@@
+// @@USB@@
 // @@ORIGEN@@
 // @@EXPORTAR@@
 // @@CALIBRACION@@
@@ -1836,6 +1837,120 @@ $('#tareasCfgCuerpo').addEventListener('input', e => {
 });
 $('#tareasCfgCuerpo').addEventListener('click', e => { if (e.target.closest('#btnTareasRestaurar')) { TAREAS_CFG = TAREAS.cfgDefecto(); pintarTareasCfg(); pintarCamaras(); } });
 pintarTareasCfg();
+// Ancho de banda USB (T4.3, src/usb.js): formato, reserva y bus de cada cámara, suma por bus y la salida de `lsusb -v` pegada. Todo
+// es de la sesión: no se guarda en la escena (I1, I2) y el texto pegado solo se analiza, no se envía a ningún sitio (I4)
+let USB_CFG = USB.cfgDefecto(), USB_LSUSB = null, USB_FIRMA = '';
+const USB_CAMS = {};
+const usbCam = k => USB_CAMS[k] || (USB_CAMS[k] = { formato: 'mjpeg', reserva: USB.RESERVA_MAX, bus: 1, disp: '' });
+const usbEsc = s => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]);
+const usbTag = (t, c) => `<span class="tag ${c}">${t}</span>`, usbSupuesto = () => usbTag('SUPUESTO · SIN VALIDAR', 's');
+const usbDispClave = d => `${d.bus}:${d.dispositivo}`;
+const usbCamaras = () => USB_LSUSB ? USB.camarasDe(USB_LSUSB) : [];
+// Las cámaras de la escena con su modo (MODOS, el de su tarjeta), su formato, su reserva y su bus
+const usbEntradas = () => Object.keys(L.cams).map(k => { const st = usbCam(k), M = MODOS[L.cams[k].modo]; return { clave: k, bus: st.bus, formato: st.formato, w: M.w, h: M.h, fps: M.fps, reserva: st.reserva }; });
+const usbFirma = () => JSON.stringify(Object.keys(L.cams).map(k => [k, L.cams[k].nombre, L.cams[k].modo])) + (USB_LSUSB ? 'lsusb' : '');
+// Pinta los campos de cada cámara (formato, bus, reserva y, con lsusb, su dispositivo) y los resultados
+function usbPintar() {
+  const devs = usbCamaras(); USB_FIRMA = usbFirma();
+  $('#usbCuerpo').innerHTML = Object.keys(L.cams).map(k => {
+    const c = L.cams[k], st = usbCam(k);
+    const disp = devs.length ? `<div class="row"><label class="hint" for="usb_disp_${k}" style="flex:none">Dispositivo</label><select id="usb_disp_${k}" style="flex:1;width:auto"><option value="">— sin elegir —</option>${devs.map(d => `<option value="${usbDispClave(d)}"${st.disp === usbDispClave(d) ? ' selected' : ''}>Bus ${d.bus} · dispositivo ${d.dispositivo} · ${usbEsc(d.nombre)} · ${fmt(d.reservaMax, 1)} Mbit/s</option>`).join('')}</select></div>` : '';
+    return `<div class="usbcam" data-cam="${k}"><div><strong>Cámara ${usbEsc(c.nombre.toLowerCase())}</strong><span class="pill" data-usb="estado"></span></div>
+      <div class="row"><label class="hint" for="usb_formato_${k}" style="flex:none">Formato</label><select id="usb_formato_${k}" style="flex:1;width:auto">${Object.entries(USB.FORMATOS).map(([id, f]) => `<option value="${id}"${id === st.formato ? ' selected' : ''}>${f.nombre}</option>`).join('')}</select>
+        <label class="hint" for="usb_bus_${k}" style="flex:none">Bus</label><input type="number" id="usb_bus_${k}" min="1" step="1" value="${st.bus}" style="width:64px"></div>
+      <div class="field"><label for="usb_reserva_${k}">Reserva (Mbit/s)</label><output>máx. ${fmt(USB.RESERVA_MAX, 1)}</output><input type="number" id="usb_reserva_${k}" min="0" max="${USB.RESERVA_MAX}" step="any" value="${st.reserva}"></div>
+      ${disp}<span class="hint" data-usb="detalle"></span></div>`;
+  }).join('');
+  usbActualizar();
+}
+// Recalcula el aviso, el estado de cada cámara y la suma por bus sin tocar los campos (así no se pierde el foco al escribir)
+function usbActualizar() {
+  let r; try { r = USB.evaluarBuses(usbEntradas(), USB_CFG); } catch (e) { $('#usbAviso').textContent = `No se puede estimar: ${e.message}`; $('#usbBuses').innerHTML = ''; return; }
+  const E = USB.ESTADOS, pct = x => `${fmt(x * 100, 0)} %`, malos = r.buses.filter(b => b.estado === 'no');
+  $('#usbAviso').innerHTML = `<strong>Aviso: ${usbEsc(r.aviso.texto)}.</strong> ` + (malos.length ? malos.map(b => `Bus ${b.bus}: ${b.claves.length === 1 ? 'la cámara no cabe' : `las ${b.claves.length} cámaras no caben`} con sus reservas o su demanda (${fmt(Math.max(b.sumaReserva, b.sumaTasa), 1)} de ${fmt(b.capacidad, 1)} Mbit/s).`).join(' ') : 'Con las reservas y los buses de ahora ningún bus se pasa.');
+  for (const c of r.camaras) {
+    const el = $(`#usbCuerpo .usbcam[data-cam="${c.clave}"]`); if (!el) continue;
+    const e = E[c.estado], M = MODOS[L.cams[c.clave].modo], pill = $('[data-usb="estado"]', el);
+    pill.className = `pill ${e.cls}`; pill.textContent = `${fmt(c.tasa, 1)} Mbit/s · ${e.txt}`;
+    Object.assign(el.dataset, { estado: c.estado, tasa: c.tasa, reserva: c.reserva, bus: c.bus });
+    $('[data-usb="detalle"]', el).innerHTML = `${M.w}×${M.h} a ${M.fps} fps (el modo de su tarjeta) · demanda estimada ${fmt(c.tasa, 1)} Mbit/s = ${pct(c.uso)} de la reserva de ${fmt(c.reserva, 1)}`
+      + (c.factorMin !== null ? ` · el MJPEG tendría que comprimir al menos ${fmt(c.factorMin, 1)}:1 para caber (supuesto: ${fmt(USB_CFG.mjpeg.factor, 1)}:1 ${usbSupuesto()})` : ' · sin comprimir: ancho × alto × bit por píxel del formato × fps')
+      + (c.reserva === USB.RESERVA_MAX ? ` · reserva máxima ${usbTag('PLAN', 'f')}` : '');
+  }
+  $('#usbBuses').innerHTML = '<h4 style="margin:6px 0 0;font-size:12.5px;font-weight:600">Por bus</h4>' + r.buses.map(b => {
+    const e = E[b.estado], libre = b.libre >= 0 ? `quedan ${fmt(b.libre, 1)}` : `faltan ${fmt(-b.libre, 1)}`;
+    return `<div class="usbbus" data-bus="${b.bus}" data-estado="${b.estado}" data-suma="${b.sumaReserva}" data-tasa="${b.sumaTasa}"><div><span>Bus ${b.bus}: ${b.claves.map(k => usbEsc(L.cams[k].nombre.toLowerCase())).join(', ')}</span><span class="pill ${e.cls}">${fmt(b.sumaReserva, 1)} de ${fmt(b.capacidad, 1)} Mbit/s · ${e.txt}</span></div>
+      <span class="hint">suma de las reservas ${fmt(b.sumaReserva, 1)} Mbit/s · suma de la demanda estimada ${fmt(b.sumaTasa, 1)} Mbit/s · capacidad ${fmt(b.capacidad, 1)} Mbit/s (${fmt(USB_CFG.bus.mbit, 0)} × ${fmt(USB_CFG.bus.periodico, 2)} ${usbSupuesto()}) · ${libre} Mbit/s de reserva</span></div>`;
+  }).join('');
+}
+// La lista de dispositivos de `lsusb -v` y, por bus, la suma de las reservas máximas de sus cámaras
+function usbPintarLsusb() {
+  const r = USB_LSUSB, cont = $('#usbLsusbRes'); if (!r) { cont.innerHTML = ''; return; }
+  const lista = r.dispositivos.map(d => {
+    let det;
+    if (!d.analizado) det = usbEsc(d.nota);
+    else if (d.esVideo) { const v = d.endpoints.filter(e => e.clase === 14), mx = v.find(e => e.mbit === d.reservaMax); det = `cámara: reserva máxima ${fmt(d.reservaMax, 1)} Mbit/s (${mx.transacciones} × ${mx.tamano} B, bInterval ${mx.bInterval}; ${v.length} ${v.length === 1 ? 'ajuste isócrono' : 'ajustes isócronos'} de vídeo)`; }
+    else det = d.endpoints.length ? 'endpoints isócronos que no son de vídeo' : 'sin endpoints isócronos de vídeo';
+    return `<div class="usbdev" data-bus="${d.bus}" data-dispositivo="${d.dispositivo}" data-video="${d.esVideo}" data-reserva="${d.reservaMax ?? ''}"><span>Bus ${d.bus} · dispositivo ${d.dispositivo} · ${usbEsc(d.id)} · ${usbEsc(d.nombre) || 'sin nombre'}</span><span class="hint">${det}</span></div>`;
+  }).join('');
+  const porBus = new Map(); for (const d of usbCamaras()) porBus.set(d.bus, [...(porBus.get(d.bus) || []), d]);
+  const cap = USB.capacidad(USB_CFG), buses = [...porBus.keys()].sort((a, b) => a - b).map(b => {
+    const ds = porBus.get(b), suma = ds.reduce((s, d) => s + d.reservaMax, 0), cabe = suma <= cap * (1 + 1e-9);
+    return `<div class="usbbus" data-lsusb-bus="${b}" data-estado="${cabe ? 'ok' : 'no'}" data-suma="${suma}"><div><span>Bus ${b}: ${ds.length} ${ds.length === 1 ? 'cámara' : 'cámaras'} con su reserva máxima</span><span class="pill ${cabe ? 'ok' : 'bad'}">${fmt(suma, 1)} de ${fmt(cap, 1)} Mbit/s · ${cabe ? 'cabe' : 'no cabe'}</span></div></div>`;
+  }).join('');
+  cont.innerHTML = lista + buses;
+}
+$('#btnUsbAnalizar').addEventListener('click', () => {
+  const txt = $('#usbLsusbTxt'), msg = $('#usbLsusbMsg');
+  try {
+    const r = USB.parsearLsusb(txt.value), n = USB.camarasDe(r).length;
+    USB_LSUSB = r; txt.removeAttribute('aria-invalid'); msg.setAttribute('role', 'status');
+    msg.textContent = `Analizado: ${r.dispositivos.length} ${r.dispositivos.length === 1 ? 'dispositivo' : 'dispositivos'}, ${n} ${n === 1 ? 'cámara' : 'cámaras'} de vídeo en alta velocidad.${n ? '' : ' Ninguna cámara: ¿falta sudo, o son USB 3?'}`;
+    const claves = usbCamaras().map(usbDispClave); for (const k in USB_CAMS) if (!claves.includes(USB_CAMS[k].disp)) USB_CAMS[k].disp = '';
+    usbPintarLsusb(); usbPintar();
+  } catch (e) {
+    // Una entrada mal formada no cambia nada: ni el análisis anterior ni lo elegido en las cámaras
+    txt.setAttribute('aria-invalid', 'true'); msg.setAttribute('role', 'alert'); msg.textContent = `No se ha aplicado nada: ${e.message}`;
+  }
+});
+$('#btnUsbQuitar').addEventListener('click', () => {
+  USB_LSUSB = null; for (const k in USB_CAMS) USB_CAMS[k].disp = '';
+  $('#usbLsusbTxt').removeAttribute('aria-invalid'); $('#usbLsusbMsg').textContent = ''; usbPintarLsusb(); usbPintar();
+});
+// Campos de cada cámara: se aplican al escribir (los inválidos se marcan y no se aplican); elegir un dispositivo de lsusb le pone su bus y su reserva máxima
+$('#usbCuerpo').addEventListener('input', usbCampo); $('#usbCuerpo').addEventListener('change', usbCampo);
+function usbCampo(e) {
+  const m = /^usb_(formato|reserva|bus|disp)_(.+)$/.exec(e.target.id || ''); if (!m || !L.cams[m[2]]) return;
+  const [, que, k] = m, st = usbCam(k);
+  if (que === 'disp' && e.type !== 'change') return;
+  try {
+    if (que === 'formato') { if (!Object.hasOwn(USB.FORMATOS, e.target.value)) throw new Error('formato desconocido'); st.formato = e.target.value; }
+    else if (que === 'reserva') st.reserva = USB.validarReserva(e.target.valueAsNumber);
+    else if (que === 'bus') { const b = e.target.valueAsNumber; if (!Number.isInteger(b) || b < 1) throw new Error('el bus es un número entero desde 1'); st.bus = b; }
+    else {
+      const d = usbCamaras().find(x => usbDispClave(x) === e.target.value);
+      if (e.target.value !== '' && !d) throw new Error('dispositivo desconocido');
+      st.disp = e.target.value; if (d) { st.bus = d.bus; st.reserva = Math.min(d.reservaMax, USB.RESERVA_MAX); }
+    }
+    e.target.removeAttribute('aria-invalid'); e.target.removeAttribute('title');
+  } catch (err) { e.target.setAttribute('aria-invalid', 'true'); e.target.title = err.message; return; }
+  if (que === 'disp') usbPintar(); else usbActualizar();
+}
+function pintarUsbCfg() {
+  $('#usbCfgCuerpo').innerHTML = USB.PARAMS.map(p => {
+    const [g, n] = p.id.split('.'), plan = p.origen === 'PLAN';
+    return `<div class="field"><label for="uc_${p.id}" title="${usbEsc(p.fuente)}">${usbEsc(p.nombre)} <span class="tag ${plan ? 'f' : 's'}">${plan ? 'PLAN' : 'SUPUESTO · SIN VALIDAR'}</span></label><output>${usbEsc(p.unidad)}</output><input type="number" id="uc_${p.id}" min="0" step="any" value="${USB_CFG[g][n]}"${p.editable ? '' : ' disabled'}></div>`;
+  }).join('');
+}
+$('#usbCfgCuerpo').addEventListener('input', e => {
+  const id = e.target.id.startsWith('uc_') ? e.target.id.slice(3) : null; if (!id) return;
+  try { USB_CFG = USB.fijar(USB_CFG, id, e.target.valueAsNumber); e.target.removeAttribute('aria-invalid'); } catch { e.target.setAttribute('aria-invalid', 'true'); return; }
+  usbActualizar(); usbPintarLsusb();
+});
+$('#btnUsbRestaurar').addEventListener('click', () => { USB_CFG = USB.cfgDefecto(); for (const k of Object.keys(USB_CAMS)) delete USB_CAMS[k]; pintarUsbCfg(); usbPintar(); usbPintarLsusb(); });
+pintarUsbCfg();
+// pintarCamaras lo llama: rehace los campos si cambia la lista de cámaras o algún modo; si no, solo recalcula
+function usbRefrescar() { if (usbFirma() !== USB_FIRMA || !$('#usbCuerpo').firstElementChild) usbPintar(); else usbActualizar(); }
 function pintarCamaras() {
   $('#camCards').innerHTML = Object.keys(L.cams).map(k => {
     const c = L.cams[k], m = metricasCam(k); const gp = c.grupo === 'V1' ? 'v1' : 'v2';
@@ -1853,7 +1968,7 @@ function pintarCamaras() {
     ${m.nota ? `<p class="hint">Modo ${c.modo.replace('x', '×')}: ${m.nota}.</p>` : ''}
     <div class="btns"><button class="btn" data-act="sel">Mover</button><button class="btn" data-act="ver">Ver por esta cámara</button></div></div>`;
   }).join('') + `<p class="hint">Píxeles por tarea: proyección estenopeica en el peor punto visible de cada objetivo, con el escorzo del plano o del segmento. Los umbrales del ArUco son los del plan (14 px de mínimo en OpenCV 4.6, zona fiable de 32 a 50 px; la cita no se ha podido comprobar aquí); el resto de umbrales, tamaños y supuestos no tienen fuente comprobable: SIN VALIDAR y editables en «Umbrales y supuestos de las tareas» (solo de esta sesión). El campo de visión y los mm/px son de lente ideal con el sensor «${SENSOR.de(sensorEscena()).nombre}» [SIN VALIDAR]: el real se mide en la calibración intrínseca (camera_info, F4).</p>`;
-  pintarSensor();
+  pintarSensor(); usbRefrescar();
 }
 // Selector del modelo de sensor (T1.7): cambia el campo de visión, el frustum, las miniaturas y las métricas; no mueve nada
 function pintarSensor() {
@@ -2188,7 +2303,7 @@ $('#segModoB').addEventListener('click', e => { const b = e.target.closest('butt
 $('#dVel').addEventListener('input', e => { D.vel = e.target.value / 100; $('#dVelOut').textContent = `${e.target.value} %`; });
 $('#dAmp').addEventListener('input', e => { D.amp = e.target.value / 100; $('#dAmpOut').textContent = `${fmt(+e.target.value, 1)} cm`; actualizarCheck(); });
 requestAnimationFrame(bucle);
-if (location.search.includes('prueba')) window.__g = { aplicarPedido, actualizarZona, esferasObjeto, cargaDe, BAND, bandeja, aplicarBandeja: t => aplicarBandeja(t), ladoZonas: () => ladoZonas(), comprobarPlan, llegaVertical, puntosSoltar, FRUTAS, CACHE_PLAN, poseHoriz, ejeHoriz, mundoABase, enLimites, qValida, rutaNivelada: (...a) => rutaNivelada(...a), colocacionConTransporte: (...a) => colocacionConTransporte(...a), planColocar: (...a) => planColocar(...a), zonasB, ikTCP, planAgarrePlato, planColocar, planPlatoCache, KIN_: KIN, BASES, consts: { R_AGARRE, H_BORDE }, COL: () => COL, choqueEn: (q, c) => choqueEn(q, c), obstaculos: () => obstaculos(), textoChoque: c => textoChoque(c), D, L: () => L, cam, orbit, scene, renderer, OBJ, piezas: () => piezas, simT: () => simT, CAMS, actualizarCam, actualizarAruco, actualizarPlatos, metricasCam, tareasCam, TAREAS, tareasCfg: () => TAREAS_CFG,estadoObjeto, alcance, comprobarPlan, ensayo, planAgarrePlato, holguraActual, get robot() { return robot; }, KIN, pinza, tcpMundo, zPlato, setL: l => { L = l; }, ESC, ALM, abrirEscena, codigoEscena, abrirCodigo, guardarEscena, escCam: cam, orbit, vista, CALC, calcularPlanes, planesAlDia, recalcular, orientDe, fijarOrient, orientarDesdeQuat, CAMS, seleccionar, tctl, generarYaml, ficherosRos: () => ficherosRos(), modeloExportacion: () => modeloExportacion(), cadenaPlato, cargaPlan, rutaCartesiana: (...a) => rutaCartesiana(...a), zonasB_: () => zonasB, zonaDe, qReposo, aplicarLayout, buscarAlternativa, candidatos, explicar, mostrarFalloInfo, diagnosticarPunto, LAYOUT, ESQ_L, migrarLayout, soloLectura, RNG, planificar: (...a) => planificar(...a), get CIN() { return CIN; }, get ROB() { return ROB; }, CALIBRACION, marco: () => marco(), baseAMundo: (x, y, z) => baseAMundo(x, y, z), tcpDeQ: (q, w) => tcpDeQ(q, w), pedirRobotId: id => pedirRobotId(id), ikNoConverge: (p, y, o) => ikNoConverge(p, y, o), posesTCP, volCol, calcularPerfil, radioA, PERFIL, prepararMoveJ: (...a) => prepararMoveJ(...a), semillaDe: (...a) => semillaDe(...a), otroVisible: () => otroVisible(), apartarEscena: () => apartarEscena(), perfilEscena: () => perfilEscena(), planesAlDiaDe: pf => planesAlDia(pf), validar: () => validar(), VAL, SENSOR, areaDe: c => areaDe(c), hfovDe: c => hfovDe(c), vfovDe: c => vfovDe(c), firmaVal: () => firmaVal(), valAlDia: () => valAlDia(), perfilesDe: e => perfilesDe(e), estadoParaGuardar: () => estadoParaGuardar(), bandejaBalanceo: () => bandejaBalanceo(), tocaBandejaEnBalanceo: (q, w) => tocaBandejaEnBalanceo(q, w) }; // T1.4: robot activo, su cinemática y el marco de base_link (una sola línea: build_web.sh la quita entera)
+if (location.search.includes('prueba')) window.__g = { aplicarPedido, actualizarZona, esferasObjeto, cargaDe, BAND, bandeja, aplicarBandeja: t => aplicarBandeja(t), ladoZonas: () => ladoZonas(), comprobarPlan, llegaVertical, puntosSoltar, FRUTAS, CACHE_PLAN, poseHoriz, ejeHoriz, mundoABase, enLimites, qValida, rutaNivelada: (...a) => rutaNivelada(...a), colocacionConTransporte: (...a) => colocacionConTransporte(...a), planColocar: (...a) => planColocar(...a), zonasB, ikTCP, planAgarrePlato, planColocar, planPlatoCache, KIN_: KIN, BASES, consts: { R_AGARRE, H_BORDE }, COL: () => COL, choqueEn: (q, c) => choqueEn(q, c), obstaculos: () => obstaculos(), textoChoque: c => textoChoque(c), D, L: () => L, cam, orbit, scene, renderer, OBJ, piezas: () => piezas, simT: () => simT, CAMS, actualizarCam, actualizarAruco, actualizarPlatos, metricasCam, tareasCam, TAREAS, tareasCfg: () => TAREAS_CFG, USB, usbCfg: () => USB_CFG, usbCams: () => USB_CAMS, usbLsusb: () => USB_LSUSB, estadoObjeto, alcance, comprobarPlan, ensayo, planAgarrePlato, holguraActual, get robot() { return robot; }, KIN, pinza, tcpMundo, zPlato, setL: l => { L = l; }, ESC, ALM, abrirEscena, codigoEscena, abrirCodigo, guardarEscena, escCam: cam, orbit, vista, CALC, calcularPlanes, planesAlDia, recalcular, orientDe, fijarOrient, orientarDesdeQuat, CAMS, seleccionar, tctl, generarYaml, ficherosRos: () => ficherosRos(), modeloExportacion: () => modeloExportacion(), cadenaPlato, cargaPlan, rutaCartesiana: (...a) => rutaCartesiana(...a), zonasB_: () => zonasB, zonaDe, qReposo, aplicarLayout, buscarAlternativa, candidatos, explicar, mostrarFalloInfo, diagnosticarPunto, LAYOUT, ESQ_L, migrarLayout, soloLectura, RNG, planificar: (...a) => planificar(...a), get CIN() { return CIN; }, get ROB() { return ROB; }, CALIBRACION, marco: () => marco(), baseAMundo: (x, y, z) => baseAMundo(x, y, z), tcpDeQ: (q, w) => tcpDeQ(q, w), pedirRobotId: id => pedirRobotId(id), ikNoConverge: (p, y, o) => ikNoConverge(p, y, o), posesTCP, volCol, calcularPerfil, radioA, PERFIL, prepararMoveJ: (...a) => prepararMoveJ(...a), semillaDe: (...a) => semillaDe(...a), otroVisible: () => otroVisible(), apartarEscena: () => apartarEscena(), perfilEscena: () => perfilEscena(), planesAlDiaDe: pf => planesAlDia(pf), validar: () => validar(), VAL, SENSOR, areaDe: c => areaDe(c), hfovDe: c => hfovDe(c), vfovDe: c => vfovDe(c), firmaVal: () => firmaVal(), valAlDia: () => valAlDia(), perfilesDe: e => perfilesDe(e), estadoParaGuardar: () => estadoParaGuardar(), bandejaBalanceo: () => bandejaBalanceo(), tocaBandejaEnBalanceo: (q, w) => tocaBandejaEnBalanceo(q, w) }; // T1.4: robot activo, su cinemática y el marco de base_link (una sola línea: build_web.sh la quita entera)
 fetch('ur3e-malla.json').then(r => { if (!r.ok) throw new Error(r.status); return r.json(); }).then(j => { const bin = atob(j.glb); const u8 = new Uint8Array(bin.length); for (let i = 0; i < bin.length; i++) u8[i] = bin.charCodeAt(i); new GLTFLoader().parse(u8.buffer, '', cargado, fallo); }).catch(fallo);
 function fallo(err) { $('#loading').textContent = 'No se ha podido cargar el modelo del UR3e.'; console.error(err); }
 function cargado(g) {
