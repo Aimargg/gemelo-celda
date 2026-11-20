@@ -7,14 +7,24 @@ import os from 'node:os';
 import path from 'node:path';
 
 const ENV = { ...process.env, TZ: 'UTC', LC_ALL: 'C' };
+// La referencia es GNU tar, el que extrae el paquete en el contenedor del curso (U4). En Windows, el `tar` del PATH depende de
+// desde dónde se lance: desde Git Bash (npm test) es el GNU tar de Git; desde PowerShell, el bsdtar de System32, que acaba
+// las líneas en \r\n y lista la fecha sin hora («Jan  1  1970»). Si Git for Windows está instalado, se usa siempre su GNU tar.
+const TAR = (() => {
+  if (process.platform !== 'win32') return 'tar';
+  for (const d of [process.env.ProgramFiles, process.env['ProgramFiles(x86)'], process.env.LOCALAPPDATA && path.join(process.env.LOCALAPPDATA, 'Programs')]) {
+    const f = d && path.join(d, 'Git', 'usr', 'bin', 'tar.exe'); if (f && fs.existsSync(f)) return f;
+  }
+  return 'tar';
+})();
 // tar con sus argumentos en una carpeta: { codigo, salida, error }. Sin tar en el sistema, el test falla con este mensaje.
 // En Windows, GNU tar (el de Git Bash) toma «C:\…» como un host remoto («Cannot connect to C:»): --force-local le dice que el
 // fichero es local. bsdtar no conoce esa opción y no la necesita.
 let gnu = null;
-const esGnuTar = () => gnu ??= /GNU tar/.test(spawnSync('tar', ['--version'], { encoding: 'utf8', env: ENV }).stdout || '');
+const esGnuTar = () => gnu ??= /GNU tar/.test(spawnSync(TAR, ['--version'], { encoding: 'utf8', env: ENV }).stdout || '');
 export function tar(args, cwd) {
   const extra = process.platform === 'win32' && args[0] !== '--version' && esGnuTar() ? ['--force-local'] : [];
-  const r = spawnSync('tar', [...extra, ...args], { cwd, encoding: 'utf8', env: ENV });
+  const r = spawnSync(TAR, [...extra, ...args], { cwd, encoding: 'utf8', env: ENV });
   if (r.error) throw new Error(`No se puede ejecutar el tar del sistema (la referencia de T2.6): ${r.error.message}`);
   return { codigo: r.status, salida: r.stdout, error: r.stderr };
 }
@@ -36,7 +46,7 @@ export function extraer(bytes) {
     const ficheros = new Map(), carpetas = [];
     const recorrer = rel => { for (const e of fs.readdirSync(path.join(out, rel), { withFileTypes: true }).sort((a, b) => a.name.localeCompare(b.name))) { const r = `${rel}${e.name}`; if (e.isDirectory()) { carpetas.push(`${r}/`); recorrer(`${r}/`); } else ficheros.set(r, fs.readFileSync(path.join(out, r))); } };
     recorrer('');
-    return { lista: v.salida.trim().split('\n'), nombres: t.salida.trim().split('\n'), ficheros, carpetas };
+    return { lista: v.salida.trim().split(/\r?\n/), nombres: t.salida.trim().split(/\r?\n/), ficheros, carpetas }; // \r?\n: un tar de Windows puede acabar las líneas en \r\n
   });
 }
 // Una línea de `tar -tvf` (GNU o bsdtar): permisos, tamaño, fecha y nombre

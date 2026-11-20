@@ -118,7 +118,8 @@ test('T2.6 en el artefacto: lista y descargas (C1, C2), Ver y Copiar (C4), repin
     const ver = await page.evaluate(() => { const t = document.getElementById('rosVer'); return { caja: !document.getElementById('rosVerCaja').hidden, valor: t.value, soloLectura: t.readOnly, etiqueta: document.getElementById('rosVerNombre').textContent, actual: document.querySelector('#rosLista li[aria-current="true"]').dataset.nombre }; });
     await pulsar(page, boton('celda.scene', 'copiar'));
     await esperarToast(page, 'Copiado: celda.scene');
-    const copiado = await page.evaluate(() => navigator.clipboard.readText());
+    // En Windows, el portapapeles guarda el texto con \r\n (Chromium convierte cada \n al escribir): se compara con \n
+    const copiado = await page.evaluate(() => navigator.clipboard.readText()).then(c => process.platform === 'win32' ? c.replace(/\r\n/g, '\n') : c);
     await page.evaluate(() => { navigator.clipboard.writeText = () => Promise.reject(new DOMException('sin permiso', 'NotAllowedError')); });
     await pulsar(page, boton('usb_cam/camara_cenital.yaml', 'copiar'));
     await esperarToast(page, 'Selecciona y copia con Ctrl+C');
