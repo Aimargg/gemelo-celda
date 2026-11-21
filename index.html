@@ -140,7 +140,7 @@ details.escSec summary{cursor:pointer;font-weight:600;font-size:13px}
 .tareas{display:grid;gap:7px;margin:8px 0}.tareas h4{margin:0;font-size:12.5px;font-weight:600}.tarea{display:grid;gap:2px;font-size:12.5px}
 .tarea>div{display:flex;justify-content:space-between;align-items:center;gap:8px}.tarea .hint{font-size:11.5px;overflow-wrap:anywhere}
 .usbcam,.usbbus,.usbdev{display:grid;gap:4px;font-size:12.5px;padding:8px 0;border-bottom:1px solid var(--line2)}.usbcam>div:first-child,.usbbus>div:first-child,.usbdev>span:first-child{display:flex;justify-content:space-between;align-items:center;gap:8px}
-.usbcam .hint,.usbbus .hint,.usbdev .hint{font-size:11.5px;overflow-wrap:anywhere}.usbcam input[type=number]{width:100%}.usbcam input[aria-invalid=true],#usbLsusbTxt[aria-invalid=true]{border-color:var(--bad)}
+.usbcam .hint,.usbbus .hint,.usbdev .hint{font-size:11.5px;overflow-wrap:anywhere}.usbcam input[type=number]{width:100%}.usbcam input[aria-invalid=true],#usbLsusbTxt[aria-invalid=true],#distTxt[aria-invalid=true],#distCfgCuerpo input[aria-invalid=true]{border-color:var(--bad)}
 #tabTbl input{width:100%;min-width:0;box-sizing:border-box;padding:3px 4px}#tabTbl input[aria-invalid=true]{border-color:var(--bad)}#tabTbl td{vertical-align:middle}#tabAviso[data-alineado=true]{color:var(--bad)}
 .field input[type=number]{grid-column:1 / -1;width:100%}.field input[aria-invalid=true]{border-color:var(--bad)}
 select{border:1px solid var(--line);background:var(--panel2);border-radius:6px;padding:6px 8px;width:100%}
@@ -423,6 +423,20 @@ textarea{width:100%;min-height:120px;border:1px solid var(--line);border-radius:
           <details class="escSec" id="tabCfg"><summary>Supuestos del tablero</summary>
             <p class="hint">Editables y solo de esta sesión. No tienen fuente comprobable: SIN VALIDAR.</p>
             <div id="tabCfgCuerpo"></div>
+          </details>
+        </div>
+        <div class="sec" id="distSec">
+          <h2>Distorsión de la lente <span class="tag s">SIN VALIDAR</span></h2>
+          <p class="hint">Opcional y apagada. En «Ver por esta cámara» simula la distorsión de una lente real (modelo Brown–Conrady, <code>plumb_bob</code>: D = k1, k2, p1, p2, k3) con el <code>D</code> de un <code>camera_info</code> de ROS que pegues o elijas como fichero local: el texto solo se lee aquí, no se guarda ni se envía a ninguna parte. Solo cambia la vista de esta sesión: ni la escena, ni los números del gemelo, ni lo que se exporta (el <code>camera_info</code> exportado sigue con D = 0). Se aplica el D del fichero sobre la lente ideal del gemelo: fx, fy, cx y cy del fichero se leen pero no cambian la vista. El tamaño del fichero tiene que casar con el modo de la cámara.</p>
+          <div class="row"><label class="hint" for="distCam" style="flex:none">Cámara</label><select id="distCam" style="flex:1;width:auto"></select></div>
+          <label class="chk"><input type="checkbox" id="distOn" disabled> Distorsión activada en esta cámara (necesita un camera_info cargado)</label>
+          <textarea id="distTxt" spellcheck="false" placeholder="Pega aquí el camera_info (YAML de ROS, con distortion_model: plumb_bob)"></textarea>
+          <div class="btns"><button class="btn" id="btnDistAplicar">Cargar el texto pegado</button><label class="btn" for="distFichero">Elegir un fichero…</label><input type="file" id="distFichero" accept=".yaml,.yml,.txt" hidden><button class="btn" id="btnDistRestaurar">Restaurar (apagar y quitar)</button></div>
+          <p class="hint" id="distMsg" role="status"></p>
+          <div id="distEstado"></div>
+          <details class="escSec" id="distCfg"><summary>Supuestos de la distorsión</summary>
+            <p class="hint">Editable y solo de esta sesión. El render lleva más campo que la cámara para que las esquinas distorsionadas sigan cubiertas; este es el máximo que se permite y no tiene fuente comprobable: SIN VALIDAR.</p>
+            <div id="distCfgCuerpo"></div>
           </details>
         </div>
         <div class="sec">
@@ -1498,6 +1512,165 @@ const TABLERO = (() => {
   }
 
   return { DICCIONARIO, MAX_ID, ORDEN, PARAMS, cfgDefecto, fijar, validar, esquinas, alineacion, modelo };
+})();
+// Distorsión Brown–Conrady opcional de la vista de una cámara (T4.5, D4): la función de distorsión del modelo `plumb_bob` de ROS/OpenCV
+// y su inversa numérica (Newton), la lectura de un `camera_info` de ROS pegado como texto YAML y el campo extra que tiene que tener el
+// render para que las esquinas de la imagen distorsionada sigan cubiertas. Sin DOM, sin three y sin red: solo lee el texto que se le pasa.
+// Se prueba con node:test (tests/unit/distorsion-t45.test.mjs) y se concatena en app.js con el marcador @@DISTORSION@@; el post-proceso
+// de fragmento (app.js) aplica la misma inversa en GLSL.
+// Fuentes. El estudio «gemelo-web, cámaras simuladas» no está en el repo: solo se usa lo que da la ficha de T4.5 del plan y las
+// fórmulas públicas del modelo de OpenCV (módulo calib3d, «Camera Calibration and 3D Reconstruction», modelo de distorsión) y de
+// sensor_msgs/CameraInfo de ROS, citadas aquí de memoria y sin comprobar contra la fuente. El modelo, con (x, y) = (X/Z, Y/Z) en el
+// marco de la cámara de OpenCV (x a la derecha, y hacia abajo, z al frente) y r² = x² + y²:
+//   x_d = x·(1 + k1·r² + k2·r⁴ + k3·r⁶) + 2·p1·x·y + p2·(r² + 2·x²)
+//   y_d = y·(1 + k1·r² + k2·r⁴ + k3·r⁶) + p1·(r² + 2·y²) + 2·p2·x·y        y el píxel es u = fx·x_d + cx, v = fy·y_d + cy
+// `plumb_bob` de ROS: D = [k1, k2, t1, t2, k3] (t1 = p1, t2 = p2) y K = [fx 0 cx; 0 fy cy; 0 0 1]. Lo demás (el campo extra máximo del
+// render) es SUPUESTO SIN VALIDAR y editable.
+const DISTORSION = (() => {
+  const FUENTE = 'modelo de OpenCV (calib3d) y sensor_msgs/CameraInfo de ROS: fórmulas públicas, citadas sin comprobar aquí (el estudio «gemelo-web, cámaras simuladas» no está en el repo)';
+  const SIN = 'sin fuente comprobable; SUPUESTO [SIN VALIDAR]';
+  const MARGEN_DEFECTO = 1.6, MARGEN_TOPE = 4;
+  const PARAMS = [{ id: 'margen.max', nombre: 'Campo extra máximo del render (más ancho que el de la cámara)', unidad: '× 1', valor: MARGEN_DEFECTO, origen: 'SUPUESTO', fuente: SIN, editable: true }];
+  const cfgDefecto = () => ({ margen: { max: MARGEN_DEFECTO } });
+  // Cambia el campo extra máximo (devuelve una configuración nueva); un id desconocido o un valor que no sea un número de 1 a 4 falla
+  function fijar(cfg, id, valor) {
+    if (id !== 'margen.max') throw new Error(`parámetro desconocido (${JSON.stringify(id)})`);
+    if (typeof valor !== 'number' || !Number.isFinite(valor) || valor < 1 || valor > MARGEN_TOPE) throw new Error(`«${PARAMS[0].nombre}»: ${JSON.stringify(valor)} no está entre 1 y ${MARGEN_TOPE}`);
+    return { ...cfg, margen: { ...cfg.margen, max: valor } };
+  }
+
+  const NOMBRES_D = ['k1', 'k2', 'p1 (t1)', 'p2 (t2)', 'k3'];
+  const comprobarD = D => {
+    if (!Array.isArray(D) || D.length !== 5) throw new Error('D tiene que ser [k1, k2, p1, p2, k3]');
+    D.forEach((v, i) => { if (typeof v !== 'number' || !Number.isFinite(v)) throw new Error(`${NOMBRES_D[i]}: ${typeof v === 'number' ? String(v) : JSON.stringify(v)} no es un número finito`); });
+  };
+  // Un punto normalizado (x, y) = (X/Z, Y/Z), con y hacia abajo, pasa a su punto distorsionado (modelo de arriba). D = 0 es la identidad
+  function distorsionar(D, x, y) {
+    const [k1, k2, p1, p2, k3] = D, r2 = x * x + y * y, R = 1 + r2 * (k1 + r2 * (k2 + r2 * k3));
+    return { x: x * R + 2 * p1 * x * y + p2 * (r2 + 2 * x * x), y: y * R + p1 * (r2 + 2 * y * y) + 2 * p2 * x * y };
+  }
+  // Inversa numérica: el (x, y) cuya imagen distorsionada es (xd, yd). Newton de 2 × 2 desde (xd, yd) con el jacobiano analítico:
+  //   con R = 1 + k1·r² + k2·r⁴ + k3·r⁶ y R' = dR/dr² = k1 + 2·k2·r² + 3·k3·r⁴:
+  //   ∂x_d/∂x = R + 2·x²·R' + 2·p1·y + 6·p2·x ; ∂x_d/∂y = ∂y_d/∂x = 2·x·y·R' + 2·p1·x + 2·p2·y ; ∂y_d/∂y = R + 2·y²·R' + 6·p1·y + 2·p2·x
+  // Devuelve { x, y, ok }: ok es falso si no converge (un D que pliega la imagen: no tiene inversa en ese punto) o sale un valor no finito
+  function inversa(D, xd, yd, tol = 1e-12, maxIter = 60) {
+    const [k1, k2, p1, p2, k3] = D; let x = xd, y = yd;
+    for (let i = 0; i <= maxIter; i++) {
+      const r2 = x * x + y * y, R = 1 + r2 * (k1 + r2 * (k2 + r2 * k3)), f = distorsionar(D, x, y), ex = f.x - xd, ey = f.y - yd;
+      if (!Number.isFinite(ex) || !Number.isFinite(ey)) return { x, y, ok: false };
+      if (Math.hypot(ex, ey) < tol) return { x, y, ok: true };
+      if (i === maxIter) break;
+      const Rp = k1 + r2 * (2 * k2 + 3 * k3 * r2), jxx = R + 2 * x * x * Rp + 2 * p1 * y + 6 * p2 * x, jxy = 2 * x * y * Rp + 2 * p1 * x + 2 * p2 * y, jyy = R + 2 * y * y * Rp + 6 * p1 * y + 2 * p2 * x, det = jxx * jyy - jxy * jxy;
+      if (!Number.isFinite(det) || Math.abs(det) < 1e-14) return { x, y, ok: false };
+      x -= (jyy * ex - jxy * ey) / det; y -= (jxx * ey - jxy * ex) / det;
+    }
+    return { x, y, ok: false };
+  }
+
+  // Campo que tiene que cubrir el render para pintar la imagen distorsionada: el de la cámara es ±tanX × ±tanY (en x/z e y/z; el
+  // borde de la imagen) y cada punto de esa imagen sale de un punto del render, la inversa. La extensión máxima de la imagen de un
+  // rectángulo por una aplicación continua e inyectiva se alcanza en su borde: se recorre el borde (33 puntos por lado) y se
+  // comprueba una rejilla interior de 9 × 9 (que todo tenga inversa). Si hace falta más campo que `margenMax` veces el de la
+  // cámara, el render se queda en ese máximo y `cubre` es falso (con su motivo): las esquinas quedarían sin imagen.
+  function campoNecesario(D, tanX, tanY, margenMax) {
+    comprobarD(D);
+    if (![tanX, tanY, margenMax].every(v => Number.isFinite(v) && v > 0)) throw new Error('tanX, tanY y el margen máximo tienen que ser positivos');
+    const pts = [], N = 32;
+    for (let i = 0; i <= N; i++) { const t = -1 + 2 * i / N; pts.push([t * tanX, -tanY], [t * tanX, tanY], [-tanX, t * tanY], [tanX, t * tanY]); }
+    for (let i = -4; i <= 4; i++) for (let j = -4; j <= 4; j++) pts.push([i / 4 * tanX, j / 4 * tanY]);
+    let nx = tanX, ny = tanY;
+    for (const [xd, yd] of pts) {
+      const r = inversa(D, xd, yd);
+      if (!r.ok) return { tanX: tanX * margenMax, tanY: tanY * margenMax, razonX: margenMax, razonY: margenMax, cubre: false, motivo: `la distorsión no tiene inversa en el punto (${xd.toFixed(3)}, ${yd.toFixed(3)}) de la imagen: ese D pliega la imagen` };
+      nx = Math.max(nx, Math.abs(r.x)); ny = Math.max(ny, Math.abs(r.y));
+    }
+    const rx = nx / tanX, ry = ny / tanY, cubre = rx <= margenMax && ry <= margenMax, PAD = 1.01; // 1 % de holgura contra el redondeo del muestreo
+    const razon = r => r <= 1 ? 1 : Math.min(r * PAD, margenMax), razonX = razon(rx), razonY = razon(ry); // sin distorsión (D = 0) el render es el de la cámara
+    const motivo = cubre ? '' : `las esquinas necesitan ×${Math.max(rx, ry).toFixed(2).replace('.', ',')} de campo y el máximo declarado es ×${margenMax.toFixed(2).replace('.', ',')}: parte de la imagen quedaría sin render`;
+    return { tanX: tanX * razonX, tanY: tanY * razonY, razonX, razonY, cubre, motivo };
+  }
+
+  // ---------- Lectura del camera_info (YAML de camera_calibration_parsers: image_width, image_height, camera_matrix, …) ----------
+  const MAX_TEXTO = 200000;
+  const RE_NUM = /^[-+]?(\d+\.?\d*|\.\d+)([eE][-+]?\d+)?$/;
+  // Valor suelto: entero o real, .nan y .inf de YAML, o texto (con o sin comillas)
+  function escalar(s) {
+    s = s.trim();
+    if (/^'.*'$/.test(s) || /^".*"$/.test(s)) return s.slice(1, -1);
+    if (RE_NUM.test(s)) return Number(s);
+    if (/^[-+]?\.(nan|inf)$/i.test(s)) return /nan/i.test(s) ? NaN : (s[0] === '-' ? -Infinity : Infinity);
+    return s;
+  }
+  // Quita el comentario de una línea (un # al principio o tras un espacio, fuera de comillas)
+  function sinComentario(l) {
+    let q = '';
+    for (let i = 0; i < l.length; i++) { const c = l[i]; if (q) { if (c === q) q = ''; } else if (c === '\'' || c === '"') q = c; else if (c === '#' && (i === 0 || /\s/.test(l[i - 1]))) return l.slice(0, i); }
+    return l;
+  }
+  // Lista de flujo [a, b, …] ya sin comentarios, de una o de varias líneas
+  function listaFlujo(s, n) {
+    if (!/^\[.*\]$/s.test(s)) throw new Error(`línea ${n}: se esperaba una lista [a, b, …] y hay «${s.slice(0, 40)}»`);
+    const c = s.slice(1, -1).trim(); return c === '' ? [] : c.split(',').map(escalar);
+  }
+  // Subconjunto de YAML que usa un camera_info: «clave: valor», «clave:» con un mapa sangrado de «clave: valor» y listas de flujo
+  // (también partidas en varias líneas) o de bloque («- valor»). Devuelve un objeto; una línea que no encaja falla con su número
+  function leerYaml(texto) {
+    const L = texto.replace(/^﻿/, '').split(/\r?\n/).map((l, i) => ({ n: i + 1, sang: l.length - l.trimStart().length, t: sinComentario(l).trimEnd().trim() })).filter(l => l.t !== '' && l.t !== '---' && !/^%/.test(l.t) && l.t !== '...');
+    let i = 0;
+    function mapa(sang) {
+      const o = {};
+      while (i < L.length && L[i].sang >= sang) {
+        const l = L[i]; if (l.sang !== sang) throw new Error(`línea ${l.n}: sangría inesperada`);
+        const m = /^([A-Za-z_][\w.-]*):(?:\s+(.*))?$/.exec(l.t); if (!m) throw new Error(`línea ${l.n}: no es «clave: valor» (${l.t.slice(0, 40)})`);
+        if (Object.hasOwn(o, m[1])) throw new Error(`línea ${l.n}: la clave «${m[1]}» está repetida`);
+        i++;
+        if (m[2] === undefined || m[2] === '') {
+          if (i < L.length && L[i].sang > sang) {
+            if (L[i].t.startsWith('- ') || L[i].t === '-') { const v = []; while (i < L.length && L[i].sang > sang && (L[i].t.startsWith('- ') || L[i].t === '-')) { v.push(escalar(L[i].t.slice(1))); i++; } o[m[1]] = v; }
+            else o[m[1]] = mapa(L[i].sang);
+          } else o[m[1]] = null;
+        } else if (m[2].startsWith('[')) {
+          let s = m[2], n0 = l.n; while (!s.trimEnd().endsWith(']')) { if (i >= L.length) throw new Error(`línea ${n0}: la lista no se cierra con «]»`); s += ' ' + L[i].t; i++; }
+          o[m[1]] = listaFlujo(s.trim(), n0);
+        } else o[m[1]] = escalar(m[2]);
+      }
+      return o;
+    }
+    const raiz = mapa(L.length ? L[0].sang : 0);
+    if (i < L.length) throw new Error(`línea ${L[i].n}: sangría inesperada`);
+    return raiz;
+  }
+  const entero = (v, que) => {
+    if (v === undefined) throw new Error(`falta ${que}`);
+    if (typeof v !== 'number' || !Number.isInteger(v) || v <= 0) throw new Error(`${que}: ${typeof v === 'number' ? String(v) : JSON.stringify(v)} no es un entero positivo`);
+    return v;
+  };
+  // Una matriz de camera_info: { rows, cols, data } con el tamaño pedido y todo finito
+  function matriz(o, clave, rows, cols) {
+    if (o === undefined || o === null || typeof o !== 'object' || Array.isArray(o)) throw new Error(`falta «${clave}» (rows, cols y data)`);
+    if (o.rows !== rows || o.cols !== cols) throw new Error(`${clave}: tiene que ser de ${rows} × ${cols} y dice ${JSON.stringify(o.rows)} × ${JSON.stringify(o.cols)}`);
+    if (!Array.isArray(o.data) || o.data.length !== rows * cols) throw new Error(`${clave}: data tiene ${Array.isArray(o.data) ? o.data.length : 'ningún'} valores y una matriz de ${rows} × ${cols} lleva ${rows * cols}`);
+    o.data.forEach((v, i) => { if (typeof v !== 'number' || !Number.isFinite(v)) throw new Error(`${clave}: data[${i}] = ${typeof v === 'number' ? String(v) : JSON.stringify(v)} no es un número finito`); });
+    return o.data.slice();
+  }
+  // Lee el texto de un camera_info. modo = { w, h } (opcional): el de la cámara a la que se aplicaría; si no coincide con image_width ×
+  // image_height se rechaza. Solo `plumb_bob`. Devuelve { nombre, w, h, K, D: [k1, k2, p1, p2, k3] }; cualquier fallo es un Error con su motivo
+  function leerCameraInfo(texto, modo) {
+    if (typeof texto !== 'string' || texto.trim() === '') throw new Error('el camera_info está vacío');
+    if (texto.length > MAX_TEXTO) throw new Error(`el texto pasa de ${MAX_TEXTO} caracteres: no es un camera_info`);
+    const o = leerYaml(texto);
+    const w = entero(o.image_width, 'image_width'), h = entero(o.image_height, 'image_height');
+    const modelo = o.distortion_model;
+    if (modelo === undefined) throw new Error('falta distortion_model');
+    if (modelo !== 'plumb_bob') throw new Error(`distortion_model ${JSON.stringify(modelo)} no está soportado: solo plumb_bob (D = k1, k2, t1, t2, k3)`);
+    const K = matriz(o.camera_matrix, 'camera_matrix', 3, 3), D = matriz(o.distortion_coefficients, 'distortion_coefficients', 1, 5);
+    if (modo && (modo.w !== w || modo.h !== h)) throw new Error(`el camera_info es de ${w} × ${h} y el modo de la cámara es ${modo.w} × ${modo.h}: no coincide`);
+    return { nombre: typeof o.camera_name === 'string' ? o.camera_name : '', w, h, K, D, modelo };
+  }
+  const esNula = D => D.every(v => v === 0);
+
+  const api = { FUENTE, SIN, PARAMS, MARGEN_DEFECTO, MARGEN_TOPE, cfgDefecto, fijar, distorsionar, inversa, campoNecesario, leerYaml, leerCameraInfo, esNula };
+  return api;
 })();
 // Origen de cada valor exportable (T2.1, D8, I7): la única fuente de su tipo (MEDIDO, FABRICANTE o SUPUESTO), del texto y
 // la fuente que enseña la tabla del panel «Datos» y del comentario corto que lleva en los ficheros exportados. Lo leen
@@ -4785,6 +4958,132 @@ $('#tabCfgCuerpo').addEventListener('input', e => {
 });
 $('#btnTabRestaurar').addEventListener('click', () => { TAB_CFG = TABLERO.cfgDefecto(); TAB_M = tabInicial(); $('#tabVerCaja').hidden = true; pintarTabCfg(); tabPintar(); });
 pintarTabCfg(); tabPintar();
+// Distorsión Brown–Conrady de «Ver por esta cámara» (T4.5, src/distorsion.js): DESACTIVADA por defecto. Con ella apagada el render es el de
+// siempre (no se crea ningún recurso de three). Encendida, la escena se pinta a una textura con más campo que la cámara y un fragmento
+// la remuestrea con la inversa del modelo (Newton, como DISTORSION.inversa). Todo es de la sesión: no se guarda en la escena (I1, I2),
+// no cambia L ni ningún número del gemelo ni lo que exporta camera_info (D = 0, I7) y el texto pegado solo se lee (I4)
+let DIST_CFG = DISTORSION.cfgDefecto(), DIST_FIRMA = '';
+const DIST_CAMS = {}; // k → { activa, info (camera_info leído), plan (campo del render, en caché) }
+const distEst = k => DIST_CAMS[k] || (DIST_CAMS[k] = { activa: false, info: null, plan: null });
+let DIST_R = null;
+const DIST_FS = `precision highp float;
+uniform sampler2D tDiffuse; uniform vec3 uK; uniform vec2 uP; uniform vec2 uOut; uniform vec2 uIn; varying vec2 vUv;
+vec2 dist(vec2 p) { float r2 = dot(p, p), R = 1.0 + r2 * (uK.x + r2 * (uK.y + r2 * uK.z)); return vec2(p.x * R + 2.0 * uP.x * p.x * p.y + uP.y * (r2 + 2.0 * p.x * p.x), p.y * R + uP.x * (r2 + 2.0 * p.y * p.y) + 2.0 * uP.y * p.x * p.y); }
+void main() {
+  // punto distorsionado de este píxel (x a la derecha, y hacia abajo, como OpenCV) y su inversa por Newton con el jacobiano analítico
+  vec2 d = vec2((2.0 * vUv.x - 1.0) * uOut.x, (1.0 - 2.0 * vUv.y) * uOut.y), p = d;
+  for (int i = 0; i < 24; i++) {
+    float r2 = dot(p, p), R = 1.0 + r2 * (uK.x + r2 * (uK.y + r2 * uK.z)), Rp = uK.x + r2 * (2.0 * uK.y + 3.0 * uK.z * r2);
+    vec2 e = dist(p) - d;
+    float jxx = R + 2.0 * p.x * p.x * Rp + 2.0 * uP.x * p.y + 6.0 * uP.y * p.x, jxy = 2.0 * p.x * p.y * Rp + 2.0 * uP.x * p.x + 2.0 * uP.y * p.y, jyy = R + 2.0 * p.y * p.y * Rp + 6.0 * uP.x * p.y + 2.0 * uP.y * p.x, det = jxx * jyy - jxy * jxy;
+    if (abs(det) < 1e-9) break;
+    p -= vec2(jyy * e.x - jxy * e.y, jxx * e.y - jxy * e.x) / det;
+  }
+  vec2 tc = vec2(0.5 + 0.5 * p.x / uIn.x, 0.5 - 0.5 * p.y / uIn.y);
+  if (length(dist(p) - d) > 1e-4 || tc.x < 0.0 || tc.x > 1.0 || tc.y < 0.0 || tc.y > 1.0) gl_FragColor = vec4(0.0, 0.0, 0.0, 1.0); // sin inversa o fuera del render: negro
+  else gl_FragColor = texture2D(tDiffuse, tc);
+  #include <tonemapping_fragment>
+  #include <colorspace_fragment>
+}`;
+function distRecursos() {
+  if (DIST_R) return DIST_R;
+  const rt = new THREE.WebGLRenderTarget(4, 4, { type: THREE.HalfFloatType, samples: 4 }); // sin tonemapping y en lineal: lo aplica el fragmento
+  const mat = new THREE.ShaderMaterial({ uniforms: { tDiffuse: { value: rt.texture }, uK: { value: new THREE.Vector3() }, uP: { value: new THREE.Vector2() }, uOut: { value: new THREE.Vector2() }, uIn: { value: new THREE.Vector2() } }, vertexShader: 'varying vec2 vUv; void main() { vUv = uv; gl_Position = vec4(position.xy, 0.0, 1.0); }', fragmentShader: DIST_FS, depthTest: false, depthWrite: false });
+  const quad = new THREE.Mesh(new THREE.PlaneGeometry(2, 2), mat); quad.frustumCulled = false;
+  const escena = new THREE.Scene(); escena.add(quad);
+  return DIST_R = { rt, mat, escena, cam: new THREE.PerspectiveCamera(), camQuad: new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1) };
+}
+// El campo del render de la cámara k con su distorsión, o null si no hay distorsión que aplicar (apagada, sin camera_info o con un
+// camera_info cuyo tamaño ya no casa con el modo de la cámara). En caché mientras no cambien D, el campo de la cámara ni el máximo
+function distPlan(k) {
+  const st = DIST_CAMS[k]; if (!st || !st.activa || !st.info) return null;
+  const M = MODOS[L.cams[k].modo]; if (st.info.w !== M.w || st.info.h !== M.h) return null;
+  const c = CAMS[k].cam, tanY = Math.tan(c.fov * D2R / 2), tanX = tanY * c.aspect, firma = `${st.info.D.join()}|${tanX}|${tanY}|${DIST_CFG.margen.max}`;
+  if (!st.plan || st.plan.firma !== firma) st.plan = { firma, D: st.info.D, tanOutX: tanX, tanOutY: tanY, ...DISTORSION.campoNecesario(st.info.D, tanX, tanY, DIST_CFG.margen.max) };
+  return st.plan;
+}
+// Pinta la vista de la cámara c (de ancho w y alto h en px de CSS) con la distorsión del plan: la escena, con el campo ancho del plan, a una textura
+// y de ella al destino (la pantalla, con su viewport y su tijera, o la textura `destino`)
+function distDibujar(c, dp, w, h, destino) {
+  const R = distRecursos(), pr = destino ? 1 : renderer.getPixelRatio(), max = renderer.capabilities.maxTextureSize, A = R.cam, D = dp.D;
+  const tw = clamp(Math.ceil(w * pr * dp.razonX), 2, max), th = clamp(Math.ceil(h * pr * dp.razonY), 2, max);
+  if (R.rt.width !== tw || R.rt.height !== th) R.rt.setSize(tw, th);
+  A.fov = Math.atan(dp.tanY) * 2 * R2D; A.aspect = dp.tanX / dp.tanY; A.near = c.near; A.far = c.far; A.layers.mask = c.layers.mask; A.updateProjectionMatrix();
+  c.updateMatrixWorld(true); c.matrixWorld.decompose(A.position, A.quaternion, A.scale); A.updateMatrixWorld(true);
+  renderer.setRenderTarget(R.rt); renderer.clear(); renderer.render(scene, A);
+  const u = R.mat.uniforms; u.uK.value.set(D[0], D[1], D[4]); u.uP.value.set(D[2], D[3]); u.uOut.value.set(dp.tanOutX, dp.tanOutY); u.uIn.value.set(dp.tanX, dp.tanY);
+  renderer.setRenderTarget(destino || null); if (destino) renderer.clear();
+  renderer.render(R.escena, R.camQuad); renderer.setRenderTarget(null);
+}
+// Para las pruebas: la imagen distorsionada de la cámara k de `ancho` px de ancho, en RGBA y con la fila 0 arriba
+function distImagen(k, ancho) {
+  const dp = distPlan(k); if (!dp) throw new Error(`la distorsión no está activa en la cámara ${k}`);
+  const c = CAMS[k].cam, w = Math.round(ancho), h = Math.round(ancho / c.aspect), out = new THREE.WebGLRenderTarget(w, h, { depthBuffer: false });
+  distDibujar(c, dp, w, h, out); const buf = new Uint8Array(w * h * 4), arriba = new Uint8Array(w * h * 4); renderer.readRenderTargetPixels(out, 0, 0, w, h, buf); out.dispose();
+  for (let y = 0; y < h; y++) arriba.set(buf.subarray((h - 1 - y) * w * 4, (h - y) * w * 4), y * w * 4);
+  return { w, h, dato: arriba };
+}
+const distNum = x => String(+x.toPrecision(6)).replace('.', ','), distRazon = x => String(+x.toFixed(2)).replace('.', ',');
+const distSufijo = k => distPlan(k) ? ' · con la distorsión del camera_info' : '';
+const distFirma = () => JSON.stringify(Object.keys(L.cams).map(k => [k, L.cams[k].nombre, L.cams[k].modo]));
+// La línea de estado de cada cámara: camera_info cargado, D, campo del render y avisos; con data-* para las pruebas
+function distTexto(k) {
+  const st = distEst(k), c = L.cams[k], M = MODOS[c.modo], nom = usbEsc(c.nombre.toLowerCase());
+  if (!st.info) return `<div class="usbcam distcam" data-cam="${k}" data-cargada="false" data-activa="false"><div><strong>Cámara ${nom}</strong><span class="pill">sin camera_info</span></div></div>`;
+  const i = st.info, casa = i.w === M.w && i.h === M.h, dp = distPlan(k), D = i.D;
+  const rotulo = !casa ? `<span class="pill bad">no casa con el modo</span>` : st.activa ? `<span class="pill ok">activada</span>` : `<span class="pill">apagada</span>`;
+  const avisos = [!casa ? `El camera_info es de ${i.w} × ${i.h} y la cámara está en ${M.w} × ${M.h}: no se aplica hasta que coincidan.` : '', dp && !dp.cubre ? `Aviso: ${dp.motivo}.` : ''].filter(Boolean);
+  return `<div class="usbcam distcam" data-cam="${k}" data-cargada="true" data-activa="${st.activa && casa}" data-d="${D.join(',')}" data-razon="${dp ? dp.razonX + ',' + dp.razonY : ''}" data-cubre="${dp ? dp.cubre : ''}"><div><strong>Cámara ${nom}</strong>${rotulo}</div>`
+    + `<span class="hint">camera_info${i.nombre ? ' «' + usbEsc(i.nombre) + '»' : ''} de ${i.w} × ${i.h}: k1 = ${distNum(D[0])} · k2 = ${distNum(D[1])} · p1 = ${distNum(D[2])} · p2 = ${distNum(D[3])} · k3 = ${distNum(D[4])}${DISTORSION.esNula(D) ? ' (D = 0: lente ideal)' : ''} ${usbTag('del fichero cargado', 'f')}</span>`
+    + (dp ? `<span class="hint">Render con ×${distRazon(dp.razonX)} de ancho y ×${distRazon(dp.razonY)} de alto de campo (máximo ×${distRazon(DIST_CFG.margen.max)}) ${usbSupuesto()}</span>` : '') + avisos.map(a => `<span class="hint" role="alert">${usbEsc(a)}</span>`).join('') + '</div>';
+}
+function distActualizar() {
+  const k = $('#distCam').value, st = k && L.cams[k] ? distEst(k) : null, on = $('#distOn');
+  on.disabled = !st || !st.info; on.checked = !!(st && st.activa);
+  $('#distEstado').innerHTML = Object.keys(L.cams).map(distTexto).join('');
+  if (verCam) $('#camModeTxt').textContent = `Viendo por la cámara ${L.cams[verCam].nombre.toLowerCase()}${distSufijo(verCam)}`;
+}
+// Rehace la lista de cámaras si cambian sus nombres o modos (pintarCamaras lo llama); si no, solo el estado
+function distRefrescar() {
+  if (distFirma() === DIST_FIRMA && $('#distCam').options.length) { distActualizar(); return; }
+  DIST_FIRMA = distFirma(); const sel = $('#distCam'), antes = sel.value;
+  sel.innerHTML = Object.keys(L.cams).map(k => `<option value="${k}">Cámara ${usbEsc(L.cams[k].nombre.toLowerCase())} · ${MODOS[L.cams[k].modo].w} × ${MODOS[L.cams[k].modo].h}</option>`).join('');
+  if (L.cams[antes]) sel.value = antes; distActualizar();
+}
+// Carga un camera_info para la cámara elegida; si el texto no vale se dice por qué y no cambia nada
+function distCargar(texto) {
+  const k = $('#distCam').value, msg = $('#distMsg'), txt = $('#distTxt'); if (!k || !L.cams[k]) return;
+  try {
+    const info = DISTORSION.leerCameraInfo(texto, MODOS[L.cams[k].modo]), st = distEst(k); st.info = info; st.plan = null;
+    txt.removeAttribute('aria-invalid'); msg.setAttribute('role', 'status');
+    msg.textContent = `Cargado el camera_info${info.nombre ? ' «' + info.nombre + '»' : ''} para la cámara ${L.cams[k].nombre.toLowerCase()}: ${info.w} × ${info.h}, plumb_bob. ${DISTORSION.esNula(info.D) ? 'D = 0: la imagen sale sin distorsión. ' : ''}Marca «Distorsión activada» para verla.`;
+  } catch (e) { txt.setAttribute('aria-invalid', 'true'); msg.setAttribute('role', 'alert'); msg.textContent = `No se ha aplicado nada: ${e.message}`; }
+  distActualizar();
+}
+$('#distCam').addEventListener('change', distActualizar);
+$('#distOn').addEventListener('change', e => { const k = $('#distCam').value; if (!k || !distEst(k).info) { e.target.checked = false; return; } distEst(k).activa = e.target.checked; distActualizar(); });
+$('#btnDistAplicar').addEventListener('click', () => distCargar($('#distTxt').value));
+$('#distFichero').addEventListener('change', async e => {
+  const f = e.target.files[0]; if (!f) return;
+  if (f.size > 200000) { $('#distTxt').setAttribute('aria-invalid', 'true'); $('#distMsg').setAttribute('role', 'alert'); $('#distMsg').textContent = `No se ha aplicado nada: «${f.name}» pasa de 200000 bytes: no es un camera_info`; e.target.value = ''; return; }
+  const t = await f.text(); $('#distTxt').value = t; e.target.value = ''; distCargar(t);
+});
+$('#btnDistRestaurar').addEventListener('click', () => {
+  for (const k of Object.keys(DIST_CAMS)) delete DIST_CAMS[k];
+  DIST_CFG = DISTORSION.cfgDefecto(); $('#distTxt').value = ''; $('#distTxt').removeAttribute('aria-invalid'); $('#distMsg').textContent = ''; $('#distMsg').setAttribute('role', 'status'); pintarDistCfg(); distActualizar();
+});
+function pintarDistCfg() {
+  $('#distCfgCuerpo').innerHTML = DISTORSION.PARAMS.map(p => {
+    const [g, n] = p.id.split('.');
+    return `<div class="field"><label for="dc_${p.id}" title="${usbEsc(p.fuente)}">${usbEsc(p.nombre)} <span class="tag s">SUPUESTO · SIN VALIDAR</span></label><output>${usbEsc(p.unidad)}</output><input type="number" id="dc_${p.id}" min="1" max="${DISTORSION.MARGEN_TOPE}" step="any" value="${DIST_CFG[g][n]}"></div>`;
+  }).join('');
+}
+$('#distCfgCuerpo').addEventListener('input', e => {
+  const id = e.target.id.startsWith('dc_') ? e.target.id.slice(3) : null; if (!id) return;
+  try { DIST_CFG = DISTORSION.fijar(DIST_CFG, id, e.target.valueAsNumber); e.target.removeAttribute('aria-invalid'); e.target.removeAttribute('title'); } catch (err) { e.target.setAttribute('aria-invalid', 'true'); e.target.title = err.message; return; }
+  distActualizar();
+});
+pintarDistCfg(); distRefrescar();
 // pintarCamaras lo llama: rehace los campos si cambia la lista de cámaras o algún modo; si no, solo recalcula
 function usbRefrescar() { if (usbFirma() !== USB_FIRMA || !$('#usbCuerpo').firstElementChild) usbPintar(); else usbActualizar(); }
 function pintarCamaras() {
@@ -4804,7 +5103,7 @@ function pintarCamaras() {
     ${m.nota ? `<p class="hint">Modo ${c.modo.replace('x', '×')}: ${m.nota}.</p>` : ''}
     <div class="btns"><button class="btn" data-act="sel">Mover</button><button class="btn" data-act="ver">Ver por esta cámara</button></div></div>`;
   }).join('') + `<p class="hint">Píxeles por tarea: proyección estenopeica en el peor punto visible de cada objetivo, con el escorzo del plano o del segmento. Los umbrales del ArUco son los del plan (14 px de mínimo en OpenCV 4.6, zona fiable de 32 a 50 px; la cita no se ha podido comprobar aquí); el resto de umbrales, tamaños y supuestos no tienen fuente comprobable: SIN VALIDAR y editables en «Umbrales y supuestos de las tareas» (solo de esta sesión). El campo de visión y los mm/px son de lente ideal con el sensor «${SENSOR.de(sensorEscena()).nombre}» [SIN VALIDAR]: el real se mide en la calibración intrínseca (camera_info, F4).</p>`;
-  pintarSensor(); usbRefrescar();
+  pintarSensor(); usbRefrescar(); distRefrescar();
 }
 // Selector del modelo de sensor (T1.7): cambia el campo de visión, el frustum, las miniaturas y las métricas; no mueve nada
 function pintarSensor() {
@@ -4822,7 +5121,7 @@ $('#camCards').addEventListener('input', e => {
   if (t === 'f') L.cams[k].f = +e.target.value; if (t === 'm') L.cams[k].modo = e.target.value;
   actualizarCam(k); guardarLocal(); clearTimeout(pintarCamaras._t); pintarCamaras._t = setTimeout(pintarCamaras, 120);
 });
-$('#camCards').addEventListener('click', e => { const b = e.target.closest('button[data-act]'); if (!b) return; const k = b.closest('[data-cam]').dataset.cam; if (b.dataset.act === 'sel') { $$('.tabs button')[0].click(); seleccionar('cam:' + k); } else { verCam = k; $('#camMode').hidden = false; $('#camModeTxt').textContent = `Viendo por la cámara ${L.cams[k].nombre.toLowerCase()}`; pintarPip(); } });
+$('#camCards').addEventListener('click', e => { const b = e.target.closest('button[data-act]'); if (!b) return; const k = b.closest('[data-cam]').dataset.cam; if (b.dataset.act === 'sel') { $$('.tabs button')[0].click(); seleccionar('cam:' + k); } else { verCam = k; $('#camMode').hidden = false; $('#camModeTxt').textContent = `Viendo por la cámara ${L.cams[k].nombre.toLowerCase()}${distSufijo(k)}`; pintarPip(); } });
 
 // ======================= Alcance: tabla y gráfica =======================
 function actualizarTablaAlcance() {
@@ -5450,7 +5749,7 @@ function render() {
   renderer.setScissorTest(false); renderer.setViewport(0, 0, W, H); renderer.clear();
   if (verCam) {
     const c = CAMS[verCam].cam; const ar = c.aspect; let w = W, h = W / ar; if (h > H) { h = H; w = H * ar; }
-    renderer.setScissorTest(true); renderer.setViewport((W - w) / 2, (H - h) / 2, w, h); renderer.setScissor((W - w) / 2, (H - h) / 2, w, h); renderer.clear(); const tv = tctl.visible; tctl.visible = false; renderer.render(scene, c); tctl.visible = tv; renderer.setScissorTest(false);
+    renderer.setScissorTest(true); renderer.setViewport((W - w) / 2, (H - h) / 2, w, h); renderer.setScissor((W - w) / 2, (H - h) / 2, w, h); renderer.clear(); const tv = tctl.visible; tctl.visible = false; const dp = distPlan(verCam); if (dp) distDibujar(c, dp, w, h, null); else renderer.render(scene, c); tctl.visible = tv; renderer.setScissorTest(false); // con la distorsión de T4.5 activada, a través de su post-proceso
     labels.domElement.style.visibility = 'hidden'; return;
   }
   labels.domElement.style.visibility = ''; renderer.render(scene, cam); labels.render(scene, cam);

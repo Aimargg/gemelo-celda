@@ -20,6 +20,7 @@ export const NIVELES = {
     'tests/e2e/datos.test.mjs',             // I7: posiciones.yaml y la tabla de fuentes byte a byte (T2.1), red de T2.2–T2.5
     'tests/e2e/deuda-f2.test.mjs',          // T2.7: zonas de plan en la demo y textos raros en posiciones.yaml (DT35), capa del otro robot (DT31) y #btnCalc (DT41)
     'tests/e2e/determinismo.test.mjs',      // I6 con «gemelo» (A, B, A'), sin reintento de semilla (D5) y el banco de ensayo
+    'tests/e2e/distorsion.test.mjs',        // T4.5: distorsión Brown–Conrady opcional: apagada = igual (C3), píxel de un punto conocido = la fórmula (C4), panel en los dos destinos (C5)
     'tests/e2e/escenas-claude.test.mjs',    // escenas en el almacén de claude.ai (D2)
     'tests/e2e/escenas-firestore.test.mjs', // I2: escenas con el simulacro de Firestore y sus reglas
     'tests/e2e/escenas-v8.test.mjs',        // I1: las tres escenas v8 de referencia

@@ -139,7 +139,7 @@ details.escSec summary{cursor:pointer;font-weight:600;font-size:13px}
 .tareas{display:grid;gap:7px;margin:8px 0}.tareas h4{margin:0;font-size:12.5px;font-weight:600}.tarea{display:grid;gap:2px;font-size:12.5px}
 .tarea>div{display:flex;justify-content:space-between;align-items:center;gap:8px}.tarea .hint{font-size:11.5px;overflow-wrap:anywhere}
 .usbcam,.usbbus,.usbdev{display:grid;gap:4px;font-size:12.5px;padding:8px 0;border-bottom:1px solid var(--line2)}.usbcam>div:first-child,.usbbus>div:first-child,.usbdev>span:first-child{display:flex;justify-content:space-between;align-items:center;gap:8px}
-.usbcam .hint,.usbbus .hint,.usbdev .hint{font-size:11.5px;overflow-wrap:anywhere}.usbcam input[type=number]{width:100%}.usbcam input[aria-invalid=true],#usbLsusbTxt[aria-invalid=true]{border-color:var(--bad)}
+.usbcam .hint,.usbbus .hint,.usbdev .hint{font-size:11.5px;overflow-wrap:anywhere}.usbcam input[type=number]{width:100%}.usbcam input[aria-invalid=true],#usbLsusbTxt[aria-invalid=true],#distTxt[aria-invalid=true],#distCfgCuerpo input[aria-invalid=true]{border-color:var(--bad)}
 #tabTbl input{width:100%;min-width:0;box-sizing:border-box;padding:3px 4px}#tabTbl input[aria-invalid=true]{border-color:var(--bad)}#tabTbl td{vertical-align:middle}#tabAviso[data-alineado=true]{color:var(--bad)}
 .field input[type=number]{grid-column:1 / -1;width:100%}.field input[aria-invalid=true]{border-color:var(--bad)}
 select{border:1px solid var(--line);background:var(--panel2);border-radius:6px;padding:6px 8px;width:100%}
@@ -422,6 +422,20 @@ textarea{width:100%;min-height:120px;border:1px solid var(--line);border-radius:
           <details class="escSec" id="tabCfg"><summary>Supuestos del tablero</summary>
             <p class="hint">Editables y solo de esta sesión. No tienen fuente comprobable: SIN VALIDAR.</p>
             <div id="tabCfgCuerpo"></div>
+          </details>
+        </div>
+        <div class="sec" id="distSec">
+          <h2>Distorsión de la lente <span class="tag s">SIN VALIDAR</span></h2>
+          <p class="hint">Opcional y apagada. En «Ver por esta cámara» simula la distorsión de una lente real (modelo Brown–Conrady, <code>plumb_bob</code>: D = k1, k2, p1, p2, k3) con el <code>D</code> de un <code>camera_info</code> de ROS que pegues o elijas como fichero local: el texto solo se lee aquí, no se guarda ni se envía a ninguna parte. Solo cambia la vista de esta sesión: ni la escena, ni los números del gemelo, ni lo que se exporta (el <code>camera_info</code> exportado sigue con D = 0). Se aplica el D del fichero sobre la lente ideal del gemelo: fx, fy, cx y cy del fichero se leen pero no cambian la vista. El tamaño del fichero tiene que casar con el modo de la cámara.</p>
+          <div class="row"><label class="hint" for="distCam" style="flex:none">Cámara</label><select id="distCam" style="flex:1;width:auto"></select></div>
+          <label class="chk"><input type="checkbox" id="distOn" disabled> Distorsión activada en esta cámara (necesita un camera_info cargado)</label>
+          <textarea id="distTxt" spellcheck="false" placeholder="Pega aquí el camera_info (YAML de ROS, con distortion_model: plumb_bob)"></textarea>
+          <div class="btns"><button class="btn" id="btnDistAplicar">Cargar el texto pegado</button><label class="btn" for="distFichero">Elegir un fichero…</label><input type="file" id="distFichero" accept=".yaml,.yml,.txt" hidden><button class="btn" id="btnDistRestaurar">Restaurar (apagar y quitar)</button></div>
+          <p class="hint" id="distMsg" role="status"></p>
+          <div id="distEstado"></div>
+          <details class="escSec" id="distCfg"><summary>Supuestos de la distorsión</summary>
+            <p class="hint">Editable y solo de esta sesión. El render lleva más campo que la cámara para que las esquinas distorsionadas sigan cubiertas; este es el máximo que se permite y no tiene fuente comprobable: SIN VALIDAR.</p>
+            <div id="distCfgCuerpo"></div>
           </details>
         </div>
         <div class="sec">

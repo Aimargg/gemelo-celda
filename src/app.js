@@ -51,6 +51,7 @@ const ARUCO = ['1011010100110010', '0000111110011010', '0011001100101101', '1001
 // @@TAREAS@@
 // @@USB@@
 // @@TABLERO@@
+// @@DISTORSION@@
 // @@ORIGEN@@
 // @@EXPORTAR@@
 // @@CALIBRACION@@
@@ -2022,6 +2023,132 @@ $('#tabCfgCuerpo').addEventListener('input', e => {
 });
 $('#btnTabRestaurar').addEventListener('click', () => { TAB_CFG = TABLERO.cfgDefecto(); TAB_M = tabInicial(); $('#tabVerCaja').hidden = true; pintarTabCfg(); tabPintar(); });
 pintarTabCfg(); tabPintar();
+// Distorsión Brown–Conrady de «Ver por esta cámara» (T4.5, src/distorsion.js): DESACTIVADA por defecto. Con ella apagada el render es el de
+// siempre (no se crea ningún recurso de three). Encendida, la escena se pinta a una textura con más campo que la cámara y un fragmento
+// la remuestrea con la inversa del modelo (Newton, como DISTORSION.inversa). Todo es de la sesión: no se guarda en la escena (I1, I2),
+// no cambia L ni ningún número del gemelo ni lo que exporta camera_info (D = 0, I7) y el texto pegado solo se lee (I4)
+let DIST_CFG = DISTORSION.cfgDefecto(), DIST_FIRMA = '';
+const DIST_CAMS = {}; // k → { activa, info (camera_info leído), plan (campo del render, en caché) }
+const distEst = k => DIST_CAMS[k] || (DIST_CAMS[k] = { activa: false, info: null, plan: null });
+let DIST_R = null;
+const DIST_FS = `precision highp float;
+uniform sampler2D tDiffuse; uniform vec3 uK; uniform vec2 uP; uniform vec2 uOut; uniform vec2 uIn; varying vec2 vUv;
+vec2 dist(vec2 p) { float r2 = dot(p, p), R = 1.0 + r2 * (uK.x + r2 * (uK.y + r2 * uK.z)); return vec2(p.x * R + 2.0 * uP.x * p.x * p.y + uP.y * (r2 + 2.0 * p.x * p.x), p.y * R + uP.x * (r2 + 2.0 * p.y * p.y) + 2.0 * uP.y * p.x * p.y); }
+void main() {
+  // punto distorsionado de este píxel (x a la derecha, y hacia abajo, como OpenCV) y su inversa por Newton con el jacobiano analítico
+  vec2 d = vec2((2.0 * vUv.x - 1.0) * uOut.x, (1.0 - 2.0 * vUv.y) * uOut.y), p = d;
+  for (int i = 0; i < 24; i++) {
+    float r2 = dot(p, p), R = 1.0 + r2 * (uK.x + r2 * (uK.y + r2 * uK.z)), Rp = uK.x + r2 * (2.0 * uK.y + 3.0 * uK.z * r2);
+    vec2 e = dist(p) - d;
+    float jxx = R + 2.0 * p.x * p.x * Rp + 2.0 * uP.x * p.y + 6.0 * uP.y * p.x, jxy = 2.0 * p.x * p.y * Rp + 2.0 * uP.x * p.x + 2.0 * uP.y * p.y, jyy = R + 2.0 * p.y * p.y * Rp + 6.0 * uP.x * p.y + 2.0 * uP.y * p.x, det = jxx * jyy - jxy * jxy;
+    if (abs(det) < 1e-9) break;
+    p -= vec2(jyy * e.x - jxy * e.y, jxx * e.y - jxy * e.x) / det;
+  }
+  vec2 tc = vec2(0.5 + 0.5 * p.x / uIn.x, 0.5 - 0.5 * p.y / uIn.y);
+  if (length(dist(p) - d) > 1e-4 || tc.x < 0.0 || tc.x > 1.0 || tc.y < 0.0 || tc.y > 1.0) gl_FragColor = vec4(0.0, 0.0, 0.0, 1.0); // sin inversa o fuera del render: negro
+  else gl_FragColor = texture2D(tDiffuse, tc);
+  #include <tonemapping_fragment>
+  #include <colorspace_fragment>
+}`;
+function distRecursos() {
+  if (DIST_R) return DIST_R;
+  const rt = new THREE.WebGLRenderTarget(4, 4, { type: THREE.HalfFloatType, samples: 4 }); // sin tonemapping y en lineal: lo aplica el fragmento
+  const mat = new THREE.ShaderMaterial({ uniforms: { tDiffuse: { value: rt.texture }, uK: { value: new THREE.Vector3() }, uP: { value: new THREE.Vector2() }, uOut: { value: new THREE.Vector2() }, uIn: { value: new THREE.Vector2() } }, vertexShader: 'varying vec2 vUv; void main() { vUv = uv; gl_Position = vec4(position.xy, 0.0, 1.0); }', fragmentShader: DIST_FS, depthTest: false, depthWrite: false });
+  const quad = new THREE.Mesh(new THREE.PlaneGeometry(2, 2), mat); quad.frustumCulled = false;
+  const escena = new THREE.Scene(); escena.add(quad);
+  return DIST_R = { rt, mat, escena, cam: new THREE.PerspectiveCamera(), camQuad: new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1) };
+}
+// El campo del render de la cámara k con su distorsión, o null si no hay distorsión que aplicar (apagada, sin camera_info o con un
+// camera_info cuyo tamaño ya no casa con el modo de la cámara). En caché mientras no cambien D, el campo de la cámara ni el máximo
+function distPlan(k) {
+  const st = DIST_CAMS[k]; if (!st || !st.activa || !st.info) return null;
+  const M = MODOS[L.cams[k].modo]; if (st.info.w !== M.w || st.info.h !== M.h) return null;
+  const c = CAMS[k].cam, tanY = Math.tan(c.fov * D2R / 2), tanX = tanY * c.aspect, firma = `${st.info.D.join()}|${tanX}|${tanY}|${DIST_CFG.margen.max}`;
+  if (!st.plan || st.plan.firma !== firma) st.plan = { firma, D: st.info.D, tanOutX: tanX, tanOutY: tanY, ...DISTORSION.campoNecesario(st.info.D, tanX, tanY, DIST_CFG.margen.max) };
+  return st.plan;
+}
+// Pinta la vista de la cámara c (de ancho w y alto h en px de CSS) con la distorsión del plan: la escena, con el campo ancho del plan, a una textura
+// y de ella al destino (la pantalla, con su viewport y su tijera, o la textura `destino`)
+function distDibujar(c, dp, w, h, destino) {
+  const R = distRecursos(), pr = destino ? 1 : renderer.getPixelRatio(), max = renderer.capabilities.maxTextureSize, A = R.cam, D = dp.D;
+  const tw = clamp(Math.ceil(w * pr * dp.razonX), 2, max), th = clamp(Math.ceil(h * pr * dp.razonY), 2, max);
+  if (R.rt.width !== tw || R.rt.height !== th) R.rt.setSize(tw, th);
+  A.fov = Math.atan(dp.tanY) * 2 * R2D; A.aspect = dp.tanX / dp.tanY; A.near = c.near; A.far = c.far; A.layers.mask = c.layers.mask; A.updateProjectionMatrix();
+  c.updateMatrixWorld(true); c.matrixWorld.decompose(A.position, A.quaternion, A.scale); A.updateMatrixWorld(true);
+  renderer.setRenderTarget(R.rt); renderer.clear(); renderer.render(scene, A);
+  const u = R.mat.uniforms; u.uK.value.set(D[0], D[1], D[4]); u.uP.value.set(D[2], D[3]); u.uOut.value.set(dp.tanOutX, dp.tanOutY); u.uIn.value.set(dp.tanX, dp.tanY);
+  renderer.setRenderTarget(destino || null); if (destino) renderer.clear();
+  renderer.render(R.escena, R.camQuad); renderer.setRenderTarget(null);
+}
+// Para las pruebas: la imagen distorsionada de la cámara k de `ancho` px de ancho, en RGBA y con la fila 0 arriba
+function distImagen(k, ancho) {
+  const dp = distPlan(k); if (!dp) throw new Error(`la distorsión no está activa en la cámara ${k}`);
+  const c = CAMS[k].cam, w = Math.round(ancho), h = Math.round(ancho / c.aspect), out = new THREE.WebGLRenderTarget(w, h, { depthBuffer: false });
+  distDibujar(c, dp, w, h, out); const buf = new Uint8Array(w * h * 4), arriba = new Uint8Array(w * h * 4); renderer.readRenderTargetPixels(out, 0, 0, w, h, buf); out.dispose();
+  for (let y = 0; y < h; y++) arriba.set(buf.subarray((h - 1 - y) * w * 4, (h - y) * w * 4), y * w * 4);
+  return { w, h, dato: arriba };
+}
+const distNum = x => String(+x.toPrecision(6)).replace('.', ','), distRazon = x => String(+x.toFixed(2)).replace('.', ',');
+const distSufijo = k => distPlan(k) ? ' · con la distorsión del camera_info' : '';
+const distFirma = () => JSON.stringify(Object.keys(L.cams).map(k => [k, L.cams[k].nombre, L.cams[k].modo]));
+// La línea de estado de cada cámara: camera_info cargado, D, campo del render y avisos; con data-* para las pruebas
+function distTexto(k) {
+  const st = distEst(k), c = L.cams[k], M = MODOS[c.modo], nom = usbEsc(c.nombre.toLowerCase());
+  if (!st.info) return `<div class="usbcam distcam" data-cam="${k}" data-cargada="false" data-activa="false"><div><strong>Cámara ${nom}</strong><span class="pill">sin camera_info</span></div></div>`;
+  const i = st.info, casa = i.w === M.w && i.h === M.h, dp = distPlan(k), D = i.D;
+  const rotulo = !casa ? `<span class="pill bad">no casa con el modo</span>` : st.activa ? `<span class="pill ok">activada</span>` : `<span class="pill">apagada</span>`;
+  const avisos = [!casa ? `El camera_info es de ${i.w} × ${i.h} y la cámara está en ${M.w} × ${M.h}: no se aplica hasta que coincidan.` : '', dp && !dp.cubre ? `Aviso: ${dp.motivo}.` : ''].filter(Boolean);
+  return `<div class="usbcam distcam" data-cam="${k}" data-cargada="true" data-activa="${st.activa && casa}" data-d="${D.join(',')}" data-razon="${dp ? dp.razonX + ',' + dp.razonY : ''}" data-cubre="${dp ? dp.cubre : ''}"><div><strong>Cámara ${nom}</strong>${rotulo}</div>`
+    + `<span class="hint">camera_info${i.nombre ? ' «' + usbEsc(i.nombre) + '»' : ''} de ${i.w} × ${i.h}: k1 = ${distNum(D[0])} · k2 = ${distNum(D[1])} · p1 = ${distNum(D[2])} · p2 = ${distNum(D[3])} · k3 = ${distNum(D[4])}${DISTORSION.esNula(D) ? ' (D = 0: lente ideal)' : ''} ${usbTag('del fichero cargado', 'f')}</span>`
+    + (dp ? `<span class="hint">Render con ×${distRazon(dp.razonX)} de ancho y ×${distRazon(dp.razonY)} de alto de campo (máximo ×${distRazon(DIST_CFG.margen.max)}) ${usbSupuesto()}</span>` : '') + avisos.map(a => `<span class="hint" role="alert">${usbEsc(a)}</span>`).join('') + '</div>';
+}
+function distActualizar() {
+  const k = $('#distCam').value, st = k && L.cams[k] ? distEst(k) : null, on = $('#distOn');
+  on.disabled = !st || !st.info; on.checked = !!(st && st.activa);
+  $('#distEstado').innerHTML = Object.keys(L.cams).map(distTexto).join('');
+  if (verCam) $('#camModeTxt').textContent = `Viendo por la cámara ${L.cams[verCam].nombre.toLowerCase()}${distSufijo(verCam)}`;
+}
+// Rehace la lista de cámaras si cambian sus nombres o modos (pintarCamaras lo llama); si no, solo el estado
+function distRefrescar() {
+  if (distFirma() === DIST_FIRMA && $('#distCam').options.length) { distActualizar(); return; }
+  DIST_FIRMA = distFirma(); const sel = $('#distCam'), antes = sel.value;
+  sel.innerHTML = Object.keys(L.cams).map(k => `<option value="${k}">Cámara ${usbEsc(L.cams[k].nombre.toLowerCase())} · ${MODOS[L.cams[k].modo].w} × ${MODOS[L.cams[k].modo].h}</option>`).join('');
+  if (L.cams[antes]) sel.value = antes; distActualizar();
+}
+// Carga un camera_info para la cámara elegida; si el texto no vale se dice por qué y no cambia nada
+function distCargar(texto) {
+  const k = $('#distCam').value, msg = $('#distMsg'), txt = $('#distTxt'); if (!k || !L.cams[k]) return;
+  try {
+    const info = DISTORSION.leerCameraInfo(texto, MODOS[L.cams[k].modo]), st = distEst(k); st.info = info; st.plan = null;
+    txt.removeAttribute('aria-invalid'); msg.setAttribute('role', 'status');
+    msg.textContent = `Cargado el camera_info${info.nombre ? ' «' + info.nombre + '»' : ''} para la cámara ${L.cams[k].nombre.toLowerCase()}: ${info.w} × ${info.h}, plumb_bob. ${DISTORSION.esNula(info.D) ? 'D = 0: la imagen sale sin distorsión. ' : ''}Marca «Distorsión activada» para verla.`;
+  } catch (e) { txt.setAttribute('aria-invalid', 'true'); msg.setAttribute('role', 'alert'); msg.textContent = `No se ha aplicado nada: ${e.message}`; }
+  distActualizar();
+}
+$('#distCam').addEventListener('change', distActualizar);
+$('#distOn').addEventListener('change', e => { const k = $('#distCam').value; if (!k || !distEst(k).info) { e.target.checked = false; return; } distEst(k).activa = e.target.checked; distActualizar(); });
+$('#btnDistAplicar').addEventListener('click', () => distCargar($('#distTxt').value));
+$('#distFichero').addEventListener('change', async e => {
+  const f = e.target.files[0]; if (!f) return;
+  if (f.size > 200000) { $('#distTxt').setAttribute('aria-invalid', 'true'); $('#distMsg').setAttribute('role', 'alert'); $('#distMsg').textContent = `No se ha aplicado nada: «${f.name}» pasa de 200000 bytes: no es un camera_info`; e.target.value = ''; return; }
+  const t = await f.text(); $('#distTxt').value = t; e.target.value = ''; distCargar(t);
+});
+$('#btnDistRestaurar').addEventListener('click', () => {
+  for (const k of Object.keys(DIST_CAMS)) delete DIST_CAMS[k];
+  DIST_CFG = DISTORSION.cfgDefecto(); $('#distTxt').value = ''; $('#distTxt').removeAttribute('aria-invalid'); $('#distMsg').textContent = ''; $('#distMsg').setAttribute('role', 'status'); pintarDistCfg(); distActualizar();
+});
+function pintarDistCfg() {
+  $('#distCfgCuerpo').innerHTML = DISTORSION.PARAMS.map(p => {
+    const [g, n] = p.id.split('.');
+    return `<div class="field"><label for="dc_${p.id}" title="${usbEsc(p.fuente)}">${usbEsc(p.nombre)} <span class="tag s">SUPUESTO · SIN VALIDAR</span></label><output>${usbEsc(p.unidad)}</output><input type="number" id="dc_${p.id}" min="1" max="${DISTORSION.MARGEN_TOPE}" step="any" value="${DIST_CFG[g][n]}"></div>`;
+  }).join('');
+}
+$('#distCfgCuerpo').addEventListener('input', e => {
+  const id = e.target.id.startsWith('dc_') ? e.target.id.slice(3) : null; if (!id) return;
+  try { DIST_CFG = DISTORSION.fijar(DIST_CFG, id, e.target.valueAsNumber); e.target.removeAttribute('aria-invalid'); e.target.removeAttribute('title'); } catch (err) { e.target.setAttribute('aria-invalid', 'true'); e.target.title = err.message; return; }
+  distActualizar();
+});
+pintarDistCfg(); distRefrescar();
 // pintarCamaras lo llama: rehace los campos si cambia la lista de cámaras o algún modo; si no, solo recalcula
 function usbRefrescar() { if (usbFirma() !== USB_FIRMA || !$('#usbCuerpo').firstElementChild) usbPintar(); else usbActualizar(); }
 function pintarCamaras() {
@@ -2041,7 +2168,7 @@ function pintarCamaras() {
     ${m.nota ? `<p class="hint">Modo ${c.modo.replace('x', '×')}: ${m.nota}.</p>` : ''}
     <div class="btns"><button class="btn" data-act="sel">Mover</button><button class="btn" data-act="ver">Ver por esta cámara</button></div></div>`;
   }).join('') + `<p class="hint">Píxeles por tarea: proyección estenopeica en el peor punto visible de cada objetivo, con el escorzo del plano o del segmento. Los umbrales del ArUco son los del plan (14 px de mínimo en OpenCV 4.6, zona fiable de 32 a 50 px; la cita no se ha podido comprobar aquí); el resto de umbrales, tamaños y supuestos no tienen fuente comprobable: SIN VALIDAR y editables en «Umbrales y supuestos de las tareas» (solo de esta sesión). El campo de visión y los mm/px son de lente ideal con el sensor «${SENSOR.de(sensorEscena()).nombre}» [SIN VALIDAR]: el real se mide en la calibración intrínseca (camera_info, F4).</p>`;
-  pintarSensor(); usbRefrescar();
+  pintarSensor(); usbRefrescar(); distRefrescar();
 }
 // Selector del modelo de sensor (T1.7): cambia el campo de visión, el frustum, las miniaturas y las métricas; no mueve nada
 function pintarSensor() {
@@ -2059,7 +2186,7 @@ $('#camCards').addEventListener('input', e => {
   if (t === 'f') L.cams[k].f = +e.target.value; if (t === 'm') L.cams[k].modo = e.target.value;
   actualizarCam(k); guardarLocal(); clearTimeout(pintarCamaras._t); pintarCamaras._t = setTimeout(pintarCamaras, 120);
 });
-$('#camCards').addEventListener('click', e => { const b = e.target.closest('button[data-act]'); if (!b) return; const k = b.closest('[data-cam]').dataset.cam; if (b.dataset.act === 'sel') { $$('.tabs button')[0].click(); seleccionar('cam:' + k); } else { verCam = k; $('#camMode').hidden = false; $('#camModeTxt').textContent = `Viendo por la cámara ${L.cams[k].nombre.toLowerCase()}`; pintarPip(); } });
+$('#camCards').addEventListener('click', e => { const b = e.target.closest('button[data-act]'); if (!b) return; const k = b.closest('[data-cam]').dataset.cam; if (b.dataset.act === 'sel') { $$('.tabs button')[0].click(); seleccionar('cam:' + k); } else { verCam = k; $('#camMode').hidden = false; $('#camModeTxt').textContent = `Viendo por la cámara ${L.cams[k].nombre.toLowerCase()}${distSufijo(k)}`; pintarPip(); } });
 
 // ======================= Alcance: tabla y gráfica =======================
 function actualizarTablaAlcance() {
@@ -2322,7 +2449,7 @@ function render() {
   renderer.setScissorTest(false); renderer.setViewport(0, 0, W, H); renderer.clear();
   if (verCam) {
     const c = CAMS[verCam].cam; const ar = c.aspect; let w = W, h = W / ar; if (h > H) { h = H; w = H * ar; }
-    renderer.setScissorTest(true); renderer.setViewport((W - w) / 2, (H - h) / 2, w, h); renderer.setScissor((W - w) / 2, (H - h) / 2, w, h); renderer.clear(); const tv = tctl.visible; tctl.visible = false; renderer.render(scene, c); tctl.visible = tv; renderer.setScissorTest(false);
+    renderer.setScissorTest(true); renderer.setViewport((W - w) / 2, (H - h) / 2, w, h); renderer.setScissor((W - w) / 2, (H - h) / 2, w, h); renderer.clear(); const tv = tctl.visible; tctl.visible = false; const dp = distPlan(verCam); if (dp) distDibujar(c, dp, w, h, null); else renderer.render(scene, c); tctl.visible = tv; renderer.setScissorTest(false); // con la distorsión de T4.5 activada, a través de su post-proceso
     labels.domElement.style.visibility = 'hidden'; return;
   }
   labels.domElement.style.visibility = ''; renderer.render(scene, cam); labels.render(scene, cam);
@@ -2376,7 +2503,7 @@ $('#segModoB').addEventListener('click', e => { const b = e.target.closest('butt
 $('#dVel').addEventListener('input', e => { D.vel = e.target.value / 100; $('#dVelOut').textContent = `${e.target.value} %`; });
 $('#dAmp').addEventListener('input', e => { D.amp = e.target.value / 100; $('#dAmpOut').textContent = `${fmt(+e.target.value, 1)} cm`; actualizarCheck(); });
 requestAnimationFrame(bucle);
-if (location.search.includes('prueba')) window.__g = { aplicarPedido, actualizarZona, esferasObjeto, cargaDe, BAND, bandeja, aplicarBandeja: t => aplicarBandeja(t), ladoZonas: () => ladoZonas(), comprobarPlan, llegaVertical, puntosSoltar, FRUTAS, CACHE_PLAN, poseHoriz, ejeHoriz, mundoABase, enLimites, qValida, rutaNivelada: (...a) => rutaNivelada(...a), colocacionConTransporte: (...a) => colocacionConTransporte(...a), planColocar: (...a) => planColocar(...a), zonasB, ikTCP, planAgarrePlato, planColocar, planPlatoCache, KIN_: KIN, BASES, consts: { R_AGARRE, H_BORDE }, COL: () => COL, choqueEn: (q, c) => choqueEn(q, c), obstaculos: () => obstaculos(), textoChoque: c => textoChoque(c), D, L: () => L, cam, orbit, scene, renderer, OBJ, piezas: () => piezas, simT: () => simT, CAMS, actualizarCam, actualizarAruco, actualizarPlatos, metricasCam, tareasCam, TAREAS, tareasCfg: () => TAREAS_CFG, USB, usbCfg: () => USB_CFG, usbCams: () => USB_CAMS, usbLsusb: () => USB_LSUSB, estadoObjeto, alcance, comprobarPlan, ensayo, planAgarrePlato, holguraActual, get robot() { return robot; }, KIN, pinza, tcpMundo, zPlato, setL: l => { L = l; }, ESC, ALM, abrirEscena, codigoEscena, abrirCodigo, guardarEscena, escCam: cam, orbit, vista, CALC, calcularPlanes, planesAlDia, recalcular, orientDe, fijarOrient, orientarDesdeQuat, CAMS, seleccionar, tctl, generarYaml, ficherosRos: () => ficherosRos(), modeloExportacion: () => modeloExportacion(), cadenaPlato, cargaPlan, rutaCartesiana: (...a) => rutaCartesiana(...a), zonasB_: () => zonasB, zonaDe, qReposo, aplicarLayout, buscarAlternativa, candidatos, explicar, mostrarFalloInfo, diagnosticarPunto, LAYOUT, ESQ_L, migrarLayout, soloLectura, RNG, planificar: (...a) => planificar(...a), get CIN() { return CIN; }, get ROB() { return ROB; }, CALIBRACION, marco: () => marco(), baseAMundo: (x, y, z) => baseAMundo(x, y, z), tcpDeQ: (q, w) => tcpDeQ(q, w), pedirRobotId: id => pedirRobotId(id), ikNoConverge: (p, y, o) => ikNoConverge(p, y, o), posesTCP, volCol, calcularPerfil, radioA, PERFIL, prepararMoveJ: (...a) => prepararMoveJ(...a), semillaDe: (...a) => semillaDe(...a), otroVisible: () => otroVisible(), apartarEscena: () => apartarEscena(), perfilEscena: () => perfilEscena(), planesAlDiaDe: pf => planesAlDia(pf), validar: () => validar(), VAL, SENSOR, areaDe: c => areaDe(c), hfovDe: c => hfovDe(c), vfovDe: c => vfovDe(c), firmaVal: () => firmaVal(), valAlDia: () => valAlDia(), perfilesDe: e => perfilesDe(e), estadoParaGuardar: () => estadoParaGuardar(), bandejaBalanceo: () => bandejaBalanceo(), tocaBandejaEnBalanceo: (q, w) => tocaBandejaEnBalanceo(q, w) }; // T1.4: robot activo, su cinemática y el marco de base_link (una sola línea: build_web.sh la quita entera)
+if (location.search.includes('prueba')) window.__g = { dibujar: () => render(), DISTORSION, distCams: () => DIST_CAMS, distCfg: () => DIST_CFG, distImagen: (k, ancho) => distImagen(k, ancho), aplicarPedido,actualizarZona, esferasObjeto, cargaDe, BAND, bandeja, aplicarBandeja: t => aplicarBandeja(t), ladoZonas: () => ladoZonas(), comprobarPlan, llegaVertical, puntosSoltar, FRUTAS, CACHE_PLAN, poseHoriz, ejeHoriz, mundoABase, enLimites, qValida, rutaNivelada: (...a) => rutaNivelada(...a), colocacionConTransporte: (...a) => colocacionConTransporte(...a), planColocar: (...a) => planColocar(...a), zonasB, ikTCP, planAgarrePlato, planColocar, planPlatoCache, KIN_: KIN, BASES, consts: { R_AGARRE, H_BORDE }, COL: () => COL, choqueEn: (q, c) => choqueEn(q, c), obstaculos: () => obstaculos(), textoChoque: c => textoChoque(c), D, L: () => L, cam, orbit, scene, renderer, OBJ, piezas: () => piezas, simT: () => simT, CAMS, actualizarCam, actualizarAruco, actualizarPlatos, metricasCam, tareasCam, TAREAS, tareasCfg: () => TAREAS_CFG, USB, usbCfg: () => USB_CFG, usbCams: () => USB_CAMS, usbLsusb: () => USB_LSUSB, estadoObjeto, alcance, comprobarPlan, ensayo, planAgarrePlato, holguraActual, get robot() { return robot; }, KIN, pinza, tcpMundo, zPlato, setL: l => { L = l; }, ESC, ALM, abrirEscena, codigoEscena, abrirCodigo, guardarEscena, escCam: cam, orbit, vista, CALC, calcularPlanes, planesAlDia, recalcular, orientDe, fijarOrient, orientarDesdeQuat, CAMS, seleccionar, tctl, generarYaml, ficherosRos: () => ficherosRos(), modeloExportacion: () => modeloExportacion(), cadenaPlato, cargaPlan, rutaCartesiana: (...a) => rutaCartesiana(...a), zonasB_: () => zonasB, zonaDe, qReposo, aplicarLayout, buscarAlternativa, candidatos, explicar, mostrarFalloInfo, diagnosticarPunto, LAYOUT, ESQ_L, migrarLayout, soloLectura, RNG, planificar: (...a) => planificar(...a), get CIN() { return CIN; }, get ROB() { return ROB; }, CALIBRACION, marco: () => marco(), baseAMundo: (x, y, z) => baseAMundo(x, y, z), tcpDeQ: (q, w) => tcpDeQ(q, w), pedirRobotId: id => pedirRobotId(id), ikNoConverge: (p, y, o) => ikNoConverge(p, y, o), posesTCP, volCol, calcularPerfil, radioA, PERFIL, prepararMoveJ: (...a) => prepararMoveJ(...a), semillaDe: (...a) => semillaDe(...a), otroVisible: () => otroVisible(), apartarEscena: () => apartarEscena(), perfilEscena: () => perfilEscena(), planesAlDiaDe: pf => planesAlDia(pf), validar: () => validar(), VAL, SENSOR, areaDe: c => areaDe(c), hfovDe: c => hfovDe(c), vfovDe: c => vfovDe(c), firmaVal: () => firmaVal(), valAlDia: () => valAlDia(), perfilesDe: e => perfilesDe(e), estadoParaGuardar: () => estadoParaGuardar(), bandejaBalanceo: () => bandejaBalanceo(), tocaBandejaEnBalanceo: (q, w) => tocaBandejaEnBalanceo(q, w) }; // T1.4: robot activo, su cinemática y el marco de base_link (una sola línea: build_web.sh la quita entera)
 fetch('ur3e-malla.json').then(r => { if (!r.ok) throw new Error(r.status); return r.json(); }).then(j => { const bin = atob(j.glb); const u8 = new Uint8Array(bin.length); for (let i = 0; i < bin.length; i++) u8[i] = bin.charCodeAt(i); new GLTFLoader().parse(u8.buffer, '', cargado, fallo); }).catch(fallo);
 function fallo(err) { $('#loading').textContent = 'No se ha podido cargar el modelo del UR3e.'; console.error(err); }
 function cargado(g) {
