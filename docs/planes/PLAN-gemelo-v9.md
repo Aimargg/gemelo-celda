@@ -165,7 +165,7 @@ Estados: pendiente · en curso · entregada · aceptada · correcciones · bloqu
 | T4.2 | 4 | Oclusión a lo largo de las trayectorias calculadas | Claude Code | T4.1 | alto | pendiente | |
 | T4.3 | 4 | Estimador de ancho de banda USB | Claude Code | T4.1 | bajo | verificada | e113f97, e92362f, 51b3bee |
 | T4.4 | 4 | Diseñador del tablero de marcadores de la bandeja | Claude Code | T4.1 | medio | pendiente | |
-| T4.5 | 4 | Distorsión Brown–Conrady opcional desde `camera_info` | Claude Code | T2.5 | medio | pendiente | |
+| T4.5 | 4 | Distorsión Brown–Conrady opcional desde `camera_info` | Claude Code | T2.5 | medio | entregada | 9ea2cf9 |
 | T4.6 | 4 | Captura sintética con anotaciones | Claude Code | T4.1 | medio | pendiente | |
 | T5.1 | 5 | Pico: workers y WASM bajo la CSP del artefacto | Claude Code + arquitecto | F4 | bajo | pendiente | |
 
