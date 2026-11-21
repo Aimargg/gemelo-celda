@@ -1,7 +1,7 @@
 // Estimador de ancho de banda USB de las cámaras (T4.3, D4): por cámara, formato, resolución, fps y reserva (declarable; por
 // defecto la máxima de un endpoint isócrono de USB 2.0, ~196 Mbit/s); por bus, la suma; el aviso «con la reserva máxima cabe una
 // cámara por bus»; y un analizador del texto de `lsusb -v`. Sin DOM, sin three y sin red: solo lee el texto que se le pasa.
-// Se prueba con node:test (tests/unit/usb-estimador.test.mjs) y se concatena en app.js con el marcador @@USB@@.
+// Se prueba con node:test (tests/unit/usb-t43.test.mjs) y se concatena en app.js con el marcador @@USB@@.
 // Fuentes. El estudio «camaras-colocacion» no está en el repo: solo se cita lo que da la ficha de T4.3 del plan (reserva máxima de
 // ~196 Mbit/s en USB 2.0; con ella cabe una cámara por bus) y la aritmética. Aritmética comprobable: la reserva máxima de un
 // endpoint isócrono de alta velocidad es 3 transacciones × 1024 B × 8 bit × 8000 microtramas/s = 196,608 Mbit/s; la tasa sin
