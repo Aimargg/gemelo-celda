@@ -438,6 +438,17 @@ textarea{width:100%;min-height:120px;border:1px solid var(--line);border-radius:
             <div id="distCfgCuerpo"></div>
           </details>
         </div>
+        <div class="sec" id="capSec">
+          <h2>Captura sintética <span class="tag s">SIN VALIDAR</span></h2>
+          <p class="hint" id="capAviso"><strong>Aviso:</strong> sirve para probar pipelines, no para sustituir datos reales.</p>
+          <p class="hint">El botón «Captura sintética» de cada tarjeta de cámara pinta lo que ve esa cámara en 640 × 480 px (la focal y el ancho del sensor de la cámara; sin distorsión) y escribe un JSON con las anotaciones 2D de lo que se ve: fruta, platos y marcadores ArUco (id y las cuatro esquinas en el orden de OpenCV), cada uno con su caja, si es visible y si está cortado por el borde, y el origen de cada valor. Solo cuenta el campo y los bordes: un objeto tapado por otro o por el brazo dentro del campo sigue anotado como visible. No se dibuja ni se anota ninguna persona. La captura es de esta sesión: no se guarda en la escena y no se envía a ninguna parte.</p>
+          <p class="hint" id="capMsg" role="status"></p>
+          <div id="capVista" hidden>
+            <canvas id="capImg" width="640" height="480" hidden style="max-width:100%;height:auto;border:1px solid var(--line)" aria-label="Captura sintética de la cámara"></canvas>
+            <div class="btns"><button class="btn" id="btnCapPng">Descargar el PNG</button><button class="btn" id="btnCapJson">Descargar el JSON</button><button class="btn" id="btnCapQuitar">Quitar la captura</button></div>
+            <div class="field2"><label for="capJson">anotaciones.json · solo lectura</label><textarea id="capJson" readonly spellcheck="false"></textarea></div>
+          </div>
+        </div>
         <div class="sec">
           <details class="escSec" id="tareasCfg"><summary>Umbrales y supuestos de las tareas</summary>
             <p class="hint">Editables y solo de esta sesión: no se guardan en la escena. Los del plan (ArUco) no se editan; todos los demás son supuestos sin fuente comprobable, SIN VALIDAR. La velocidad de la bandeja y la exposición fijan el desenfoque; la profundidad de campo usa el F supuesto.</p>

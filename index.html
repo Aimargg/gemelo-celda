@@ -439,6 +439,17 @@ textarea{width:100%;min-height:120px;border:1px solid var(--line);border-radius:
             <div id="distCfgCuerpo"></div>
           </details>
         </div>
+        <div class="sec" id="capSec">
+          <h2>Captura sintética <span class="tag s">SIN VALIDAR</span></h2>
+          <p class="hint" id="capAviso"><strong>Aviso:</strong> sirve para probar pipelines, no para sustituir datos reales.</p>
+          <p class="hint">El botón «Captura sintética» de cada tarjeta de cámara pinta lo que ve esa cámara en 640 × 480 px (la focal y el ancho del sensor de la cámara; sin distorsión) y escribe un JSON con las anotaciones 2D de lo que se ve: fruta, platos y marcadores ArUco (id y las cuatro esquinas en el orden de OpenCV), cada uno con su caja, si es visible y si está cortado por el borde, y el origen de cada valor. Solo cuenta el campo y los bordes: un objeto tapado por otro o por el brazo dentro del campo sigue anotado como visible. No se dibuja ni se anota ninguna persona. La captura es de esta sesión: no se guarda en la escena y no se envía a ninguna parte.</p>
+          <p class="hint" id="capMsg" role="status"></p>
+          <div id="capVista" hidden>
+            <canvas id="capImg" width="640" height="480" hidden style="max-width:100%;height:auto;border:1px solid var(--line)" aria-label="Captura sintética de la cámara"></canvas>
+            <div class="btns"><button class="btn" id="btnCapPng">Descargar el PNG</button><button class="btn" id="btnCapJson">Descargar el JSON</button><button class="btn" id="btnCapQuitar">Quitar la captura</button></div>
+            <div class="field2"><label for="capJson">anotaciones.json · solo lectura</label><textarea id="capJson" readonly spellcheck="false"></textarea></div>
+          </div>
+        </div>
         <div class="sec">
           <details class="escSec" id="tareasCfg"><summary>Umbrales y supuestos de las tareas</summary>
             <p class="hint">Editables y solo de esta sesión: no se guardan en la escena. Los del plan (ArUco) no se editan; todos los demás son supuestos sin fuente comprobable, SIN VALIDAR. La velocidad de la bandeja y la exposición fijan el desenfoque; la profundidad de campo usa el F supuesto.</p>
@@ -1779,6 +1790,111 @@ const ORIGEN = (() => {
   // Las filas de la tabla del panel «Datos», en su orden
   const panel = ctx => ENTRADAS.filter(e => e.nombre !== null).map(e => entrada(e.clave, ctx));
   return { TIPOS, CLASE, LEYENDA, ELEGIDO, GRUPO, CLAVES, entrada, tipo, yaml, panel };
+})();
+// Captura sintética de una cámara con anotaciones 2D (T4.6, D4, D10): la vista de 640 × 480 px de una cámara, las cajas y esquinas de
+// lo que se ve (ArUco, platos, fruta) por la proyección estenopeica y el texto JSON que las lleva con el origen de cada valor. Sirve para
+// probar pipelines de visión, no para sustituir datos reales. Sin personas: no hay clase «persona» (la figura de la persona del gemelo no
+// se dibuja en la captura ni se anota). Sin DOM ni three: la geometría la calcula el que llama (app.js) y aquí solo se proyecta, se
+// recorta y se escribe; se prueba con node:test (tests/unit/captura-t46.test.mjs) y se concatena en app.js con el marcador @@CAPTURA@@.
+// No tiene óptica propia: la distancia focal en píxeles sale de SENSOR.mmPorPx (T1.7) y la profundidad a lo largo del eje óptico, de
+// TAREAS.profundidad (T4.1): la misma proyección estenopeica que los píxeles por tarea del panel.
+// Convención de píxel (la de OpenCV y la de los camera_info que exporta el gemelo, cx = (ancho − 1) / 2): el centro del píxel de la
+// esquina superior izquierda es (0, 0); u crece a la derecha y v hacia abajo; la imagen cubre u de −0,5 a 639,5 y v de −0,5 a 479,5.
+// Marco de la cámara (el de OpenCV): x a la derecha, y hacia abajo y z al frente, los tres en el mundo: cam = { o, x, y, z, near, far }.
+// Campo: el de la cámara (focal y ancho del sensor, el mismo en todos los modos) con la relación 4:3 de 640 × 480; con un modo 16:9 la
+// captura enseña más alto que la cámara en ese modo (el ancho completo del sensor, como en un modo 4:3 de la ELP).
+// Oclusión: solo la del campo y los bordes. Lo que otro objeto o el brazo tapa dentro del campo sigue anotado como visible (la oclusión
+// por el brazo es T4.2 y no está hecha). Sin distorsión (la de T4.5 no se aplica a la captura).
+const CAPTURA = (() => {
+  const S_ = typeof SENSOR !== 'undefined' ? SENSOR : require('./sensor.js');
+  const T_ = typeof TAREAS !== 'undefined' ? TAREAS : require('./tareas.js');
+  const O_ = typeof ORIGEN !== 'undefined' ? ORIGEN : require('./origen.js');
+  const ANCHO = 640, ALTO = 480;
+  const AVISO = 'sirve para probar pipelines, no para sustituir datos reales';
+  const ESQUEMA = 'gemelo-celda/captura-sintetica/1';
+  const CLASES = ['aruco', 'plato', 'fruta'];
+  // Las esquinas de un ArUco, en el orden de OpenCV (las devuelve detectMarkers): arriba-izquierda, arriba-derecha, abajo-derecha y
+  // abajo-izquierda del marcador tal como está impreso
+  const ORDEN_ESQUINAS = ['arriba_izquierda', 'arriba_derecha', 'abajo_derecha', 'abajo_izquierda'];
+  // El plano de un marcador del gemelo mide `lado` y arucoTex dibuja el cuadrado negro (las 6 × 6 celdas del patrón) en 80 de sus 96 px:
+  // las esquinas que da un detector son las del cuadrado negro, no las del plano
+  const ARUCO_NEGRO = 80 / 96;
+  const OCLUSION = 'solo la del campo y los bordes: un objeto tapado por otro o por el brazo dentro del campo se anota como visible; la oclusión por el brazo (T4.2) no está hecha';
+  const PERSONAS = 'sin personas: la figura de la persona del gemelo no se dibuja en la captura ni se anota; no hay ninguna clase de persona';
+  const DISTORSION = 'ninguna: proyección estenopeica de lente ideal; la distorsión de T4.5 no se aplica a la captura';
+  const CONVENCION = 'OpenCV: el centro del píxel superior izquierdo es (0, 0), u a la derecha y v hacia abajo; la imagen cubre u de −0,5 a 639,5 y v de −0,5 a 479,5; la caja de un objeto cortado por el borde se recorta a la imagen';
+  const CAJA = 'proyección de los puntos del objeto (ArUco: las cuatro esquinas del cuadrado negro; plato: su perfil; fruta: su caja 3D alineada con los ejes del mundo): no es el contorno exacto';
+
+  // Vista de 640 × 480 con la focal y el ancho del área activa (mm) de la cámara: fx = fy en píxeles de la proyección estenopeica
+  function vista(w, f) {
+    if (![w, f].every(v => typeof v === 'number' && Number.isFinite(v) && v > 0)) throw new Error('el ancho del sensor y la focal tienen que ser números positivos');
+    const fx = 1000 / S_.mmPorPx(1, w, f, ANCHO), tanX = ANCHO / 2 / fx, tanY = ALTO / 2 / fx;
+    return { ancho: ANCHO, alto: ALTO, fx, fy: fx, cx: (ANCHO - 1) / 2, cy: (ALTO - 1) / 2, tanX, tanY, hfov: 2 * Math.atan(tanX), vfov: 2 * Math.atan(tanY) };
+  }
+  // Punto del mundo → píxel (u, v) y profundidad a lo largo del eje óptico (m)
+  function proyectar(v, cam, p) {
+    const d = [p[0] - cam.o[0], p[1] - cam.o[1], p[2] - cam.o[2]], prof = T_.profundidad(p, cam.o, cam.z);
+    return { u: v.cx + v.fx * T_.dot(d, cam.x) / prof, v: v.cy + v.fy * T_.dot(d, cam.y) / prof, prof };
+  }
+  // Las cuatro esquinas del cuadrado negro de un marcador de lado `lado` (m), en su marco local (x a la derecha, y hacia arriba, z = 0 y
+  // la normal hacia quien lo mira) y en el orden de ORDEN_ESQUINAS
+  function esquinasAruco(lado) {
+    const h = lado * ARUCO_NEGRO / 2; return [[-h, h, 0], [h, h, 0], [h, -h, 0], [-h, -h, 0]];
+  }
+  const media = P => [0, 1, 2].map(i => P.reduce((s, p) => s + p[i], 0) / P.length);
+
+  // Anota los objetos que se ven. Cada objeto: { clase, id (o null), nombre, puntos [[x, y, z]…] en el mundo y, si es un ArUco,
+  // esquinas (4, en el orden de ORDEN_ESQUINAS) y normal (hacia fuera de su cara impresa) }. Devuelve { anotados, omitidos }, en el orden
+  // de entrada. Un objeto que cae del todo fuera de la imagen, que está de espaldas a la cámara (un ArUco) o que tiene algún punto fuera
+  // de los planos near y far no se anota: va a omitidos con su motivo. Uno cortado por el borde sale con parcial = true y la caja recortada.
+  function anotar(v, cam, objetos) {
+    const x0 = -0.5, x1 = v.ancho - 0.5, y0 = -0.5, y1 = v.alto - 0.5, anotados = [], omitidos = [];
+    for (const o of objetos) {
+      const omitir = motivo => omitidos.push({ clase: o.clase, id: o.id ?? null, nombre: o.nombre, motivo });
+      const aruco = o.clase === 'aruco', pts = aruco ? o.esquinas : o.puntos;
+      if (!CLASES.includes(o.clase)) throw new Error(`clase desconocida (${JSON.stringify(o.clase)})`);
+      if (!Array.isArray(pts) || !pts.length || (aruco && pts.length !== 4)) throw new Error(`${o.nombre}: faltan los puntos del objeto`);
+      if (aruco) { const c = media(pts); if (T_.dot(o.normal, [cam.o[0] - c[0], cam.o[1] - c[1], cam.o[2] - c[2]]) <= 0) { omitir('de espaldas a la cámara'); continue; } }
+      const P = pts.map(p => proyectar(v, cam, p));
+      if (P.some(q => !(q.prof >= cam.near && q.prof <= cam.far))) { omitir('fuera de los planos de la cámara (detrás o a más de su alcance)'); continue; }
+      const us = P.map(q => q.u), vs = P.map(q => q.v), minu = Math.min(...us), maxu = Math.max(...us), minv = Math.min(...vs), maxv = Math.max(...vs);
+      if (maxu <= x0 || minu >= x1 || maxv <= y0 || minv >= y1) { omitir('fuera del campo'); continue; }
+      const parcial = minu < x0 || maxu > x1 || minv < y0 || maxv > y1, a = Math.max(minu, x0), b = Math.max(minv, y0), c = Math.min(maxu, x1), d = Math.min(maxv, y1);
+      anotados.push({ clase: o.clase, id: o.id ?? null, nombre: o.nombre, visible: true, parcial, caja: { x: a, y: b, ancho: c - a, alto: d - b }, esquinas: aruco ? P.map(q => [q.u, q.v]) : null });
+    }
+    return { anotados, omitidos };
+  }
+
+  // El documento JSON (objeto con las claves en su orden fijo). camara = { clave, nombre, grupo, focal, modo (el de la cámara) },
+  // sensor = { id, w (mm) }, ctx = el contexto de ORIGEN (src/origen.js), r = { anotados, omitidos } de anotar.
+  const r2 = x => (Math.round(x * 100) / 100) || 0, r4 = x => (Math.round(x * 1e4) / 1e4) || 0;
+  const orig = (clave, ctx) => { const e = O_.entrada(clave, ctx); return { tipo: e.tipo, valor: e.valor, fuente: e.fuente }; };
+  function documento(camara, sensor, v, ctx, r) {
+    const origen = { camara: orig('camaras', ctx), campo_vision: orig('campo_vision', ctx), aruco: orig('marcadores', ctx), plato: orig('plato_bandeja_persona', ctx), fruta: orig('fruta', ctx) };
+    const deClase = { aruco: 'aruco', plato: 'plato', fruta: 'fruta' };
+    return {
+      esquema: ESQUEMA,
+      aviso: AVISO,
+      camara: { clave: camara.clave, nombre: camara.nombre, grupo: camara.grupo, modo_de_la_camara: camara.modo, focal_mm: camara.focal, sensor: sensor.id, ancho_sensor_mm: sensor.w },
+      imagen: { modo: `${v.ancho}x${v.alto}`, ancho: v.ancho, alto: v.alto, convencion_pixel: CONVENCION },
+      proyeccion: { modelo: 'estenopeica', distorsion: DISTORSION, fx: r4(v.fx), fy: r4(v.fy), cx: v.cx, cy: v.cy, campo_horizontal_grados: r2(v.hfov * 180 / Math.PI), campo_vertical_grados: r2(v.vfov * 180 / Math.PI) },
+      oclusion: OCLUSION,
+      personas: PERSONAS,
+      caja_2d: CAJA,
+      orden_esquinas_aruco: ORDEN_ESQUINAS.slice(),
+      origen,
+      objetos: r.anotados.map(a => ({ clase: a.clase, id: a.id, nombre: a.nombre, origen: origen[deClase[a.clase]].tipo, visible: a.visible, parcial: a.parcial, caja: { x: r2(a.caja.x), y: r2(a.caja.y), ancho: r2(a.caja.ancho), alto: r2(a.caja.alto) }, esquinas: a.esquinas ? a.esquinas.map(q => [r2(q[0]), r2(q[1])]) : null })),
+      omitidos: r.omitidos.map(o => ({ clase: o.clase, id: o.id, nombre: o.nombre, motivo: o.motivo })),
+    };
+  }
+  // Texto del JSON: sangrado de 2 espacios, cada esquina «[u, v]» y cada caja en una sola línea y un salto de línea al final; sin fechas ni
+  // nada que cambie de una vez a otra
+  const NUM = '-?\\d+(?:\\.\\d+)?';
+  const texto = doc => JSON.stringify(doc, null, 2)
+    .replace(new RegExp(`\\[\\s+(${NUM}),\\s+(${NUM})\\s+\\]`, 'g'), '[$1, $2]')
+    .replace(new RegExp(`\\{\\s+"x": (${NUM}),\\s+"y": (${NUM}),\\s+"ancho": (${NUM}),\\s+"alto": (${NUM})\\s+\\}`, 'g'), '{ "x": $1, "y": $2, "ancho": $3, "alto": $4 }') + '\n';
+
+  return { ANCHO, ALTO, AVISO, ESQUEMA, CLASES, ORDEN_ESQUINAS, ARUCO_NEGRO, OCLUSION, PERSONAS, vista, proyectar, esquinasAruco, anotar, documento, texto };
 })();
 // Formateador de los ficheros exportados (T2.2–T2.5, D8, I7): convierte el modelo de modeloExportacion() (app.js: un objeto
 // plano, sin redondear y en el base_link del robot elegido) en texto. Sin DOM, three ni globales del gemelo: el origen de
@@ -5101,7 +5217,7 @@ function pintarCamaras() {
     <dt>Brazo Manfrotto 244</dt><dd><span class="pill ${m.brazoOK ? 'ok' : 'bad'}">${mm(m.brazoD)} de 530 mm</span></dd>
     <dt>Holgura con el UR3e</dt><dd><span class="pill ${libre > 0.08 ? 'ok' : libre > 0.02 ? 'warn' : 'bad'}">${libre === Infinity ? '—' : mm(Math.max(0, libre)) + ' mm'}</span>${minC !== undefined ? ' mínima en la demo' : ' ahora'}</dd></dl>
     ${m.nota ? `<p class="hint">Modo ${c.modo.replace('x', '×')}: ${m.nota}.</p>` : ''}
-    <div class="btns"><button class="btn" data-act="sel">Mover</button><button class="btn" data-act="ver">Ver por esta cámara</button></div></div>`;
+    <div class="btns"><button class="btn" data-act="sel">Mover</button><button class="btn" data-act="ver">Ver por esta cámara</button><button class="btn" data-act="captura">Captura sintética</button></div></div>`;
   }).join('') + `<p class="hint">Píxeles por tarea: proyección estenopeica en el peor punto visible de cada objetivo, con el escorzo del plano o del segmento. Los umbrales del ArUco son los del plan (14 px de mínimo en OpenCV 4.6, zona fiable de 32 a 50 px; la cita no se ha podido comprobar aquí); el resto de umbrales, tamaños y supuestos no tienen fuente comprobable: SIN VALIDAR y editables en «Umbrales y supuestos de las tareas» (solo de esta sesión). El campo de visión y los mm/px son de lente ideal con el sensor «${SENSOR.de(sensorEscena()).nombre}» [SIN VALIDAR]: el real se mide en la calibración intrínseca (camera_info, F4).</p>`;
   pintarSensor(); usbRefrescar(); distRefrescar();
 }
@@ -5121,7 +5237,68 @@ $('#camCards').addEventListener('input', e => {
   if (t === 'f') L.cams[k].f = +e.target.value; if (t === 'm') L.cams[k].modo = e.target.value;
   actualizarCam(k); guardarLocal(); clearTimeout(pintarCamaras._t); pintarCamaras._t = setTimeout(pintarCamaras, 120);
 });
-$('#camCards').addEventListener('click', e => { const b = e.target.closest('button[data-act]'); if (!b) return; const k = b.closest('[data-cam]').dataset.cam; if (b.dataset.act === 'sel') { $$('.tabs button')[0].click(); seleccionar('cam:' + k); } else { verCam = k; $('#camMode').hidden = false; $('#camModeTxt').textContent = `Viendo por la cámara ${L.cams[k].nombre.toLowerCase()}${distSufijo(k)}`; pintarPip(); } });
+$('#camCards').addEventListener('click', e => { const b = e.target.closest('button[data-act]'); if (!b) return; const k = b.closest('[data-cam]').dataset.cam; if (b.dataset.act === 'sel') { $$('.tabs button')[0].click(); seleccionar('cam:' + k); } else if (b.dataset.act === 'captura') { try { capturar(k); } catch (err) { toast(`No se ha podido hacer la captura: ${err.message}`); } } else { verCam = k; $('#camMode').hidden = false; $('#camModeTxt').textContent = `Viendo por la cámara ${L.cams[k].nombre.toLowerCase()}${distSufijo(k)}`; pintarPip(); } });
+
+// ======================= Captura sintética (T4.6, src/captura.js) =======================
+// Un botón por cámara: pinta la escena a 640 × 480 con la focal de la cámara, lee los píxeles de golpe y anota lo que se ve (ArUco, platos y
+// fruta) con la proyección de CAPTURA. Se pinta en el lienzo del gemelo (el único sitio donde three r160 aplica el tonemapping y el sRGB: un
+// WebGLRenderTarget sale lineal y sin tonemapping) cambiando su tamaño un momento y se copia en el mismo turno a un lienzo 2D (drawImage y
+// getImageData, síncronos: readPixels avisa en la consola de Chromium, «GPU stall due to ReadPixels»); el tamaño de antes vuelve al terminar.
+// En SwiftShader la primera lectura espera a los fotogramas que el bucle ya tiene en cola (segundos), no a la captura: con la cola vacía, 0,1–0,3 s.
+// La figura de la persona no se dibuja. Todo es de la sesión: ni la escena (I1, I2) ni nada se guarda o se envía (I4)
+let CAP = null; // la última captura: { k, texto, dato (RGBA, fila 0 arriba), doc }
+const CAP_CAM = new THREE.PerspectiveCamera();
+// Los objetos anotables con su geometría en el mundo: marcadores (esquinas y normal), platos (su perfil) y fruta (su caja 3D)
+function objetosCaptura() {
+  scene.updateMatrixWorld(true);
+  const v = p => [p.x, p.y, p.z], O = [];
+  const visible = o => { for (let p = o; p; p = p.parent) if (!p.visible) return false; return true; };
+  const marcador = (a, etq) => {
+    if (!visible(a)) return;
+    O.push({ clase: 'aruco', id: a.userData.id, nombre: `marcador ${a.userData.id} (${etq})`, esquinas: CAPTURA.esquinasAruco(a.userData.lado).map(q => v(new THREE.Vector3(q[0], q[1], q[2]).applyMatrix4(a.matrixWorld))), normal: v(new THREE.Vector3(0, 0, 1).transformDirection(a.matrixWorld)) });
+  };
+  zonaMarc.forEach(a => marcador(a, 'zona')); OBJ.arucoE.forEach(a => marcador(a, 'entrega')); bandMarc.forEach(a => marcador(a, 'bandeja'));
+  for (const [k, nombre] of [['plato1', 'plato 1º'], ['plato2', 'plato 2º']]) {
+    const g = OBJ[k]; if (!visible(g)) continue;
+    const puntos = []; for (const [r, z] of platoPts) if (r > 0) for (let i = 0; i < 32; i++) { const a = i / 32 * 2 * PI; puntos.push(v(new THREE.Vector3(r * Math.cos(a), r * Math.sin(a), z).applyMatrix4(g.matrixWorld))); }
+    O.push({ clase: 'plato', id: null, nombre, puntos });
+  }
+  for (const pz of piezas) {
+    if (!visible(pz.obj)) continue;
+    const b = new THREE.Box3().setFromObject(pz.obj), puntos = [];
+    for (const x of [b.min.x, b.max.x]) for (const y of [b.min.y, b.max.y]) for (const z of [b.min.z, b.max.z]) puntos.push([x, y, z]);
+    O.push({ clase: 'fruta', id: null, nombre: `${pz.F.nombre.toLowerCase()} (pieza ${pz.id})`, puntos });
+  }
+  return O;
+}
+// Hace la captura de la cámara k; devuelve { k, texto, dato, doc } y la deja como la última
+function capturar(k) {
+  const c = L.cams[k], R = CAMS[k]; if (!c || !R) throw new Error(`no hay cámara ${JSON.stringify(k)}`);
+  const sen = sensorEscena(), V = CAPTURA.vista(areaDe(c).w, c.f), W = V.ancho, H = V.alto;
+  R.cam.updateMatrixWorld(true);
+  const e = R.cam.matrixWorld.elements, cam = { o: [e[12], e[13], e[14]], x: [e[0], e[1], e[2]], y: [-e[4], -e[5], -e[6]], z: [-e[8], -e[9], -e[10]], near: R.cam.near, far: R.cam.far }; // marco de OpenCV: x a la derecha, y hacia abajo, z al frente
+  const A = CAP_CAM; A.fov = V.vfov * R2D; A.aspect = W / H; A.near = R.cam.near; A.far = R.cam.far; A.layers.mask = R.cam.layers.mask; A.updateProjectionMatrix();
+  R.cam.matrixWorld.decompose(A.position, A.quaternion, A.scale); A.updateMatrixWorld(true);
+  const objs = objetosCaptura(), pr = renderer.getPixelRatio(), tam = renderer.getSize(new THREE.Vector2());
+  const sinPersona = [persona, ...brazos], vis = sinPersona.map(o => o.visible), tv = tctl.visible, cv = $('#capImg'); let dato;
+  sinPersona.forEach(o => { o.visible = false; }); tctl.visible = false;
+  try {
+    renderer.setPixelRatio(1); renderer.setSize(W, H, false); renderer.setRenderTarget(null); renderer.setScissorTest(false); renderer.setViewport(0, 0, W, H); renderer.clear(); renderer.render(scene, A);
+    cv.width = W; cv.height = H; const x2 = cv.getContext('2d', { willReadFrequently: true }); x2.drawImage(renderer.domElement, 0, 0); dato = x2.getImageData(0, 0, W, H).data; // copia del lienzo en el mismo turno; la fila 0 arriba
+  } finally { sinPersona.forEach((o, i) => { o.visible = vis[i]; }); tctl.visible = tv; renderer.setPixelRatio(pr); renderer.setSize(tam.x, tam.y, false); }
+  const doc = CAPTURA.documento({ clave: k, nombre: c.nombre, grupo: c.grupo, modo: c.modo, focal: c.f }, { id: sen, w: areaDe(c).w }, V, ctxOrigen(), CAPTURA.anotar(V, cam, objs));
+  CAP = { k, texto: CAPTURA.texto(doc), dato, doc }; pintarCaptura();
+  return CAP;
+}
+function pintarCaptura() {
+  const cv = $('#capImg'); if (!CAP) { cv.hidden = true; $('#capJson').value = ''; $('#capVista').hidden = true; return; } // el lienzo ya lleva la imagen (capturar)
+  cv.hidden = false; $('#capVista').hidden = false; $('#capJson').value = CAP.texto; $('#capVista').dataset.cam = CAP.k;
+  const n = CAP.doc.objetos.length, o = CAP.doc.omitidos.length;
+  $('#capMsg').textContent = `Captura de la cámara ${L.cams[CAP.k].nombre.toLowerCase()}: ${CAPTURA.ANCHO} × ${CAPTURA.ALTO} px, ${n} ${n === 1 ? 'objeto anotado' : 'objetos anotados'}${o ? ` y ${o} sin anotar (fuera del campo o de espaldas)` : ''}.`;
+}
+$('#btnCapPng').addEventListener('click', () => { if (CAP) { const k = CAP.k; $('#capImg').toBlob(b => b && descargar(`captura_${k}.png`, b), 'image/png'); } });
+$('#btnCapJson').addEventListener('click', () => { if (CAP) descargar(`captura_${CAP.k}.json`, new Blob([CAP.texto], { type: 'application/json' })); });
+$('#btnCapQuitar').addEventListener('click', () => { CAP = null; $('#capMsg').textContent = ''; pintarCaptura(); });
 
 // ======================= Alcance: tabla y gráfica =======================
 function actualizarTablaAlcance() {

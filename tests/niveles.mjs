@@ -17,6 +17,7 @@ export const NIVELES = {
   tarea: [
     'tests/e2e/carga.test.mjs',             // los dos destinos y la red cerrada (D2, I2): primero, para fallar pronto
     'tests/e2e/balanceo-salida.test.mjs',   // T2.8 (DT30): la salida de la bandeja no la toca en ninguna fase de su balanceo
+    'tests/e2e/captura.test.mjs',           // T4.6: captura sintética de 640 × 480 con anotaciones 2D (PNG y JSON), esquinas de ArUco en su sitio (C3), tiempos (C4), panel en los dos destinos (C5)
     'tests/e2e/datos.test.mjs',             // I7: posiciones.yaml y la tabla de fuentes byte a byte (T2.1), red de T2.2–T2.5
     'tests/e2e/deuda-f2.test.mjs',          // T2.7: zonas de plan en la demo y textos raros en posiciones.yaml (DT35), capa del otro robot (DT31) y #btnCalc (DT41)
     'tests/e2e/determinismo.test.mjs',      // I6 con «gemelo» (A, B, A'), sin reintento de semilla (D5) y el banco de ensayo

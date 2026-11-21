@@ -13,7 +13,7 @@ y no es fuente del repo del proyecto de Robótica (invariante I9).
 ## Estructura
 
 - `src/`: fuentes (`part1.html`, `app.js`, `kin.js`, `colision.js`, `fallos.js`, `escenas.js`, `layout.js`, `rng.js`,
-  `perfil.js`, `sensor.js`, `tareas.js` (píxeles por tarea de cada cámara, T4.1), `usb.js` (ancho de banda USB y análisis de `lsusb -v`, T4.3), `tablero.js` (tablero de marcadores ArUco de la bandeja: esquinas, aviso de alineados, T4.4; su YAML lo escribe `EXPORTAR.tablero`), `distorsion.js` (distorsión Brown–Conrady opcional de «Ver por esta cámara»: modelo, inversa, lectura de `camera_info` y campo del render, T4.5; apagada por defecto), `origen.js`, `exportar.js` y `datos/calibracion.js`, que genera
+  `perfil.js`, `sensor.js`, `tareas.js` (píxeles por tarea de cada cámara, T4.1), `usb.js` (ancho de banda USB y análisis de `lsusb -v`, T4.3), `tablero.js` (tablero de marcadores ArUco de la bandeja: esquinas, aviso de alineados, T4.4; su YAML lo escribe `EXPORTAR.tablero`), `distorsion.js` (distorsión Brown–Conrady opcional de «Ver por esta cámara»: modelo, inversa, lectura de `camera_info` y campo del render, T4.5; apagada por defecto), `captura.js` (captura sintética de 640 × 480 de una cámara con anotaciones 2D en JSON: proyección, recorte y esquinas de ArUco, T4.6; reutiliza `sensor.js` y `tareas.js`), `origen.js`, `exportar.js` y `datos/calibracion.js`, que genera
   `tools/fixtures/fk_desde_xacro.py`). Se concatenan con los marcadores `@@…@@`; sin módulos ES ni bundler (D4).
   `origen.js` es la única fuente del origen (MEDIDO, FABRICANTE o SUPUESTO) de cada valor exportable: los exportadores lo
   leen con un contexto, sin globales (T2.1). `exportar.js` (`EXPORTAR`) es el único formateador: convierte el modelo de
