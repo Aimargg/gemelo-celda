@@ -50,6 +50,7 @@ const ARUCO = ['1011010100110010', '0000111110011010', '0011001100101101', '1001
 // @@SENSOR@@
 // @@TAREAS@@
 // @@USB@@
+// @@TABLERO@@
 // @@ORIGEN@@
 // @@EXPORTAR@@
 // @@CALIBRACION@@
@@ -1949,6 +1950,78 @@ $('#usbCfgCuerpo').addEventListener('input', e => {
 });
 $('#btnUsbRestaurar').addEventListener('click', () => { USB_CFG = USB.cfgDefecto(); for (const k of Object.keys(USB_CAMS)) delete USB_CAMS[k]; pintarUsbCfg(); usbPintar(); usbPintarLsusb(); });
 pintarUsbCfg();
+// Tablero de la bandeja (T4.4, src/tablero.js): id, lado y posición de cada marcador ArUco en el marco de la bandeja, el aviso de
+// centros alineados y tablero_bandeja.yaml (EXPORTAR.tablero). Parte de los marcadores de la escena (bandMarc) y todo es de la
+// sesión: no se guarda en la escena, no cambia el dibujo ni L (I1, I2) y el YAML solo se muestra, se copia o se descarga (I4).
+let TAB_CFG = TABLERO.cfgDefecto();
+const tabInicial = () => bandMarc.map(a => ({ id: a.userData.id, lado: a.userData.lado, x: a.position.x, y: a.position.y, yaw: a.rotation.z }));
+let TAB_M = tabInicial();
+const tabRed = (v, d) => +v.toFixed(d); // sin la cola de coma flotante que dejan mm ↔ m y grados ↔ rad
+// Campo, texto del campo, valor que se enseña, valor del modelo (m y rad) desde el campo y atributos del input
+const TAB_CAMPOS = [
+  ['id', 'Id', m => m.id, v => v, 'min="0" max="' + TABLERO.MAX_ID + '" step="1"'],
+  ['lado', 'Lado (mm)', m => tabRed(m.lado * 1000, 3), v => v / 1000, 'min="0" step="any"'],
+  ['x', 'x (mm)', m => tabRed(m.x * 1000, 3), v => v / 1000, 'step="any"'],
+  ['y', 'y (mm)', m => tabRed(m.y * 1000, 3), v => v / 1000, 'step="any"'],
+  ['yaw', 'Giro (°)', m => tabRed(m.yaw * R2D, 4), v => v * PI / 180, 'step="any"'],
+];
+// Una fila por marcador con sus campos y «Quitar»
+function tabPintar() {
+  $('#tabTbl tbody').innerHTML = TAB_M.map((m, i) => `<tr data-fila="${i}" data-id="${m.id}">${TAB_CAMPOS.map(([c, nombre, ver, , attr]) => `<td><input type="number" data-campo="${c}" aria-label="${nombre} del marcador ${i + 1}" ${attr} value="${ver(m)}"></td>`).join('')}<td><button class="btn" data-quitar aria-label="Quitar el marcador ${i + 1}">Quitar</button></td></tr>`).join('');
+  tabActualizar();
+}
+// Recalcula el aviso, los botones de «Quitar» y, si se ve, el YAML, sin tocar los campos (así no se pierde el foco al escribir)
+function tabActualizar() {
+  const r = TABLERO.alineacion(TAB_M, TAB_CFG), el = $('#tabAviso');
+  el.textContent = r.alineado ? `Aviso: ${r.texto}.` : `Sin aviso de alineación: los ${r.n} centros no quedan sobre una recta (el mayor desvío a la recta entre los dos marcadores más separados es ${fmt(r.desvio * 1000, 1)} mm, más que la tolerancia de ${fmt(r.tolerancia * 1000, 1)} mm; SUPUESTO SIN VALIDAR).`;
+  Object.assign(el.dataset, { alineado: String(r.alineado), motivo: r.motivo || '', n: r.n, desvio: r.desvio, tolerancia: r.tolerancia });
+  $$('#tabTbl [data-quitar]').forEach(b => { b.disabled = TAB_M.length < 2; });
+  if (!$('#tabVerCaja').hidden) $('#tabVer').value = tabYaml();
+}
+// Aplica el campo de una fila al tablero si el resultado es válido (id entero de 0 a 49 y único, lado positivo, números finitos);
+// si no, lo marca y no cambia nada
+function tabAplicar(el) {
+  const c = TAB_CAMPOS.find(x => x[0] === el.dataset.campo), tr = el.closest('tr'), i = tr ? +tr.dataset.fila : -1; if (!c || !TAB_M[i]) return false;
+  const cand = TAB_M.map((m, j) => j === i ? { ...m, [c[0]]: c[3](el.valueAsNumber) } : m);
+  try { TABLERO.validar(cand); } catch (err) { el.setAttribute('aria-invalid', 'true'); el.title = err.message; return false; }
+  el.removeAttribute('aria-invalid'); el.removeAttribute('title'); TAB_M = cand; tr.dataset.id = cand[i].id; return true;
+}
+$('#tabTbl tbody').addEventListener('input', e => {
+  if (!tabAplicar(e.target)) return;
+  for (const otro of $$('#tabTbl input[aria-invalid="true"]')) tabAplicar(otro); // un id repetido deja de serlo al cambiar el otro
+  tabActualizar();
+});
+$('#tabTbl tbody').addEventListener('click', e => {
+  const b = e.target.closest('[data-quitar]'); if (!b || TAB_M.length < 2) return;
+  TAB_M = TAB_M.filter((_, j) => j !== +b.closest('tr').dataset.fila); tabPintar();
+});
+$('#btnTabAnadir').addEventListener('click', () => {
+  // el id libre siguiente al mayor en uso o, si no hay, el primero libre
+  const usados = new Set(TAB_M.map(m => m.id)), max = Math.max(...usados), libres = [...Array(TABLERO.MAX_ID + 1).keys()].filter(k => !usados.has(k)), id = libres.find(k => k > max) ?? libres[0];
+  if (id === undefined) { toast(`Los ${TABLERO.MAX_ID + 1} ids de ${TABLERO.DICCIONARIO} ya están en uso`); return; }
+  TAB_M = [...TAB_M, { id, lado: TAB_M[TAB_M.length - 1].lado, x: 0, y: 0, yaw: 0 }]; tabPintar();
+});
+function tabYaml() { return EXPORTAR.tablero({ ctx: ctxOrigen(), tablero: TABLERO.modelo(TAB_M, TAB_CFG) }, ORIGEN); }
+function tabVer() { $('#tabVerCaja').hidden = false; $('#tabVer').value = tabYaml(); }
+$('#btnTabVer').addEventListener('click', tabVer);
+$('#btnTabCopiar').addEventListener('click', async () => {
+  const t = tabYaml();
+  try { await navigator.clipboard.writeText(t); toast('Copiado: tablero_bandeja.yaml'); } catch (e) { tabVer(); const a = $('#tabVer'); a.focus(); a.select(); toast('Selecciona y copia con Ctrl+C'); }
+});
+$('#btnTabDescargar').addEventListener('click', () => descargar('tablero_bandeja.yaml', tabYaml()));
+function pintarTabCfg() {
+  $('#tabCfgCuerpo').innerHTML = TABLERO.PARAMS.map(p => {
+    const [g, n] = p.id.split('.');
+    return `<div class="field"><label for="tc_${p.id}" title="${usbEsc(p.fuente)}">${usbEsc(p.nombre)} <span class="tag s">SUPUESTO · SIN VALIDAR</span></label><output>${usbEsc(p.unidad)}</output><input type="number" id="tc_${p.id}" min="0" step="any" value="${TAB_CFG[g][n]}"${p.editable ? '' : ' disabled'}></div>`;
+  }).join('');
+}
+$('#tabCfgCuerpo').addEventListener('input', e => {
+  const id = e.target.id.startsWith('tc_') ? e.target.id.slice(3) : null; if (!id) return;
+  try { TAB_CFG = TABLERO.fijar(TAB_CFG, id, e.target.valueAsNumber); e.target.removeAttribute('aria-invalid'); } catch { e.target.setAttribute('aria-invalid', 'true'); return; }
+  tabActualizar();
+});
+$('#btnTabRestaurar').addEventListener('click', () => { TAB_CFG = TABLERO.cfgDefecto(); TAB_M = tabInicial(); $('#tabVerCaja').hidden = true; pintarTabCfg(); tabPintar(); });
+pintarTabCfg(); tabPintar();
 // pintarCamaras lo llama: rehace los campos si cambia la lista de cámaras o algún modo; si no, solo recalcula
 function usbRefrescar() { if (usbFirma() !== USB_FIRMA || !$('#usbCuerpo').firstElementChild) usbPintar(); else usbActualizar(); }
 function pintarCamaras() {

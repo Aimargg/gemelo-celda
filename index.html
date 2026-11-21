@@ -141,6 +141,7 @@ details.escSec summary{cursor:pointer;font-weight:600;font-size:13px}
 .tarea>div{display:flex;justify-content:space-between;align-items:center;gap:8px}.tarea .hint{font-size:11.5px;overflow-wrap:anywhere}
 .usbcam,.usbbus,.usbdev{display:grid;gap:4px;font-size:12.5px;padding:8px 0;border-bottom:1px solid var(--line2)}.usbcam>div:first-child,.usbbus>div:first-child,.usbdev>span:first-child{display:flex;justify-content:space-between;align-items:center;gap:8px}
 .usbcam .hint,.usbbus .hint,.usbdev .hint{font-size:11.5px;overflow-wrap:anywhere}.usbcam input[type=number]{width:100%}.usbcam input[aria-invalid=true],#usbLsusbTxt[aria-invalid=true]{border-color:var(--bad)}
+#tabTbl input{width:100%;min-width:0;box-sizing:border-box;padding:3px 4px}#tabTbl input[aria-invalid=true]{border-color:var(--bad)}#tabTbl td{vertical-align:middle}#tabAviso[data-alineado=true]{color:var(--bad)}
 .field input[type=number]{grid-column:1 / -1;width:100%}.field input[aria-invalid=true]{border-color:var(--bad)}
 select{border:1px solid var(--line);background:var(--panel2);border-radius:6px;padding:6px 8px;width:100%}
 .chk{display:flex;align-items:center;gap:8px;font-size:13px;cursor:pointer}
@@ -407,6 +408,21 @@ textarea{width:100%;min-height:120px;border:1px solid var(--line);border-radius:
           <details class="escSec" id="usbCfg"><summary>Supuestos del estimador de USB</summary>
             <p class="hint">Editables y solo de esta sesión. La reserva máxima es la del plan y no se edita; todo lo demás son supuestos sin fuente comprobable, SIN VALIDAR.</p>
             <div id="usbCfgCuerpo"></div>
+          </details>
+        </div>
+        <div class="sec" id="tabSec">
+          <h2>Tablero de la bandeja <span class="tag s">SIN VALIDAR</span></h2>
+          <p class="hint">Marcadores ArUco (DICT_4X4_50) de la bandeja para <code>estimatePoseBoard</code> de OpenCV: id, lado y posición de cada uno en el marco de la bandeja (origen en su centro, x e y sobre su cara de arriba, giro del patrón sobre z hacia +y; el tablero es plano, en z = 0). Parte de los 4 marcadores de la escena (ids 6–9, de 32 mm). Lo que cambies es de esta sesión: no se guarda en la escena y no cambia el dibujo ni la disposición.</p>
+          <p class="hint" id="tabAviso" role="status"></p>
+          <table class="tbl" id="tabTbl"><thead><tr><th>Id</th><th>Lado (mm)</th><th>x (mm)</th><th>y (mm)</th><th>Giro (°)</th><th></th></tr></thead><tbody></tbody></table>
+          <div class="btns"><button class="btn" id="btnTabAnadir">Añadir marcador</button><button class="btn" id="btnTabRestaurar">Restaurar el tablero (marcadores y supuestos)</button></div>
+          <h4 style="margin:6px 0 0;font-size:12.5px;font-weight:600">tablero_bandeja.yaml</h4>
+          <p class="hint">Las esquinas de cada marcador en el marco de la bandeja, en metros y en el orden de OpenCV (arriba-izquierda, arriba-derecha, abajo-derecha, abajo-izquierda), con el origen de cada valor. Solo genera texto: no se envía a ROS ni a ninguna parte. Aparte de los ficheros de «Exportar a ROS».</p>
+          <div class="btns"><button class="btn" id="btnTabVer">Ver</button><button class="btn" id="btnTabCopiar">Copiar</button><button class="btn" id="btnTabDescargar">Descargar</button></div>
+          <div class="field2" id="tabVerCaja" hidden><label for="tabVer" id="tabVerNombre">tablero_bandeja.yaml · solo lectura</label><textarea id="tabVer" readonly spellcheck="false"></textarea></div>
+          <details class="escSec" id="tabCfg"><summary>Supuestos del tablero</summary>
+            <p class="hint">Editables y solo de esta sesión. No tienen fuente comprobable: SIN VALIDAR.</p>
+            <div id="tabCfgCuerpo"></div>
           </details>
         </div>
         <div class="sec">
@@ -1391,6 +1407,98 @@ const USB = (() => {
 
   return { RESERVA_MAX, PARAMS, FORMATOS, ESTADOS, ORDEN, cfgDefecto, fijar, tasaMbit, factorNecesario, validarReserva, evaluarCamara, capacidad, cabenPorBus, avisoReserva, evaluarBuses, parsearLsusb, camarasDe };
 })();
+// Diseñador del tablero de marcadores ArUco de la bandeja (T4.4, D4): ids, lado y posición de cada marcador en el marco de la
+// bandeja; las cuatro esquinas de cada uno en el orden de OpenCV; y el aviso «los centros quedan sobre una recta» (la pose con
+// varios marcadores es degenerada). Sin DOM, sin three y sin red: lo que se le pasa son números. El YAML con las esquinas lo
+// escribe EXPORTAR.tablero (src/exportar.js), el único formateador. Se prueba con node:test (tests/unit/tablero.test.mjs) y se
+// concatena en app.js con el marcador @@TABLERO@@.
+// Marcador: { id, lado, x, y, yaw } en metros y radianes, en el marco de la bandeja (x e y sobre su cara de arriba, yaw hacia
+// +y); el tablero es plano, en z = 0. El patrón de un marcador tiene el convenio de ArUco de OpenCV: x a la derecha, y hacia
+// arriba y z saliendo de la cara impresa; con yaw = 0 sus ejes son los de la bandeja.
+// Fuentes. El estudio «percepcion-bandeja-personas» no está en el repo: solo se cita lo que da la ficha de T4.4 del plan (el
+// aviso de marcadores alineados sobre un solo borde, «pose con varios marcadores») y la aritmética (el diccionario DICT_4X4_50
+// tiene 50 ids, de 0 a 49; las esquinas son el centro más el medio lado girado). La tolerancia de «alineados» no tiene fuente
+// comprobable: es un SUPUESTO SIN VALIDAR y editable.
+const TABLERO = (() => {
+  const PLAN = 'percepcion-bandeja-personas «pose con varios marcadores», cita del plan sin comprobar aquí (el estudio no está en el repo)';
+  const SIN = 'sin fuente comprobable; SUPUESTO [SIN VALIDAR]';
+  const DICCIONARIO = 'DICT_4X4_50', MAX_ID = 49, EPS = 1e-9;
+  // Esquinas de OpenCV: arriba-izquierda, arriba-derecha, abajo-derecha y abajo-izquierda del patrón, con sus signos (x, y)
+  const ORDEN = ['arriba_izquierda', 'arriba_derecha', 'abajo_derecha', 'abajo_izquierda'];
+  const SIGNOS = [[-1, 1], [1, 1], [1, -1], [-1, -1]];
+  const P = (id, nombre, unidad, valor, origen, fuente, editable = true) => ({ id, nombre, unidad, valor, origen, fuente, editable });
+  const PARAMS = [
+    P('alineacion.fraccion', 'Alineación: desvío máximo de los centros a la recta', '× lado medio', 0.5, 'SUPUESTO', `medio lado de los marcadores; ${SIN}`),
+  ];
+  const POR_ID = new Map(PARAMS.map(p => [p.id, p]));
+  function cfgDefecto() {
+    const cfg = {};
+    for (const p of PARAMS) { const [g, k] = p.id.split('.'); (cfg[g] = cfg[g] || {})[k] = p.valor; }
+    return cfg;
+  }
+  // Cambia un valor editable (devuelve una configuración nueva); un id desconocido o un valor que no sea un número positivo falla
+  function fijar(cfg, id, valor) {
+    const p = POR_ID.get(id); if (!p) throw new Error(`parámetro desconocido (${JSON.stringify(id)})`);
+    if (!p.editable) throw new Error(`«${p.nombre}» lo fija el plan y no se edita`);
+    if (typeof valor !== 'number' || !Number.isFinite(valor) || !(valor > 0)) throw new Error(`«${p.nombre}»: ${JSON.stringify(valor)} no es un número positivo`);
+    const n = Object.fromEntries(Object.entries(cfg).map(([k, v]) => [k, { ...v }])), [g, k] = id.split('.'); n[g][k] = valor; return n;
+  }
+
+  const fmt1 = x => x.toFixed(1).replace('.', ',');
+  const txt = v => typeof v === 'number' ? String(v) : JSON.stringify(v);
+  // Los campos de un marcador: el id entero de 0 a 49, el lado positivo y x, y y yaw finitos. Error claro con el id (o el número de fila)
+  function campos(m, n) {
+    if (m === null || typeof m !== 'object') throw new Error(`marcador ${n}: no es un objeto { id, lado, x, y, yaw }`);
+    if (!Number.isInteger(m.id) || m.id < 0 || m.id > MAX_ID) throw new Error(`marcador ${n}: el id ${txt(m.id)} no es un entero de 0 a ${MAX_ID} (${DICCIONARIO})`);
+    if (typeof m.lado !== 'number' || !Number.isFinite(m.lado) || !(m.lado > 0)) throw new Error(`marcador con id ${m.id}: el lado ${txt(m.lado)} no es un número positivo (m)`);
+    for (const c of ['x', 'y', 'yaw']) if (typeof m[c] !== 'number' || !Number.isFinite(m[c])) throw new Error(`marcador con id ${m.id}: ${c} ${txt(m[c])} no es un número finito`);
+    return m;
+  }
+  // Una lista de marcadores: al menos uno, cada uno válido y los ids únicos (si no, falla con un error y no devuelve nada a medias)
+  function validar(marcadores) {
+    if (!Array.isArray(marcadores)) throw new Error('se esperaba una lista de marcadores');
+    if (!marcadores.length) throw new Error('el tablero no tiene ningún marcador');
+    const vistos = new Set();
+    marcadores.forEach((m, i) => { campos(m, i + 1); if (vistos.has(m.id)) throw new Error(`el id ${m.id} está repetido (los ids del tablero son únicos)`); vistos.add(m.id); });
+    return marcadores;
+  }
+  // Las cuatro esquinas [x, y, z] del marcador en la bandeja (z = 0), en el orden de ORDEN: centro + R(yaw)·(±lado/2, ±lado/2)
+  function esquinas(m) {
+    campos(m, 1);
+    const h = m.lado / 2, c = Math.cos(m.yaw), s = Math.sin(m.yaw);
+    return SIGNOS.map(([a, b]) => { const u = a * h, v = b * h; return [m.x + c * u - s * v, m.y + s * u + c * v, 0]; });
+  }
+  // El aviso de centros alineados: con dos marcadores o menos siempre lo están; con más, el desvío máximo de los centros a la
+  // recta entre los dos más separados (el primero de ellos en caso de empate) no pasa de la tolerancia: fracción × lado medio.
+  // → { n, alineado, motivo: 'pocos' | 'recta' | null, desvio, tolerancia, texto: null si no hay aviso }
+  function alineacion(marcadores, cfg) {
+    validar(marcadores);
+    const n = marcadores.length, frac = cfg.alineacion.fraccion, tolerancia = frac * marcadores.reduce((s, m) => s + m.lado, 0) / n;
+    let desvio = 0, motivo = null;
+    if (n <= 2) motivo = 'pocos';
+    else {
+      let a = 0, b = 1, dmax = -1;
+      for (let i = 0; i < n; i++) for (let j = i + 1; j < n; j++) { const d = Math.hypot(marcadores[j].x - marcadores[i].x, marcadores[j].y - marcadores[i].y); if (d > dmax) { dmax = d; a = i; b = j; } }
+      if (dmax > 0) {
+        const A = marcadores[a], B = marcadores[b];
+        for (const m of marcadores) desvio = Math.max(desvio, Math.abs((B.x - A.x) * (m.y - A.y) - (B.y - A.y) * (m.x - A.x)) / dmax);
+      }
+      if (desvio <= tolerancia * (1 + EPS)) motivo = 'recta';
+    }
+    const alineado = motivo !== null, cita = `(${PLAN})`;
+    const texto = !alineado ? null : motivo === 'pocos'
+      ? `con ${n} ${n === 1 ? 'marcador' : 'marcadores'} los centros siempre quedan sobre una recta: la pose del tablero con varios marcadores es degenerada; añade marcadores fuera de esa recta ${cita}`
+      : `los ${n} centros quedan sobre una recta (el mayor desvío es ${fmt1(desvio * 1000)} mm, dentro de la tolerancia de ${fmt1(tolerancia * 1000)} mm = ${String(frac).replace('.', ',')} lados de media, SUPUESTO SIN VALIDAR): la pose del tablero con varios marcadores es degenerada; separa algún marcador de la recta en el otro eje ${cita}`;
+    return { n, alineado, motivo, desvio, tolerancia, texto };
+  }
+  // El modelo que formatea EXPORTAR.tablero: cada marcador con sus esquinas, el diccionario, el orden y la alineación
+  function modelo(marcadores, cfg) {
+    validar(marcadores);
+    return { diccionario: DICCIONARIO, orden: ORDEN, marcadores: marcadores.map(m => ({ id: m.id, lado: m.lado, x: m.x, y: m.y, yaw: m.yaw, esquinas: esquinas(m) })), alineacion: alineacion(marcadores, cfg) };
+  }
+
+  return { DICCIONARIO, MAX_ID, ORDEN, PARAMS, cfgDefecto, fijar, validar, esquinas, alineacion, modelo };
+})();
 // Origen de cada valor exportable (T2.1, D8, I7): la única fuente de su tipo (MEDIDO, FABRICANTE o SUPUESTO), del texto y
 // la fuente que enseña la tabla del panel «Datos» y del comentario corto que lleva en los ficheros exportados. Lo leen
 // pintarFuentes (la tabla) y generarYaml (posiciones.yaml); los exportadores de T2.2–T2.5 leerán de aquí. Sin DOM ni three:
@@ -1949,6 +2057,35 @@ const EXPORTAR = (() => {
   // Todos los ficheros de ROS de la disposición, en orden fijo: los de T2.2 + T2.4, los de la escena (T2.3) y los de las cámaras (T2.5)
   const todos = (m, O) => [...ficherosRos(m, O), ...ficherosEscena(m, O), ...ficherosCamaras(m, O)];
 
+  // ---------- Tablero de la bandeja (T4.4): tablero_bandeja.yaml, aparte de los ficheros de ROS (no entra en todos() ni en el .tar) ----------
+  // m = { ctx, tablero: TABLERO.modelo(...) } (src/tablero.js: diccionario, orden de las esquinas, marcadores [{ id, lado, x, y,
+  // yaw, esquinas [[x, y, z] × 4] }] y la alineación { alineado, texto }), todo en metros y radianes en el marco de la bandeja.
+  // Las mismas reglas que los ros__parameters (rcl: YAML 1.1 y 1.2 leen lo mismo, sin alias ni listas de mapas), con el redondeo
+  // de I7 (1 mm y 0,001 rad): cada esquina es un array de tres doubles con nombre, en el orden de OpenCV.
+  function tableroYaml(m, O) {
+    const T = m.tablero, og = k => O.yaml(k, m.ctx), mar = og('marcadores'), sup = og('disposicion'), nom = og('nombre_frame');
+    const nodos = [mapa('tablero',
+      hoja('frame_id', cad('bandeja'), nom),
+      hoja('diccionario', cad(T.diccionario), mar),
+      hoja('ids', lista(T.marcadores.map(k => ent(k.id))), mar),
+      hoja('orden_esquinas', lista(T.orden.map(cad)), 'orden de OpenCV: arriba-izquierda, arriba-derecha, abajo-derecha y abajo-izquierda del patrón'),
+      ...T.marcadores.map(k => mapa(`marcador_${ent(k.id)}`,
+        hoja('id', ent(k.id), mar),
+        hoja('lado_m', d3(k.lado), mar),
+        hoja('centro_m', lista([d3(k.x), d3(k.y), d3(0)]), sup),
+        hoja('yaw_rad', a3(k.yaw), `${sup}; giro del patrón sobre z, hacia +y de la bandeja`),
+        ...T.orden.map((o, i) => hoja(o, lista(k.esquinas[i].map(d3)), `${sup}; esquina del patrón con z saliendo de la cara impresa`)))))];
+    return [`# tablero_bandeja.yaml · gemelo de la celda UR3e · generado por el gemelo (IA), BORRADOR\n`,
+      `# Tablero de marcadores ArUco (${limpio(T.diccionario)}) de la bandeja: ids, lado y esquinas de cada marcador, para cv2.aruco.estimatePoseBoard.\n`,
+      '# Marco: bandeja (el de la TF bandeja, tf/bandeja.yaml). Metros y radianes (REP-103), redondeo a 1 mm y 0,001 rad (I7): con un lado que no es múltiplo de 2 mm el cuadrado escrito se desvía hasta 1 mm del ideal.\n',
+      '# El tablero es plano, en z = 0 (la cara de arriba de la bandeja; el dibujo del gemelo lo levanta 0,6 mm). Cada marcador sigue el convenio de ArUco de OpenCV: x a la derecha, y hacia arriba y z saliendo de la cara impresa; con yaw_rad = 0 sus ejes son los de la bandeja.\n',
+      '# Esquinas de cada marcador_<id>: arriba_izquierda, arriba_derecha, abajo_derecha, abajo_izquierda, en ese orden (orden_esquinas), como las que OpenCV devuelve al detectar.\n',
+      "# Carga: yaml.safe_load(texto)['/**']['ros__parameters']['tablero']; objPoints = una matriz 4×3 por marcador con sus esquinas en el orden de orden_esquinas e ids = ids, para el Board de estimatePoseBoard [SIN VALIDAR con OpenCV].\n",
+      `# Origen de cada valor, al final de su línea (D8): ${[...new Set([O.tipo('marcadores', m.ctx), O.tipo('disposicion', m.ctx)])].join(' y ')}; los ids, el lado y las posiciones son una propuesta del gemelo, sin medir.\n`,
+      ...(T.alineacion.alineado ? [`# AVISO: ${limpio(T.alineacion.texto)}.\n`] : []),
+    ].join('') + raiz(nodos);
+  }
+
   // ---------- Paquete .tar (T2.6, decisión 2 de su brief): los ficheros tal cual, bajo una carpeta raíz ----------
   // Formato ustar (POSIX.1-1988) sin comprimir y determinista: la misma lista da los mismos bytes. Por entrada, una cabecera
   // de 512 bytes (name 0–99, mode 100, uid 108, gid 116, size 124, mtime 136, chksum 148, typeflag 156, magic «ustar\0» 257,
@@ -2013,7 +2150,7 @@ const EXPORTAR = (() => {
     return out;
   }
 
-  return { r3, rad3, huella, cuaternion, posiciones, parametros, ficherosRos, ficherosEscena, ficherosCamaras, todos, tar };
+  return { r3, rad3, huella, cuaternion, posiciones, parametros, ficherosRos, ficherosEscena, ficherosCamaras, todos, tablero: tableroYaml, tar };
 })();
 // GENERADO por tools/fixtures/fk_desde_xacro.py: no editar a mano (ver tools/fixtures/LEEME.md).
 // Calibración cinemática de los UR3e del laboratorio y su montaje respecto a «world».
@@ -4576,6 +4713,78 @@ $('#usbCfgCuerpo').addEventListener('input', e => {
 });
 $('#btnUsbRestaurar').addEventListener('click', () => { USB_CFG = USB.cfgDefecto(); for (const k of Object.keys(USB_CAMS)) delete USB_CAMS[k]; pintarUsbCfg(); usbPintar(); usbPintarLsusb(); });
 pintarUsbCfg();
+// Tablero de la bandeja (T4.4, src/tablero.js): id, lado y posición de cada marcador ArUco en el marco de la bandeja, el aviso de
+// centros alineados y tablero_bandeja.yaml (EXPORTAR.tablero). Parte de los marcadores de la escena (bandMarc) y todo es de la
+// sesión: no se guarda en la escena, no cambia el dibujo ni L (I1, I2) y el YAML solo se muestra, se copia o se descarga (I4).
+let TAB_CFG = TABLERO.cfgDefecto();
+const tabInicial = () => bandMarc.map(a => ({ id: a.userData.id, lado: a.userData.lado, x: a.position.x, y: a.position.y, yaw: a.rotation.z }));
+let TAB_M = tabInicial();
+const tabRed = (v, d) => +v.toFixed(d); // sin la cola de coma flotante que dejan mm ↔ m y grados ↔ rad
+// Campo, texto del campo, valor que se enseña, valor del modelo (m y rad) desde el campo y atributos del input
+const TAB_CAMPOS = [
+  ['id', 'Id', m => m.id, v => v, 'min="0" max="' + TABLERO.MAX_ID + '" step="1"'],
+  ['lado', 'Lado (mm)', m => tabRed(m.lado * 1000, 3), v => v / 1000, 'min="0" step="any"'],
+  ['x', 'x (mm)', m => tabRed(m.x * 1000, 3), v => v / 1000, 'step="any"'],
+  ['y', 'y (mm)', m => tabRed(m.y * 1000, 3), v => v / 1000, 'step="any"'],
+  ['yaw', 'Giro (°)', m => tabRed(m.yaw * R2D, 4), v => v * PI / 180, 'step="any"'],
+];
+// Una fila por marcador con sus campos y «Quitar»
+function tabPintar() {
+  $('#tabTbl tbody').innerHTML = TAB_M.map((m, i) => `<tr data-fila="${i}" data-id="${m.id}">${TAB_CAMPOS.map(([c, nombre, ver, , attr]) => `<td><input type="number" data-campo="${c}" aria-label="${nombre} del marcador ${i + 1}" ${attr} value="${ver(m)}"></td>`).join('')}<td><button class="btn" data-quitar aria-label="Quitar el marcador ${i + 1}">Quitar</button></td></tr>`).join('');
+  tabActualizar();
+}
+// Recalcula el aviso, los botones de «Quitar» y, si se ve, el YAML, sin tocar los campos (así no se pierde el foco al escribir)
+function tabActualizar() {
+  const r = TABLERO.alineacion(TAB_M, TAB_CFG), el = $('#tabAviso');
+  el.textContent = r.alineado ? `Aviso: ${r.texto}.` : `Sin aviso de alineación: los ${r.n} centros no quedan sobre una recta (el mayor desvío a la recta entre los dos marcadores más separados es ${fmt(r.desvio * 1000, 1)} mm, más que la tolerancia de ${fmt(r.tolerancia * 1000, 1)} mm; SUPUESTO SIN VALIDAR).`;
+  Object.assign(el.dataset, { alineado: String(r.alineado), motivo: r.motivo || '', n: r.n, desvio: r.desvio, tolerancia: r.tolerancia });
+  $$('#tabTbl [data-quitar]').forEach(b => { b.disabled = TAB_M.length < 2; });
+  if (!$('#tabVerCaja').hidden) $('#tabVer').value = tabYaml();
+}
+// Aplica el campo de una fila al tablero si el resultado es válido (id entero de 0 a 49 y único, lado positivo, números finitos);
+// si no, lo marca y no cambia nada
+function tabAplicar(el) {
+  const c = TAB_CAMPOS.find(x => x[0] === el.dataset.campo), tr = el.closest('tr'), i = tr ? +tr.dataset.fila : -1; if (!c || !TAB_M[i]) return false;
+  const cand = TAB_M.map((m, j) => j === i ? { ...m, [c[0]]: c[3](el.valueAsNumber) } : m);
+  try { TABLERO.validar(cand); } catch (err) { el.setAttribute('aria-invalid', 'true'); el.title = err.message; return false; }
+  el.removeAttribute('aria-invalid'); el.removeAttribute('title'); TAB_M = cand; tr.dataset.id = cand[i].id; return true;
+}
+$('#tabTbl tbody').addEventListener('input', e => {
+  if (!tabAplicar(e.target)) return;
+  for (const otro of $$('#tabTbl input[aria-invalid="true"]')) tabAplicar(otro); // un id repetido deja de serlo al cambiar el otro
+  tabActualizar();
+});
+$('#tabTbl tbody').addEventListener('click', e => {
+  const b = e.target.closest('[data-quitar]'); if (!b || TAB_M.length < 2) return;
+  TAB_M = TAB_M.filter((_, j) => j !== +b.closest('tr').dataset.fila); tabPintar();
+});
+$('#btnTabAnadir').addEventListener('click', () => {
+  // el id libre siguiente al mayor en uso o, si no hay, el primero libre
+  const usados = new Set(TAB_M.map(m => m.id)), max = Math.max(...usados), libres = [...Array(TABLERO.MAX_ID + 1).keys()].filter(k => !usados.has(k)), id = libres.find(k => k > max) ?? libres[0];
+  if (id === undefined) { toast(`Los ${TABLERO.MAX_ID + 1} ids de ${TABLERO.DICCIONARIO} ya están en uso`); return; }
+  TAB_M = [...TAB_M, { id, lado: TAB_M[TAB_M.length - 1].lado, x: 0, y: 0, yaw: 0 }]; tabPintar();
+});
+function tabYaml() { return EXPORTAR.tablero({ ctx: ctxOrigen(), tablero: TABLERO.modelo(TAB_M, TAB_CFG) }, ORIGEN); }
+function tabVer() { $('#tabVerCaja').hidden = false; $('#tabVer').value = tabYaml(); }
+$('#btnTabVer').addEventListener('click', tabVer);
+$('#btnTabCopiar').addEventListener('click', async () => {
+  const t = tabYaml();
+  try { await navigator.clipboard.writeText(t); toast('Copiado: tablero_bandeja.yaml'); } catch (e) { tabVer(); const a = $('#tabVer'); a.focus(); a.select(); toast('Selecciona y copia con Ctrl+C'); }
+});
+$('#btnTabDescargar').addEventListener('click', () => descargar('tablero_bandeja.yaml', tabYaml()));
+function pintarTabCfg() {
+  $('#tabCfgCuerpo').innerHTML = TABLERO.PARAMS.map(p => {
+    const [g, n] = p.id.split('.');
+    return `<div class="field"><label for="tc_${p.id}" title="${usbEsc(p.fuente)}">${usbEsc(p.nombre)} <span class="tag s">SUPUESTO · SIN VALIDAR</span></label><output>${usbEsc(p.unidad)}</output><input type="number" id="tc_${p.id}" min="0" step="any" value="${TAB_CFG[g][n]}"${p.editable ? '' : ' disabled'}></div>`;
+  }).join('');
+}
+$('#tabCfgCuerpo').addEventListener('input', e => {
+  const id = e.target.id.startsWith('tc_') ? e.target.id.slice(3) : null; if (!id) return;
+  try { TAB_CFG = TABLERO.fijar(TAB_CFG, id, e.target.valueAsNumber); e.target.removeAttribute('aria-invalid'); } catch { e.target.setAttribute('aria-invalid', 'true'); return; }
+  tabActualizar();
+});
+$('#btnTabRestaurar').addEventListener('click', () => { TAB_CFG = TABLERO.cfgDefecto(); TAB_M = tabInicial(); $('#tabVerCaja').hidden = true; pintarTabCfg(); tabPintar(); });
+pintarTabCfg(); tabPintar();
 // pintarCamaras lo llama: rehace los campos si cambia la lista de cámaras o algún modo; si no, solo recalcula
 function usbRefrescar() { if (usbFirma() !== USB_FIRMA || !$('#usbCuerpo').firstElementChild) usbPintar(); else usbActualizar(); }
 function pintarCamaras() {

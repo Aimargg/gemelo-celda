@@ -140,6 +140,7 @@ details.escSec summary{cursor:pointer;font-weight:600;font-size:13px}
 .tarea>div{display:flex;justify-content:space-between;align-items:center;gap:8px}.tarea .hint{font-size:11.5px;overflow-wrap:anywhere}
 .usbcam,.usbbus,.usbdev{display:grid;gap:4px;font-size:12.5px;padding:8px 0;border-bottom:1px solid var(--line2)}.usbcam>div:first-child,.usbbus>div:first-child,.usbdev>span:first-child{display:flex;justify-content:space-between;align-items:center;gap:8px}
 .usbcam .hint,.usbbus .hint,.usbdev .hint{font-size:11.5px;overflow-wrap:anywhere}.usbcam input[type=number]{width:100%}.usbcam input[aria-invalid=true],#usbLsusbTxt[aria-invalid=true]{border-color:var(--bad)}
+#tabTbl input{width:100%;min-width:0;box-sizing:border-box;padding:3px 4px}#tabTbl input[aria-invalid=true]{border-color:var(--bad)}#tabTbl td{vertical-align:middle}#tabAviso[data-alineado=true]{color:var(--bad)}
 .field input[type=number]{grid-column:1 / -1;width:100%}.field input[aria-invalid=true]{border-color:var(--bad)}
 select{border:1px solid var(--line);background:var(--panel2);border-radius:6px;padding:6px 8px;width:100%}
 .chk{display:flex;align-items:center;gap:8px;font-size:13px;cursor:pointer}
@@ -406,6 +407,21 @@ textarea{width:100%;min-height:120px;border:1px solid var(--line);border-radius:
           <details class="escSec" id="usbCfg"><summary>Supuestos del estimador de USB</summary>
             <p class="hint">Editables y solo de esta sesión. La reserva máxima es la del plan y no se edita; todo lo demás son supuestos sin fuente comprobable, SIN VALIDAR.</p>
             <div id="usbCfgCuerpo"></div>
+          </details>
+        </div>
+        <div class="sec" id="tabSec">
+          <h2>Tablero de la bandeja <span class="tag s">SIN VALIDAR</span></h2>
+          <p class="hint">Marcadores ArUco (DICT_4X4_50) de la bandeja para <code>estimatePoseBoard</code> de OpenCV: id, lado y posición de cada uno en el marco de la bandeja (origen en su centro, x e y sobre su cara de arriba, giro del patrón sobre z hacia +y; el tablero es plano, en z = 0). Parte de los 4 marcadores de la escena (ids 6–9, de 32 mm). Lo que cambies es de esta sesión: no se guarda en la escena y no cambia el dibujo ni la disposición.</p>
+          <p class="hint" id="tabAviso" role="status"></p>
+          <table class="tbl" id="tabTbl"><thead><tr><th>Id</th><th>Lado (mm)</th><th>x (mm)</th><th>y (mm)</th><th>Giro (°)</th><th></th></tr></thead><tbody></tbody></table>
+          <div class="btns"><button class="btn" id="btnTabAnadir">Añadir marcador</button><button class="btn" id="btnTabRestaurar">Restaurar el tablero (marcadores y supuestos)</button></div>
+          <h4 style="margin:6px 0 0;font-size:12.5px;font-weight:600">tablero_bandeja.yaml</h4>
+          <p class="hint">Las esquinas de cada marcador en el marco de la bandeja, en metros y en el orden de OpenCV (arriba-izquierda, arriba-derecha, abajo-derecha, abajo-izquierda), con el origen de cada valor. Solo genera texto: no se envía a ROS ni a ninguna parte. Aparte de los ficheros de «Exportar a ROS».</p>
+          <div class="btns"><button class="btn" id="btnTabVer">Ver</button><button class="btn" id="btnTabCopiar">Copiar</button><button class="btn" id="btnTabDescargar">Descargar</button></div>
+          <div class="field2" id="tabVerCaja" hidden><label for="tabVer" id="tabVerNombre">tablero_bandeja.yaml · solo lectura</label><textarea id="tabVer" readonly spellcheck="false"></textarea></div>
+          <details class="escSec" id="tabCfg"><summary>Supuestos del tablero</summary>
+            <p class="hint">Editables y solo de esta sesión. No tienen fuente comprobable: SIN VALIDAR.</p>
+            <div id="tabCfgCuerpo"></div>
           </details>
         </div>
         <div class="sec">
