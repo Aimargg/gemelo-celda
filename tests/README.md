@@ -52,6 +52,8 @@ Duraciones medidas en el contenedor de 2 núcleos (SwiftShader, sin GPU): «ante
 | `ros-referencias` | tarea | 1, 1 + 3 | — | 31 | I7: los ficheros de ROS (T2.2–T2.5) byte a byte con nominal, 203 y prefijo (Común-C3), red de T2.6 |
 | `ros-panel` | tarea | 2 (11 + 2 subtests) | — | 47 | I7 y DT38: sección «Exportar a ROS» (T2.6) con nominal, 203 y prefijo en el artefacto y la web: lista, descargas y .tar byte a byte (el .tar, con el tar del sistema), Ver y Copiar, repintado sin cálculo y descargas desactivadas durante un cálculo |
 | `sensor` | tarea | 2 | 59 | 34 | modelo de sensor (T1.7, D10) |
+| `tareas` | tarea | 3 | — | 27 | T4.1: panel por cámara con los píxeles por tarea (proyección estenopeica), sus estados, origen y fuente; velocidad de la bandeja editable y Restaurar; la misma cifra en la web. Medido el 2026-11-21 en un portátil con Windows (`node --test`, 27 s) |
+| `usb` | tarea | 4 | — | 29 | T4.3: demanda USB por cámara, suma por bus y aviso «una cámara por bus» con la reserva máxima; bus, reserva, formato y factor editables; salida de `lsusb -v` pegada; la misma sección en la web. Medido el 2026-11-21 en un portátil con Windows (`node --test`, 29 s) |
 | `cambio-robot` | puerta | 3 | 186 | 122 | T1.5-3, T1.5-4 (68,6 s antes) y correcciones 1 y 2 |
 | `determinismo-demo` | puerta | 1 | 38 | 32 | I6 a nivel de demo: matriz en orden inverso (también hay I6 en la tarea) |
 | `matriz-curso` | puerta | 2 | 74 | 53 | matriz «curso» directa e inversa (I6 con «curso» también en la tarea) |

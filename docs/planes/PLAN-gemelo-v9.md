@@ -161,9 +161,9 @@ Estados: pendiente · en curso · entregada · aceptada · correcciones · bloqu
 | T3.5 | 3 | Configuración personal de rosbridge (`ros/`): globs, 127.0.0.1 y compose | Claude Code | T3.0 | medio | pendiente | |
 | U5 | 3 | Arrancar rosbridge en el contenedor y conectar el espejo | Usuario | T3.5, T3.2 | — | pendiente | — |
 | U6 | 1 | Tras publicar F1, abrir la web con la clave del grupo y mirar «Ilegibles» en Escenas: si no está en 0, revisar los motivos antes de que nadie borre nada | Usuario | P1 de F1 | — | pendiente | — |
-| T4.1 | 4 | Métricas por tarea con umbrales con fuente | Claude Code | F1 | medio | pendiente | |
+| T4.1 | 4 | Métricas por tarea con umbrales con fuente | Claude Code | F1 | medio | entregada | 8ccc78d |
 | T4.2 | 4 | Oclusión a lo largo de las trayectorias calculadas | Claude Code | T4.1 | alto | pendiente | |
-| T4.3 | 4 | Estimador de ancho de banda USB | Claude Code | T4.1 | bajo | pendiente | |
+| T4.3 | 4 | Estimador de ancho de banda USB | Claude Code | T4.1 | bajo | entregada | e113f97 |
 | T4.4 | 4 | Diseñador del tablero de marcadores de la bandeja | Claude Code | T4.1 | medio | pendiente | |
 | T4.5 | 4 | Distorsión Brown–Conrady opcional desde `camera_info` | Claude Code | T2.5 | medio | pendiente | |
 | T4.6 | 4 | Captura sintética con anotaciones | Claude Code | T4.1 | medio | pendiente | |
