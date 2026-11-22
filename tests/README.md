@@ -55,6 +55,7 @@ Duraciones medidas en el contenedor de 2 núcleos (SwiftShader, sin GPU): «ante
 | `ros-referencias` | tarea | 1, 1 + 3 | — | 31 | I7: los ficheros de ROS (T2.2–T2.5) byte a byte con nominal, 203 y prefijo (Común-C3), red de T2.6 |
 | `ros-panel` | tarea | 2 (11 + 2 subtests) | — | 47 | I7 y DT38: sección «Exportar a ROS» (T2.6) con nominal, 203 y prefijo en el artefacto y la web: lista, descargas y .tar byte a byte (el .tar, con el tar del sistema), Ver y Copiar, repintado sin cálculo y descargas desactivadas durante un cálculo |
 | `sensor` | tarea | 2 | 59 | 34 | modelo de sensor (T1.7, D10) |
+| `tablero` | tarea | 3 | — | 87 | T4.4: diseñador del tablero de marcadores de la bandeja: filas por marcador (id, lado, x, y, giro), añadir y quitar, campos inválidos sin aplicar, aviso de centros alineados con su tolerancia editable, Ver, Copiar y Descargar de `tablero_bandeja.yaml` (texto a mano, reglas de ros, ida y vuelta), Restaurar; la misma sección en la web; la escena no cambia. Medido el 2026-11-22 en el contenedor (`node --test`, 44 + 23 + 19 s) |
 | `tareas` | tarea | 3 | — | 27 | T4.1: panel por cámara con los píxeles por tarea (proyección estenopeica), sus estados, origen y fuente; velocidad de la bandeja editable y Restaurar; la misma cifra en la web. Medido el 2026-11-21 en un portátil con Windows (`node --test`, 27 s) |
 | `usb` | tarea | 4 | — | 29 | T4.3: demanda USB por cámara, suma por bus y aviso «una cámara por bus» con la reserva máxima; bus, reserva, formato y factor editables; salida de `lsusb -v` pegada; la misma sección en la web. Medido el 2026-11-21 en un portátil con Windows (`node --test`, 29 s) |
 | `cambio-robot` | puerta | 3 | 186 | 122 | T1.5-3, T1.5-4 (68,6 s antes) y correcciones 1 y 2 |
@@ -101,7 +102,7 @@ cambia: cada test cierra en su `finally`, después de sus comprobaciones. Con el
 ## Qué hay en tests/
 
 - `unit/`: `node:test` sobre el código puro de `src/` (cinemática, layout, semilla, perfiles, sensor, origen de cada valor,
-  formateador de los ficheros exportados y del .tar, modelo de distorsión y lectura de camera_info de T4.5, muestreo y rayos de la oclusión de T4.2, I5, niveles) y los validadores de los ficheros de ROS con sus muestras que deben fallar.
+  formateador de los ficheros exportados y del .tar, modelo de distorsión y lectura de camera_info de T4.5, muestreo y rayos de la oclusión de T4.2, proyección y anotaciones de la captura sintética de T4.6, I5, niveles) y los validadores de los ficheros de ROS con sus muestras que deben fallar.
 - `e2e/`: Playwright + Chromium con SwiftShader sobre los dos destinos; `permitidos.json`, avisos de consola permitidos.
 - `fixtures/`: referencias generadas por el gemelo (`generar.mjs`, `npm run caracterizar`): matrices, escenas v8, cinemática
   del curso, `yaml/` (panel «Datos», T2.1) y `ros/<caso>/` (ficheros de ROS, T2.2–T2.5: `npm run caracterizar -- --ros`).

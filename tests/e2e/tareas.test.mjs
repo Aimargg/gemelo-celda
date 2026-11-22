@@ -85,6 +85,7 @@ test('T4.1-C4: la velocidad de la bandeja es editable (0,1 m/s por defecto), cam
     // espera a que una fila de la cámara de entrega tenga ese valor de px
     const esperarPx = (id, x) => p.waitForFunction(({ id, x }) => { const d = document.querySelector(`.card[data-cam="entrega"] .tarea[data-tarea="${id}"]`); return d && Math.abs(+d.dataset.px - x) < 1e-6 * Math.max(1, x); }, { id, x }, { timeout: 10000, polling: 50 });
     const antes = await escena(), base = await entrega();
+    const firma = () => p.evaluate(() => window.__g.firmaVal()), firma0 = await firma(); // C4: editar un supuesto no cambia la firma de la disposición
     // la sección está plegada: se abre como lo haría el usuario
     assert.equal(await p.evaluate(() => document.getElementById('tareasCfg').open), false); await p.click('#tareasCfg summary'); assert.equal(await p.evaluate(() => document.getElementById('tareasCfg').open), true);
     assert.equal(await p.inputValue('#tc_desenfoque\\.velMs'), '0.1'); assert.equal(await p.evaluate(() => window.__g.tareasCfg().desenfoque.velMs), 0.1);
@@ -93,14 +94,14 @@ test('T4.1-C4: la velocidad de la bandeja es editable (0,1 m/s por defecto), cam
     const rapido = await entrega(); assert.equal(rapido.desenfoque.estado, 'no'); assert.equal(base.desenfoque.estado, 'ok'); assert.match(rapido.desenfoque.texto, /a 500 mm\/s con 5,0 ms/);
     cerca(rapido.desenfoque.px, base.desenfoque.px * 5, 'cinco veces la velocidad, cinco veces el desenfoque');
     assert.equal(rapido['aruco-entrega'].px, base['aruco-entrega'].px, 'los demás píxeles no cambian');
-    assert.equal(await escena(), antes, 'editar un supuesto no toca la escena');
+    assert.equal(await escena(), antes, 'editar un supuesto no toca la escena'); assert.equal(await firma(), firma0, 'ni firmaVal (0,5 m/s)');
     // un valor que no es un número positivo se marca y no se aplica
     await p.locator('#tc_desenfoque\\.velMs').fill('-1'); assert.equal(await p.getAttribute('#tc_desenfoque\\.velMs', 'aria-invalid'), 'true'); assert.equal(await p.evaluate(() => window.__g.tareasCfg().desenfoque.velMs), 0.5);
     // un umbral del plan no se edita
     assert.equal(await p.isDisabled('#tc_aruco\\.min'), true);
     // Restaurar
     await p.click('#btnTareasRestaurar'); await esperarPx('desenfoque', base.desenfoque.px);
-    assert.equal(await p.inputValue('#tc_desenfoque\\.velMs'), '0.1'); assert.equal((await entrega()).desenfoque.estado, 'ok'); assert.equal(await escena(), antes);
+    assert.equal(await p.inputValue('#tc_desenfoque\\.velMs'), '0.1'); assert.equal((await entrega()).desenfoque.estado, 'ok'); assert.equal(await escena(), antes); assert.equal(await firma(), firma0, 'ni firmaVal (Restaurar)');
     // otro sensor (6,287 mm, el de la v8): menos píxeles por mm, en la razón de los anchos
     await p.click('#segSensor [data-v="gemelo-v8"]');
     await esperarPx('aruco-entrega', base['aruco-entrega'].px * SENS['elp-ficha'] / SENS['gemelo-v8']);

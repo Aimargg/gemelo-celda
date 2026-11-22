@@ -36,6 +36,7 @@ export const NIVELES = {
     'tests/e2e/ros-referencias.test.mjs',   // I7: ficheros de ROS byte a byte (Común-C3), red de T2.3, T2.5 y T2.6
     'tests/e2e/ros-panel.test.mjs',         // T2.6: sección «Exportar a ROS», descargas y .tar byte a byte en los dos destinos (I7)
     'tests/e2e/sensor.test.mjs',            // modelo de sensor de la ELP (T1.7, D10)
+    'tests/e2e/tablero.test.mjs',           // T4.4: diseñador del tablero de la bandeja, aviso de alineación y tablero_bandeja.yaml
     'tests/e2e/tareas.test.mjs',            // T4.1: panel por cámara con píxeles por tarea y umbrales con fuente
     'tests/e2e/usb.test.mjs',               // T4.3: estimador de ancho de banda USB y analizador de lsusb -v
   ],
