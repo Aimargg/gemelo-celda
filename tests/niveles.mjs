@@ -29,6 +29,7 @@ export const NIVELES = {
     'tests/e2e/ilegibles.test.mjs',         // DT11 e I2: escenas ilegibles con las reglas de los dos almacenes
     'tests/e2e/layout.test.mjs',            // I1 e I2: campos v9, solo lectura y el límite de 50.000 caracteres
     'tests/e2e/matriz.test.mjs',            // I8: matriz «gemelo» de 8 casos en orden directo
+    'tests/e2e/oclusion.test.mjs',          // T4.2: oclusión por el brazo a lo largo del plan: cifras del gemelo = cálculo aparte (C3), solo lee (C2), tapa y no tapa, converge y es editable (C4, C5), web
     'tests/e2e/perfil.test.mjs',            // I6 con «curso» (A, B, A') y el perfil de movimiento (T1.6)
     'tests/e2e/robot.test.mjs',             // I6 con el 203 y dibujo = colisión = TCP (T1.4)
     'tests/e2e/ros.test.mjs',               // I7: ficheros de ROS de T2.2–T2.5 con nominal, 203 y prefijo, en una página

@@ -54,6 +54,7 @@ const ARUCO = ['1011010100110010', '0000111110011010', '0011001100101101', '1001
 // @@DISTORSION@@
 // @@ORIGEN@@
 // @@CAPTURA@@
+// @@OCLUSION@@
 // @@EXPORTAR@@
 // @@CALIBRACION@@
 // Perfil con el que se explora (arrastrar, «Calcular trayectorias», el primer cálculo, la vista de cada objeto): siempre
@@ -1465,7 +1466,8 @@ function cadenaPlato(pk, pl, zw, pf) {
   const rl = rutaCartesiana(ra.ruta[ra.ruta.length - 1], [{ p: pl.tcp, yaw: pl.yaw }, { p: pl.tcp.clone().add(new THREE.Vector3(0, 0, 0.08)), yaw: pl.yaw }], { ...o, permitir: ['caja:' + pk, 'plato:' + pk] });
   if (!rl.ruta) return { fallo: { ...rl, fallo: `al levantarlo de la caja, ${rl.fallo}`, fase: 'plato', etapa: 1 } };
   const qL = rl.ruta[rl.ruta.length - 1];
-  const t = colocacionConTransporte(zw, qL, pl, pl.carga, pf); return t.pc2 ? { ...t, qL } : { fallo: { ...t.fallo, etapa: 2 } };
+  // ra y rl (las dos rectas de antes del transporte) se guardan para la oclusión de T4.2, que solo las lee: no cambian nada del plan
+  const t = colocacionConTransporte(zw, qL, pl, pl.carga, pf); return t.pc2 ? { ...t, qL, ra, rl } : { fallo: { ...t.fallo, etapa: 2 } };
 }
 function cargaPlan(pk, pl) { // el plato y la fruta que llevará, en el marco de tool0 tal como quedará agarrado
   const q0 = robot.q.slice(), w0 = pinza.w; robot.setQ(pl.q); pinza.setApertura(0.006); const base = Array.from(cargaDe(OBJ[pk]));
@@ -1782,7 +1784,7 @@ function tareasCam(k) {
   const punto = (nombre, p, tipo, extra = {}) => {
     const rayo = v3a(p.clone().sub(cp).normalize()), ndc = p.clone().project(R.cam), prof = TAREAS.profundidad(v3a(p), o, eje);
     const dentro = prof > 0 && Math.abs(ndc.x) <= 1 && Math.abs(ndc.y) <= 1 && ndc.z < 1 && ndc.z > -1;
-    return { nombre, prof, dentro, c: tipo === 'plano' ? TAREAS.escorzoPlano(rayo, arriba) : tipo === 'segmento' ? TAREAS.escorzoSegmento(rayo, extra.eje) : 1, ...extra };
+    return { nombre, prof, dentro, c: tipo === 'plano' ? TAREAS.escorzoPlano(rayo, arriba) : tipo === 'segmento' ? TAREAS.escorzoSegmento(rayo, extra.eje) : 1, p: v3a(p), ...extra }; // p: el punto en el mundo, que lee la oclusión (T4.2)
   };
   const pts = puntosObjetivo(k), de = nombre => pts.filter(([n]) => n === nombre).map(([, p]) => p), T = [];
   const marcadores = (lista, ids, etq) => lista.map((a, i) => punto(`marcador ${ids + i} (${etq})`, wp(a), 'plano', { ladoMm: a.userData.lado * 1000 }));
@@ -1840,6 +1842,95 @@ $('#tareasCfgCuerpo').addEventListener('input', e => {
 });
 $('#tareasCfgCuerpo').addEventListener('click', e => { if (e.target.closest('#btnTareasRestaurar')) { TAREAS_CFG = TAREAS.cfgDefecto(); pintarTareasCfg(); pintarCamaras(); } });
 pintarTareasCfg();
+// Oclusión por el brazo durante el ciclo (T4.2, src/oclusion.js): en qué porcentaje del ciclo tapa el brazo cada objetivo de cada
+// cámara. Solo LEE el plan que dejó «Calcular» (CACHE_PLAN de «explorar»: no planifica nada, no cambia la semilla ni los planes: I6,
+// D5); sin plan al día dice «sin plan» y no da número. Matemática pura sobre las posturas de colocar() y las esferas de colisión:
+// un solo pase, sin repintar la escena en cada muestra. El resultado se guarda con la clave de lo que lo determina, así que repintar
+// el panel (la demo lo hace cada 0,8 s) no recalcula. Los supuestos (paso y margen) son de la sesión: no se guardan (I1, I2)
+let OCLU_CFG = OCLUSION.cfgDefecto(), OCLU = { clave: '', res: null, calculos: 0 };
+// Los planes de los platos activos que se pueden muestrear: { lista: [{ pk, pl, ch }] } o { sin } si no hay plan al día (cambios sin
+// calcular, o un plan que no llega hasta la bandeja). Solo lee CACHE_PLAN
+function planesOclusion() {
+  if (!robot || sinPlan()) return { sin: 'sin plan: pulsa «Calcular trayectorias»' };
+  const lista = [];
+  for (const [pk] of platosActivos()) {
+    const pl = cachePlan(PERFIL_EXPLORA)[pk].pl, ch = pl && pl.cadena;
+    if (!ch || !ch.pc2 || !ch.ra || !ch.rl) return { sin: `sin plan: el plan del plato ${pk === 'plato1' ? '1º' : '2º'} no llega hasta la bandeja` };
+    lista.push({ pk, pl, ch });
+  }
+  return { lista };
+}
+// Los tramos de esos planes que entran en el ciclo, por plato y en el orden de la demo, con la apertura de la pinza, lo que lleva y
+// la duración que les da ejecutar() (el reparto del perfil «gemelo» con la velocidad de la demo y el factor de la persona; la
+// recta, además, su mínimo). Acercarse, levantar y llevar son las rutas del plan; salir y subir no se guardan y se aproximan por
+// interpolación articular entre sus posturas ya calculadas. El factor de la persona lee su posición: que la llame quien ya está en
+// la escena de partida
+function tramosDe(lista) {
+  const pf = PERFIL_EXPLORA, tramos = [];
+  for (const { pk, pl, ch } of lista) {
+    const pc2 = ch.pc2, tr = (id, ruta, f, largo, w, carga) => { const d = duracion(ruta, f, pf); return { id, plato: pk, ruta, acum: d.acum, S: d.S, T: Math.max(d.T, tMinCart(largo, f, pf)), w, carga }; };
+    tramos.push(tr('acercar', ch.ra.ruta, factorPersona(pl.tcp), ch.ra.largo, 0.03, null), tr('levantar', ch.rl.ruta, factorPersona(pl.tcp), ch.rl.largo, 0.006, pl.carga),
+      tr('llevar', ch.r.ruta, factorPersona(pc2.pre), ch.r.largo, 0.006, pl.carga), tr('salir', [pc2.q, pc2.qS], factorPersona(pc2.salida), 0.08, 0.03, null), tr('subir', [pc2.qS, pc2.qU], factorPersona(pc2.subida), H_SALIDA, 0.03, null));
+  }
+  return tramos;
+}
+const tramosOclusion = () => { const s = planesOclusion(); return s.sin ? s : { tramos: tramosDe(s.lista) }; };
+// Cada cámara (su centro) y los puntos de cada objetivo que ve, en base_link y en la escena de partida: los objetivos se toman
+// estáticos y con la bandeja en su pose de recepción, como se planifica (no se simula su balanceo). Los objetivos son los de las
+// tareas de T4.1 (tareasCam) con los puntos dentro del campo y no ocultos; «Bandeja en movimiento» de la persona repite las manos
+function camarasOclusion() {
+  const mb = marco(), aB = p => mb.aBase(p[0], p[1], p[2]), titulos = {};
+  const camaras = Object.keys(L.cams).map(k => {
+    const objetivos = tareasCam(k).tareas.filter(t => !(k === 'persona' && t.id === 'desenfoque')).map(t => { (titulos[k] = titulos[k] || {})[t.clave] = t.titulo; return { id: t.clave, puntos: t.geos.filter(g => g.dentro && !g.oculto).map(g => aB(g.p)) }; });
+    return { id: k, o: aB(v3a(CAMS[k].cam.position)), objetivos };
+  });
+  return { camaras, titulos };
+}
+// El resultado para el plan de ahora: { sin } sin plan al día, { error } si no se puede calcular (demasiadas muestras), o
+// { r, titulos, ms, tramos }. Con la misma clave devuelve el de antes
+function oclusionPlan() {
+  const pls = planesOclusion(); if (pls.sin) return { sin: pls.sin };
+  const clave = JSON.stringify([ROB.id, D.vel, L, OCLU_CFG, pls.lista.map(x => cachePlan(PERFIL_EXPLORA)[x.pk].key)]);
+  if (OCLU.clave === clave && OCLU.res) return OCLU.res;
+  const t0 = performance.now(); let res;
+  try {
+    // en la escena de partida y con la persona en su sitio (D.personaOff = 0 como al planificar: con la demo a medias la persona puede
+    // estar apartada), para que el resultado no dependa de en qué punto está la demo
+    const { tramos, camaras, titulos } = enEscenaDePartida(() => {
+      const off = D.personaOff; if (off) { D.personaOff = 0; aplicarBandeja(simT); }
+      try { return { tramos: tramosDe(pls.lista), ...camarasOclusion() }; } finally { D.personaOff = off; } // volver() de la escena de partida lo recoloca
+    });
+    const r = OCLUSION.calcular({ tramos, paso: OCLU_CFG.muestreo.paso, margen: OCLU_CFG.rayo.margenMm / 1000, camaras, colocar: (q, w, carga) => ({ n: colocar(q, w, carga), X: COL.X }) });
+    res = { r, titulos, tramos: tramos.map(t => t.id), ms: performance.now() - t0 };
+  } catch (e) { res = { error: e.message }; }
+  OCLU = { clave, res, calculos: OCLU.calculos + 1 }; return res;
+}
+// El bloque de la tarjeta de la cámara k: una fila por objetivo con el porcentaje del ciclo con todo tapado y con algún punto
+// tapado, la racha más larga y la nota de qué tramos entran. Sin umbral de cumple/no cumple: no hay fuente
+function htmlOclusion(k) {
+  const res = oclusionPlan(), cab = `<div class="oclu" data-oclu="${k}"><h4>Oclusión por el brazo durante el ciclo <span class="tag s">SIN VALIDAR</span></h4>`;
+  if (res.sin) return `${cab}<p class="hint" data-estado="sin-plan">${res.sin}</p></div>`;
+  if (res.error) return `${cab}<p class="hint" data-estado="error">No se calcula: ${res.error}</p></div>`;
+  const cam = res.r.camaras.find(c => c.id === k), c = OCLU_CFG;
+  return cab + cam.objetivos.map(o => {
+    const pill = o.todo === null ? 'fuera de campo' : `todo tapado ${fmt(o.todo, 1)} % · algún punto ${fmt(o.alguno, 1)} %`;
+    const det = o.todo === null ? 'ningún punto del objetivo cae en el campo' : `${o.nPuntos} ${o.nPuntos === 1 ? 'punto' : 'puntos'} en el campo · racha más larga con todo tapado: ${fmt(o.racha, 1)} s`;
+    return `<div class="ocl-fila" data-obj="${o.id}" data-puntos="${o.nPuntos}" data-todo="${o.todo ?? ''}" data-alguno="${o.alguno ?? ''}" data-racha="${o.racha ?? ''}"><div><span>${res.titulos[k][o.id]}</span><span class="pill">${pill}</span></div><span class="hint">${det}</span></div>`;
+  }).join('') + `<p class="hint" data-estado="calculado">${fmt(res.r.muestras, 0)} muestras en ${fmt(res.r.T, 1)} s de ciclo (paso de ${fmt(c.muestreo.paso, 2)} s, margen de ${fmt(c.rayo.margenMm, 0)} mm). ${OCLUSION.nota([...new Set(res.tramos)])} Esferas de colisión del brazo, la pinza y lo que lleva, sin las mallas: sobresalen 11–17 mm de la malla y la oclusión sale algo por encima de la real. Sin umbral de cumple o no cumple: no hay fuente. SUPUESTO SIN VALIDAR.</p></div>`;
+}
+function pintarOcluCfg() {
+  $('#ocluCfgCuerpo').innerHTML = OCLUSION.PARAMS.map(p => {
+    const [g, n] = p.id.split('.');
+    return `<div class="field"><label for="oc_${p.id}" title="${p.fuente}">${p.nombre} <span class="tag s">SUPUESTO · SIN VALIDAR</span></label><output>${p.unidad}</output><input type="number" id="oc_${p.id}" min="0" step="any" value="${OCLU_CFG[g][n]}"></div>`;
+  }).join('') + '<div class="btns"><button class="btn" id="btnOcluRestaurar">Restaurar los valores de partida</button></div>';
+}
+$('#ocluCfgCuerpo').addEventListener('input', e => {
+  const id = e.target.id.startsWith('oc_') ? e.target.id.slice(3) : null; if (!id) return;
+  try { OCLU_CFG = OCLUSION.fijar(OCLU_CFG, id, e.target.valueAsNumber); e.target.removeAttribute('aria-invalid'); } catch { e.target.setAttribute('aria-invalid', 'true'); return; }
+  clearTimeout(pintarCamaras._t); pintarCamaras._t = setTimeout(pintarCamaras, 120);
+});
+$('#ocluCfgCuerpo').addEventListener('click', e => { if (e.target.closest('#btnOcluRestaurar')) { OCLU_CFG = OCLUSION.cfgDefecto(); pintarOcluCfg(); pintarCamaras(); } });
+pintarOcluCfg();
 // Ancho de banda USB (T4.3, src/usb.js): formato, reserva y bus de cada cámara, suma por bus y la salida de `lsusb -v` pegada. Todo
 // es de la sesión: no se guarda en la escena (I1, I2) y el texto pegado solo se analiza, no se envía a ningún sitio (I4)
 let USB_CFG = USB.cfgDefecto(), USB_LSUSB = null, USB_FIRMA = '';
@@ -2162,7 +2253,7 @@ function pintarCamaras() {
     ${slidersOrient(k, 'co')}
     <div class="row"><label class="hint" for="m_${k}" style="flex:none">Modo</label><select id="m_${k}" style="flex:1;width:auto">${Object.keys(MODOS).map(x => `<option ${x === c.modo ? 'selected' : ''} value="${x}">${x.replace('x', '×')} · ${MODOS[x].fps} fps${MODOS[x].w / MODOS[x].h < 1.5 ? ' · 4:3' : ''}</option>`).join('')}</select></div>
     <dl class="kv"><dt>Campo de visión <span class="tag s">SIN VALIDAR</span></dt><dd>${fmt(m.hf * R2D, 0)}° × ${fmt(m.vf * R2D, 0)}°</dd><dt>Altura sobre la mesa</dt><dd>${mm(m.alt)} mm</dd><dt>Resolución en el punto de mira <span class="tag s">SIN VALIDAR</span></dt><dd>${fmt(m.mmpx, 2)} mm/px</dd>
-    </dl>${htmlTareas(k)}<dl class="kv">
+    </dl>${htmlTareas(k)}${htmlOclusion(k)}<dl class="kv">
     <dt>Ve sus objetivos</dt><dd><span class="pill ${visCls}">${m.dentro}/${m.total}</span>${m.fuera.length ? ' fuera: ' + [...new Set(m.fuera)].join(', ') : ''}${m.tapados.length ? ' · tapados por el brazo: ' + [...new Set(m.tapados)].join(', ') : ''}</dd>
     <dt>Brazo Manfrotto 244</dt><dd><span class="pill ${m.brazoOK ? 'ok' : 'bad'}">${mm(m.brazoD)} de 530 mm</span></dd>
     <dt>Holgura con el UR3e</dt><dd><span class="pill ${libre > 0.08 ? 'ok' : libre > 0.02 ? 'warn' : 'bad'}">${libre === Infinity ? '—' : mm(Math.max(0, libre)) + ' mm'}</span>${minC !== undefined ? ' mínima en la demo' : ' ahora'}</dd></dl>
@@ -2565,7 +2656,7 @@ $('#segModoB').addEventListener('click', e => { const b = e.target.closest('butt
 $('#dVel').addEventListener('input', e => { D.vel = e.target.value / 100; $('#dVelOut').textContent = `${e.target.value} %`; });
 $('#dAmp').addEventListener('input', e => { D.amp = e.target.value / 100; $('#dAmpOut').textContent = `${fmt(+e.target.value, 1)} cm`; actualizarCheck(); });
 requestAnimationFrame(bucle);
-if (location.search.includes('prueba')) window.__g = { dibujar: () => render(), CAPTURA, capturar: k => capturar(k), capturaUltima: () => CAP,DISTORSION, distCams: () => DIST_CAMS, distCfg: () => DIST_CFG, distImagen: (k, ancho) => distImagen(k, ancho), aplicarPedido,actualizarZona, esferasObjeto, cargaDe, BAND, bandeja, aplicarBandeja: t => aplicarBandeja(t), ladoZonas: () => ladoZonas(), comprobarPlan, llegaVertical, puntosSoltar, FRUTAS, CACHE_PLAN, poseHoriz, ejeHoriz, mundoABase, enLimites, qValida, rutaNivelada: (...a) => rutaNivelada(...a), colocacionConTransporte: (...a) => colocacionConTransporte(...a), planColocar: (...a) => planColocar(...a), zonasB, ikTCP, planAgarrePlato, planColocar, planPlatoCache, KIN_: KIN, BASES, consts: { R_AGARRE, H_BORDE }, COL: () => COL, choqueEn: (q, c) => choqueEn(q, c), obstaculos: () => obstaculos(), textoChoque: c => textoChoque(c), D, L: () => L, cam, orbit, scene, renderer, OBJ, piezas: () => piezas, simT: () => simT, CAMS, actualizarCam, actualizarAruco, actualizarPlatos, metricasCam, tareasCam, TAREAS, tareasCfg: () => TAREAS_CFG, USB, usbCfg: () => USB_CFG, usbCams: () => USB_CAMS, usbLsusb: () => USB_LSUSB, estadoObjeto, alcance, comprobarPlan, ensayo, planAgarrePlato, holguraActual, get robot() { return robot; }, KIN, pinza, tcpMundo, zPlato, setL: l => { L = l; }, ESC, ALM, abrirEscena, codigoEscena, abrirCodigo, guardarEscena, escCam: cam, orbit, vista, CALC, calcularPlanes, planesAlDia, recalcular, orientDe, fijarOrient, orientarDesdeQuat, CAMS, seleccionar, tctl, generarYaml, ficherosRos: () => ficherosRos(), modeloExportacion: () => modeloExportacion(), cadenaPlato, cargaPlan, rutaCartesiana: (...a) => rutaCartesiana(...a), zonasB_: () => zonasB, zonaDe, qReposo, aplicarLayout, buscarAlternativa, candidatos, explicar, mostrarFalloInfo, diagnosticarPunto, LAYOUT, ESQ_L, migrarLayout, soloLectura, RNG, planificar: (...a) => planificar(...a), get CIN() { return CIN; }, get ROB() { return ROB; }, CALIBRACION, marco: () => marco(), baseAMundo: (x, y, z) => baseAMundo(x, y, z), tcpDeQ: (q, w) => tcpDeQ(q, w), pedirRobotId: id => pedirRobotId(id), ikNoConverge: (p, y, o) => ikNoConverge(p, y, o), posesTCP, volCol, calcularPerfil, radioA, PERFIL, prepararMoveJ: (...a) => prepararMoveJ(...a), semillaDe: (...a) => semillaDe(...a), otroVisible: () => otroVisible(), apartarEscena: () => apartarEscena(), perfilEscena: () => perfilEscena(), planesAlDiaDe: pf => planesAlDia(pf), validar: () => validar(), VAL, SENSOR, areaDe: c => areaDe(c), hfovDe: c => hfovDe(c), vfovDe: c => vfovDe(c), firmaVal: () => firmaVal(), valAlDia: () => valAlDia(), perfilesDe: e => perfilesDe(e), estadoParaGuardar: () => estadoParaGuardar(), bandejaBalanceo: () => bandejaBalanceo(), tocaBandejaEnBalanceo: (q, w) => tocaBandejaEnBalanceo(q, w) }; // T1.4: robot activo, su cinemática y el marco de base_link (una sola línea: build_web.sh la quita entera)
+if (location.search.includes('prueba')) window.__g = { dibujar: () => render(), CAPTURA, capturar: k => capturar(k), capturaUltima: () => CAP,DISTORSION, distCams: () => DIST_CAMS, distCfg: () => DIST_CFG, distImagen: (k, ancho) => distImagen(k, ancho), aplicarPedido,actualizarZona, esferasObjeto, cargaDe, BAND, bandeja, aplicarBandeja: t => aplicarBandeja(t), ladoZonas: () => ladoZonas(), comprobarPlan, llegaVertical, puntosSoltar, FRUTAS, CACHE_PLAN, poseHoriz, ejeHoriz, mundoABase, enLimites, qValida, rutaNivelada: (...a) => rutaNivelada(...a), colocacionConTransporte: (...a) => colocacionConTransporte(...a), planColocar: (...a) => planColocar(...a), zonasB, ikTCP, planAgarrePlato, planColocar, planPlatoCache, KIN_: KIN, BASES, consts: { R_AGARRE, H_BORDE }, COL: () => COL, choqueEn: (q, c) => choqueEn(q, c), obstaculos: () => obstaculos(), textoChoque: c => textoChoque(c), D, L: () => L, cam, orbit, scene, renderer, OBJ, piezas: () => piezas, simT: () => simT, CAMS, actualizarCam, actualizarAruco, actualizarPlatos, metricasCam, tareasCam, TAREAS, tareasCfg: () => TAREAS_CFG, OCLUSION, ocluCfg: () => OCLU_CFG, ocluEstado: () => OCLU, oclusionPlan: () => oclusionPlan(), tramosOclusion: () => tramosOclusion(), colocar: (q, w, c) => colocar(q, w, c), USB, usbCfg: () => USB_CFG, usbCams: () => USB_CAMS, usbLsusb: () => USB_LSUSB, estadoObjeto, alcance, comprobarPlan, ensayo, planAgarrePlato, holguraActual, get robot() { return robot; }, KIN, pinza, tcpMundo, zPlato, setL: l => { L = l; }, ESC, ALM, abrirEscena, codigoEscena, abrirCodigo, guardarEscena, escCam: cam, orbit, vista, CALC, calcularPlanes, planesAlDia, recalcular, orientDe, fijarOrient, orientarDesdeQuat, CAMS, seleccionar, tctl, generarYaml, ficherosRos: () => ficherosRos(), modeloExportacion: () => modeloExportacion(), cadenaPlato, cargaPlan, rutaCartesiana: (...a) => rutaCartesiana(...a), zonasB_: () => zonasB, zonaDe, qReposo, aplicarLayout, buscarAlternativa, candidatos, explicar, mostrarFalloInfo, diagnosticarPunto, LAYOUT, ESQ_L, migrarLayout, soloLectura, RNG, planificar: (...a) => planificar(...a), get CIN() { return CIN; }, get ROB() { return ROB; }, CALIBRACION, marco: () => marco(), baseAMundo: (x, y, z) => baseAMundo(x, y, z), tcpDeQ: (q, w) => tcpDeQ(q, w), pedirRobotId: id => pedirRobotId(id), ikNoConverge: (p, y, o) => ikNoConverge(p, y, o), posesTCP, volCol, calcularPerfil, radioA, PERFIL, prepararMoveJ: (...a) => prepararMoveJ(...a), semillaDe: (...a) => semillaDe(...a), otroVisible: () => otroVisible(), apartarEscena: () => apartarEscena(), perfilEscena: () => perfilEscena(), planesAlDiaDe: pf => planesAlDia(pf), validar: () => validar(), VAL, SENSOR, areaDe: c => areaDe(c), hfovDe: c => hfovDe(c), vfovDe: c => vfovDe(c), firmaVal: () => firmaVal(), valAlDia: () => valAlDia(), perfilesDe: e => perfilesDe(e), estadoParaGuardar: () => estadoParaGuardar(), bandejaBalanceo: () => bandejaBalanceo(), tocaBandejaEnBalanceo: (q, w) => tocaBandejaEnBalanceo(q, w) }; // T1.4: robot activo, su cinemática y el marco de base_link (una sola línea: build_web.sh la quita entera)
 fetch('ur3e-malla.json').then(r => { if (!r.ok) throw new Error(r.status); return r.json(); }).then(j => { const bin = atob(j.glb); const u8 = new Uint8Array(bin.length); for (let i = 0; i < bin.length; i++) u8[i] = bin.charCodeAt(i); new GLTFLoader().parse(u8.buffer, '', cargado, fallo); }).catch(fallo);
 function fallo(err) { $('#loading').textContent = 'No se ha podido cargar el modelo del UR3e.'; console.error(err); }
 function cargado(g) {
