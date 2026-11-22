@@ -25,6 +25,7 @@
     },
     {
       "nombre": "tests-existentes",
+      "solo_versionados": true,
       "rutas": [
         "tests/unit/**",
         "tests/e2e/**",

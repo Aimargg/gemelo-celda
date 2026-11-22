@@ -8,6 +8,8 @@
 // Grupos en .claude/hooks/hooks-config.json → "proteger". Cada grupo:
 //   { "nombre", "archivos": [nombres exactos], "rutas": [globs relativos al repo],
 //     "modo": "bloquear" | "preguntar", "motivo": "qué hacer en su lugar" }
+//     "solo_versionados": true (opcional) → un archivo solo cuenta como existente si ya está en el último commit
+//               (HEAD): el que la sesión acaba de crear y aún no ha commiteado se puede seguir corrigiendo.
 //   bloquear  → exit 2: la edición no se hace y Claude lee el motivo.
 //   preguntar → permissionDecision "ask": en sesión interactiva te pregunta a ti;
 //               en una ejecución con -p (sin nadie) Claude Code la deniega.
@@ -15,6 +17,7 @@
 // Sin dependencias (Node 18+). No usa red ni lee nada fuera del repo.
 // Lista de configuraciones por defecto derivada del hook config-protection de
 // ECC (github.com/affaan-m/ECC, licencia MIT).
+import { spawnSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 
@@ -88,6 +91,15 @@ function existe(ruta) {
   catch (e) { return !(e && e.code === "ENOENT"); } // ante un error raro, se trata como existente
 }
 
+// ¿Está rel en el último commit del repo? Ante cualquier fallo de git (no hay repo, no hay git), sí: se protege.
+export function enHead(raizProyecto, rel) {
+  const r = spawnSync("git", ["cat-file", "-e", `HEAD:${rel}`], { cwd: raizProyecto, stdio: "ignore" });
+  if (r.error || r.status === null) return true;
+  if (r.status === 0) return true;
+  const repo = spawnSync("git", ["rev-parse", "--verify", "-q", "HEAD"], { cwd: raizProyecto, stdio: "ignore" });
+  return Boolean(repo.error) || repo.status !== 0; // sin HEAD legible, se protege; con HEAD y sin el archivo, es nuevo
+}
+
 export function cargarGrupos(raizProyecto) {
   const archivo = path.join(raizProyecto, ".claude", "hooks", "hooks-config.json");
   if (!fs.existsSync(archivo)) return { grupos: GRUPOS_POR_DEFECTO };
@@ -112,6 +124,7 @@ export function decidir(entrada, raizProyecto, plataforma = process.platform) {
       const porNombre = (g.archivos || []).some((n) => (insensible ? n.toLowerCase() === base.toLowerCase() : n === base));
       const porRuta = dentro && (g.rutas || []).some((glob) => globARegex(glob, insensible).test(rel));
       if (!porNombre && !porRuta) continue;
+      if (g.solo_versionados && dentro && !enHead(raizProyecto, rel)) continue; // creado en esta tarea y sin commitear
       const mensaje = `${dentro ? rel : base} está protegido (grupo «${g.nombre}»). ${g.motivo || ""}`.trim();
       if (g.modo === "preguntar") {
         return {
