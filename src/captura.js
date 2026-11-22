@@ -11,7 +11,7 @@
 // Campo: el de la cámara (focal y ancho del sensor, el mismo en todos los modos) con la relación 4:3 de 640 × 480; con un modo 16:9 la
 // captura enseña más alto que la cámara en ese modo (el ancho completo del sensor, como en un modo 4:3 de la ELP).
 // Oclusión: solo la del campo y los bordes. Lo que otro objeto o el brazo tapa dentro del campo sigue anotado como visible (la oclusión
-// por el brazo es T4.2 y no está hecha). Sin distorsión (la de T4.5 no se aplica a la captura).
+// por el brazo lo mide T4.2 sobre el plan de «Calcular», no sobre la captura). Sin distorsión (la de T4.5 no se aplica a la captura).
 const CAPTURA = (() => {
   const S_ = typeof SENSOR !== 'undefined' ? SENSOR : require('./sensor.js');
   const T_ = typeof TAREAS !== 'undefined' ? TAREAS : require('./tareas.js');
@@ -26,7 +26,7 @@ const CAPTURA = (() => {
   // El plano de un marcador del gemelo mide `lado` y arucoTex dibuja el cuadrado negro (las 6 × 6 celdas del patrón) en 80 de sus 96 px:
   // las esquinas que da un detector son las del cuadrado negro, no las del plano
   const ARUCO_NEGRO = 80 / 96;
-  const OCLUSION = 'solo la del campo y los bordes: un objeto tapado por otro o por el brazo dentro del campo se anota como visible; la oclusión por el brazo (T4.2) no está hecha';
+  const OCLUSION = 'solo la del campo y los bordes: un objeto tapado por otro o por el brazo dentro del campo se anota como visible; la oclusión por el brazo (T4.2) se mide sobre el plan de Calcular y no se aplica a la captura';
   const PERSONAS = 'sin personas: la figura de la persona del gemelo no se dibuja en la captura ni se anota; no hay ninguna clase de persona';
   const DISTORSION = 'ninguna: proyección estenopeica de lente ideal; la distorsión de T4.5 no se aplica a la captura';
   const CONVENCION = 'OpenCV: el centro del píxel superior izquierdo es (0, 0), u a la derecha y v hacia abajo; la imagen cubre u de −0,5 a 639,5 y v de −0,5 a 479,5; la caja de un objeto cortado por el borde se recorta a la imagen';
