@@ -25,6 +25,7 @@ export const NIVELES = {
     'tests/e2e/escenas-firestore.test.mjs', // I2: escenas con el simulacro de Firestore y sus reglas
     'tests/e2e/escenas-v8.test.mjs',        // I1: las tres escenas v8 de referencia
     'tests/e2e/exportar.test.mjs',          // I7: world ↔ base_link por robot, posiciones.yaml y sus correcciones
+    'tests/e2e/interfaz.test.mjs',          // TU.1: remodelado de la interfaz: misma rejilla y lienzo, pasos numerados, cinta del ciclo (solo lee) y matriz cámara × tarea, en los dos destinos
     'tests/e2e/ilegibles.test.mjs',         // DT11 e I2: escenas ilegibles con las reglas de los dos almacenes
     'tests/e2e/layout.test.mjs',            // I1 e I2: campos v9, solo lectura y el límite de 50.000 caracteres
     'tests/e2e/matriz.test.mjs',            // I8: matriz «gemelo» de 8 casos en orden directo
