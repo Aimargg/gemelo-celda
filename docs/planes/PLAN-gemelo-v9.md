@@ -497,7 +497,7 @@ Reglas comunes:
 - Cada tarea cierra su DT en el registro de deuda (estado «pagada», con el commit) y la marca «entregada» aquí.
 
 - **TD.1 (DT45, decisión del usuario del 2026-11-23: `lado` es el cuadrado negro).** El negro del ArUco ocupa todo `lado`
-  y el margen blanco (1/5 de `lado` por cada lado, la misma proporción de hoy: 8 de 80 px) se dibuja por fuera, en el plano o en
+  y el margen blanco (1/10 de `lado` por cada lado, la misma proporción de hoy: 8 px por cada 80 de negro) se dibuja por fuera, en el plano o en
   un borde aparte. Criterios: (a) la captura sintética anota las esquinas a ±`lado`/2 (desaparece `ARUCO_NEGRO` o vale 1);
   (b) `tablero_bandeja.yaml`, `parametros_celda.yaml` y la tabla de supuestos dicen en su texto que `lado` es el cuadrado negro
   (markerLength); (c) los píxeles por tarea de T4.1 no cambian (ya usaban `lado`); (d) el aviso de marcadores alineados y la
