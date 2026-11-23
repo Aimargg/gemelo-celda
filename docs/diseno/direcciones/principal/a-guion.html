@@ -1,0 +1,332 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>A · Guion de la demo</title>
+<style>
+@font-face{font-family:"Barlow";src:url(fuentes/barlow-latin-400-normal.woff2) format("woff2");font-weight:400;font-display:swap}
+@font-face{font-family:"Barlow";src:url(fuentes/barlow-latin-500-normal.woff2) format("woff2");font-weight:500;font-display:swap}
+@font-face{font-family:"Barlow";src:url(fuentes/barlow-latin-600-normal.woff2) format("woff2");font-weight:600;font-display:swap}
+@font-face{font-family:"Barlow";src:url(fuentes/barlow-latin-700-normal.woff2) format("woff2");font-weight:700;font-display:swap}
+@font-face{font-family:"Barlow Condensed";src:url(fuentes/barlow-condensed-latin-500-normal.woff2) format("woff2");font-weight:500;font-display:swap}
+@font-face{font-family:"Barlow Condensed";src:url(fuentes/barlow-condensed-latin-600-normal.woff2) format("woff2");font-weight:600;font-display:swap}
+@font-face{font-family:"Barlow Condensed";src:url(fuentes/barlow-condensed-latin-700-normal.woff2) format("woff2");font-weight:700;font-display:swap}
+@font-face{font-family:"JetBrains Mono";src:url(fuentes/jetbrains-mono-latin-400-normal.woff2) format("woff2");font-weight:400;font-display:swap}
+@font-face{font-family:"JetBrains Mono";src:url(fuentes/jetbrains-mono-latin-500-normal.woff2) format("woff2");font-weight:500;font-display:swap}
+@font-face{font-family:"JetBrains Mono";src:url(fuentes/jetbrains-mono-latin-700-normal.woff2) format("woff2");font-weight:700;font-display:swap}
+
+/* Tokens: los nombres son los que tendrá src/part1.html si se elige esta dirección */
+:root{
+  --f-ui:"Barlow",system-ui,sans-serif;
+  --f-rot:"Barlow Condensed","Barlow",system-ui,sans-serif; /* rótulos: pasos, veredicto */
+  --f-num:"JetBrains Mono",ui-monospace,monospace;          /* cifras y nombres de ROS */
+  --c-fondo:#eceef0; --c-sup:#ffffff; --c-sup2:#f5f6f7; --c-linea:#d5d9de; --c-linea-f:#9aa3ad;
+  --c-tinta:#16202a; --c-suave:#56626e;
+  --c-cinta:#f2c230; --c-cinta-tinta:#16202a; --c-cinta-borde:#a77c00; /* la cinta de carrocero de la mesa: paso activo y progreso */
+  --c-ok:#1f7a46; --c-ok-s:#e2f1e7; --c-mal:#b3321e; --c-mal-s:#f8e3de; --c-aviso:#8a5c00; --c-aviso-s:#fff6dc;
+  --c-v1:#7046a8; --c-v2:#14706a; --c-rob:#2a6a94;
+  --r-1:4px; --r-2:8px;
+  --e-1:4px; --e-2:8px; --e-3:12px; --e-4:16px; --e-5:24px;
+  --t-rapida:140ms;
+}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
+  --c-fondo:#0f1418; --c-sup:#171e24; --c-sup2:#1d252c; --c-linea:#2b353f; --c-linea-f:#5b6877;
+  --c-tinta:#e5eaef; --c-suave:#9aa8b6; --c-ok:#56c286; --c-ok-s:#16301f; --c-mal:#ef7a62; --c-mal-s:#3a1c16;
+  --c-aviso:#e6b04a; --c-aviso-s:#33280f; --c-v1:#b598ea; --c-v2:#55c4bc; --c-rob:#82b7dc; color-scheme:dark}}
+*{box-sizing:border-box} html,body{height:100%;margin:0}
+body{background:var(--c-fondo);color:var(--c-tinta);font:15px/1.45 var(--f-ui);-webkit-font-smoothing:antialiased}
+button,input,select{font:inherit;color:inherit}
+:focus-visible{outline:2px solid var(--c-rob);outline-offset:2px}
+[hidden]{display:none!important}
+.num{font-family:var(--f-num);font-variant-numeric:tabular-nums}
+
+.app{height:100vh;display:grid;grid-template-columns:232px minmax(0,1fr) 392px;grid-template-rows:56px minmax(0,1fr) 92px;
+  grid-template-areas:"cab cab cab" "pasos vista panel" "pasos ciclo panel"}
+
+/* Cabecera */
+.cab{grid-area:cab;display:flex;align-items:center;gap:var(--e-4);padding:0 var(--e-4);background:var(--c-sup);border-bottom:1px solid var(--c-linea)}
+.marca{display:flex;align-items:center;gap:10px;font:700 18px/1 var(--f-rot);letter-spacing:.01em;white-space:nowrap}
+.marca i{width:26px;height:26px;border-radius:6px;background:#7dadcc;position:relative;overflow:hidden;flex:none}
+.marca i::after{content:"";position:absolute;left:-4px;right:-4px;bottom:6px;height:6px;background:var(--c-cinta);transform:rotate(-14deg)}
+.escena{display:flex;align-items:center;gap:6px;margin-left:var(--e-3);min-width:0}
+.escena button.flecha{width:32px;height:36px;border:1px solid var(--c-linea);background:var(--c-sup);border-radius:var(--r-1);cursor:pointer}
+.escena .actual{display:flex;flex-direction:column;justify-content:center;height:36px;padding:0 12px;border:1px solid var(--c-linea);border-radius:var(--r-1);min-width:240px;background:var(--c-sup);cursor:pointer;text-align:left}
+.escena .actual b{font-weight:600;font-size:14px;line-height:1.1}
+.escena .actual small{color:var(--c-suave);font-size:12px}
+.ficha{margin-left:auto;display:flex;gap:6px;align-items:center;font:500 12.5px var(--f-num);color:var(--c-suave)}
+.ficha span{border:1px solid var(--c-linea);border-radius:var(--r-1);padding:5px 8px;white-space:nowrap}
+.ficha .borrador{background:var(--c-cinta);border-color:var(--c-cinta);color:var(--c-cinta-tinta);font-weight:700}
+.btn{border:1px solid var(--c-linea-f);background:var(--c-sup);border-radius:var(--r-1);padding:7px 12px;font-weight:600;font-size:14px;cursor:pointer;min-height:36px;white-space:nowrap}
+.btn:hover{border-color:var(--c-tinta)}
+.btn.pri{background:var(--c-tinta);border-color:var(--c-tinta);color:var(--c-sup)}
+.btn.cinta{background:var(--c-cinta);border-color:var(--c-cinta-borde);color:var(--c-cinta-tinta)}
+
+/* Raíl de pasos: la secuencia real del trabajo del grupo */
+.pasos{grid-area:pasos;background:var(--c-sup);border-right:1px solid var(--c-linea);padding:var(--e-4) var(--e-3);display:flex;flex-direction:column;gap:var(--e-1);overflow:auto}
+.pasos h2{font:600 13px/1 var(--f-rot);letter-spacing:.06em;text-transform:uppercase;color:var(--c-suave);margin:0 0 var(--e-2) var(--e-2)}
+.paso{display:grid;grid-template-columns:30px 1fr;gap:10px;align-items:start;padding:10px var(--e-2);border-radius:var(--r-2);border:0;background:none;text-align:left;cursor:pointer;position:relative}
+.paso:hover{background:var(--c-sup2)}
+.paso .n{width:30px;height:30px;border-radius:50%;display:grid;place-items:center;font:700 16px/1 var(--f-rot);border:2px solid var(--c-linea-f);color:var(--c-suave);background:var(--c-sup)}
+.paso b{display:block;font:600 17px/1.15 var(--f-rot);letter-spacing:.01em}
+.paso small{display:block;color:var(--c-suave);font-size:13px;line-height:1.3;margin-top:2px}
+.paso[aria-current="step"]{background:var(--c-sup2)}
+.paso[aria-current="step"] .n{background:var(--c-cinta);border-color:var(--c-cinta-borde);color:var(--c-cinta-tinta)}
+.paso[aria-current="step"]::before{content:"";position:absolute;left:-12px;top:10px;bottom:10px;width:4px;border-radius:2px;background:var(--c-cinta)}
+.paso.hecho .n{background:var(--c-ok);border-color:var(--c-ok);color:#fff}
+.paso.mal .n{background:var(--c-mal);border-color:var(--c-mal);color:#fff}
+.sub{list-style:none;margin:2px 0 6px 48px;padding:0;display:flex;flex-direction:column;gap:2px}
+.sub button{width:100%;display:flex;justify-content:space-between;align-items:center;gap:8px;border:0;background:none;padding:6px 8px;border-radius:var(--r-1);font-size:14px;cursor:pointer;text-align:left;color:var(--c-tinta)}
+.sub button:hover{background:var(--c-sup2)}
+.sub button[aria-pressed="true"]{background:var(--c-tinta);color:var(--c-sup)}
+.sub i{width:8px;height:8px;border-radius:50%;flex:none}
+.i-ok{background:var(--c-ok)} .i-mal{background:var(--c-mal)} .i-aviso{background:var(--c-aviso)} .i-no{background:var(--c-linea-f)}
+.pie-pasos{margin-top:auto;font-size:12.5px;color:var(--c-suave);padding:var(--e-2)}
+
+/* Vista 3D */
+.vista{grid-area:vista;position:relative;overflow:hidden;background:#e8ecf0}
+.vista>img.escena3d{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;object-position:40% 30%}
+.barra{position:absolute;display:flex;gap:2px;background:var(--c-sup);border:1px solid var(--c-linea);border-radius:var(--r-2);padding:3px;box-shadow:0 1px 2px rgba(0,0,0,.06)}
+.barra button{border:0;background:none;border-radius:6px;padding:6px 10px;font-weight:600;font-size:13.5px;color:var(--c-suave);cursor:pointer;min-height:32px}
+.barra button[aria-pressed="true"]{background:var(--c-tinta);color:var(--c-sup)}
+.barra.vistas{left:var(--e-3);top:var(--e-3)} .barra.herr{right:var(--e-3);top:var(--e-3)}
+.etq{position:absolute;font:500 11.5px/1 var(--f-num);background:var(--c-sup);border:1px solid var(--c-linea);border-radius:3px;padding:4px 6px;white-space:nowrap}
+.etq.sel{background:var(--c-v2);border-color:var(--c-v2);color:#fff}
+.miniaturas{position:absolute;right:var(--e-3);bottom:var(--e-3);display:flex;gap:6px}
+.miniaturas figure{margin:0;width:150px;border-radius:var(--r-1);overflow:hidden;border:2px solid var(--c-sup);background:var(--c-sup);box-shadow:0 1px 3px rgba(0,0,0,.15)}
+.miniaturas figure.sel{border-color:var(--c-v2)}
+.miniaturas img{display:block;width:100%;height:84px;object-fit:cover}
+.miniaturas figcaption{font:600 12px/1 var(--f-ui);padding:5px 6px;display:flex;justify-content:space-between}
+.calc{position:absolute;left:50%;top:var(--e-3);transform:translateX(-50%);display:flex;align-items:center;gap:10px;background:var(--c-sup);border:1px solid var(--c-cinta-borde);border-radius:var(--r-2);padding:6px 6px 6px 12px;font-weight:600;font-size:14px;box-shadow:0 4px 14px rgba(0,0,0,.12)}
+.giro{width:16px;height:16px;border-radius:50%;border:2.5px solid var(--c-linea);border-top-color:var(--c-tinta);animation:gira .8s linear infinite}
+@keyframes gira{to{transform:rotate(360deg)}}
+
+/* Línea del ciclo: el elemento firma. La demo como cinta temporal con su veredicto */
+.ciclo{grid-area:ciclo;background:var(--c-sup);border-top:1px solid var(--c-linea);display:grid;grid-template-columns:auto minmax(0,1fr);gap:var(--e-4);align-items:center;padding:0 var(--e-4)}
+.veredicto{display:flex;align-items:center;gap:12px;min-width:0}
+.veredicto .sello{font:700 15px/1 var(--f-rot);letter-spacing:.04em;text-transform:uppercase;padding:8px 10px;border-radius:var(--r-1);white-space:nowrap}
+.sello.ok{background:var(--c-ok);color:#fff} .sello.mal{background:var(--c-mal);color:#fff} .sello.viejo{background:var(--c-sup2);color:var(--c-suave);border:1px dashed var(--c-linea-f)}
+.veredicto .dato{display:flex;flex-direction:column}
+.veredicto .dato b{font:700 22px/1 var(--f-rot)}
+.veredicto .dato small{font-size:12.5px;color:var(--c-suave)}
+.veredicto .play{width:40px;height:40px;border-radius:50%;border:0;background:var(--c-tinta);color:var(--c-sup);cursor:pointer;display:grid;place-items:center;flex:none}
+.cinta{display:flex;flex-direction:column;gap:6px;min-width:0}
+.tramos{position:relative;display:flex;height:26px;border-radius:var(--r-1);overflow:hidden;gap:2px}
+.tramos span{display:flex;align-items:center;padding:0 7px;font:600 12px/1 var(--f-ui);color:var(--c-tinta);background:var(--c-sup2);border-bottom:3px solid var(--c-linea-f);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
+.tramos span.hecho{background:#fbefc6;border-bottom-color:var(--c-cinta-borde)}
+.tramos span.ahora{background:var(--c-cinta);border-bottom-color:var(--c-cinta-borde)}
+.tramos span.mal{background:var(--c-mal-s);border-bottom-color:var(--c-mal);color:var(--c-mal)}
+.tramos .pausa{position:absolute;top:-4px;bottom:-4px;width:3px;margin-left:-1px;background:var(--c-tinta);border-radius:2px}
+.escala{display:flex;justify-content:space-between;font:500 11.5px var(--f-num);color:var(--c-suave)}
+
+/* Panel del paso */
+.panel{grid-area:panel;background:var(--c-sup);border-left:1px solid var(--c-linea);overflow:auto;display:flex;flex-direction:column}
+.p-cab{padding:var(--e-4) var(--e-4) var(--e-3);border-bottom:1px solid var(--c-linea);position:sticky;top:0;background:var(--c-sup);z-index:1}
+.p-cab .ruta{font:600 13px/1 var(--f-rot);letter-spacing:.06em;text-transform:uppercase;color:var(--c-suave)}
+.p-cab h1{font:700 26px/1.1 var(--f-rot);margin:6px 0 4px}
+.p-cab p{margin:0;color:var(--c-suave);font-size:14px}
+.chip{display:inline-flex;align-items:center;gap:6px;font:600 12px/1 var(--f-ui);padding:5px 8px;border-radius:999px;border:1px solid currentColor}
+.chip.v2{color:var(--c-v2)} .chip.v1{color:var(--c-v1)} .chip.rob{color:var(--c-rob)}
+.bloque{padding:var(--e-4);border-bottom:1px solid var(--c-linea);display:flex;flex-direction:column;gap:var(--e-3)}
+.bloque h2{font:600 17px/1.2 var(--f-rot);margin:0;display:flex;justify-content:space-between;align-items:baseline;gap:8px}
+.bloque h2 small{font:500 12.5px var(--f-ui);color:var(--c-suave)}
+.campo{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:4px 10px;align-items:center}
+.campo label{font-size:14px}
+.campo output{font:500 13.5px var(--f-num)}
+.campo input[type=range]{grid-column:1/-1;width:100%;accent-color:var(--c-tinta);height:28px}
+.segm{display:grid;grid-auto-flow:column;grid-auto-columns:1fr;border:1px solid var(--c-linea-f);border-radius:var(--r-1);overflow:hidden}
+.segm button{border:0;background:var(--c-sup);padding:7px 6px;font-weight:600;font-size:13.5px;cursor:pointer;min-height:36px}
+.segm button+button{border-left:1px solid var(--c-linea-f)}
+.segm button[aria-pressed="true"]{background:var(--c-tinta);color:var(--c-sup)}
+.tareas{width:100%;border-collapse:collapse;font-size:14px}
+.tareas th{font:600 12px var(--f-ui);color:var(--c-suave);text-align:left;padding:0 0 6px;border-bottom:1px solid var(--c-linea)}
+.tareas td{padding:8px 0;border-bottom:1px solid var(--c-linea);vertical-align:middle}
+.tareas td.num{text-align:right;white-space:nowrap}
+.estado{display:inline-flex;align-items:center;gap:6px;font-weight:600;font-size:13px;white-space:nowrap}
+.estado::before{content:"";width:9px;height:9px;border-radius:50%;background:currentColor}
+.estado.ok{color:var(--c-ok)} .estado.aviso{color:var(--c-aviso)} .estado.mal{color:var(--c-mal)}
+.barrita{height:6px;border-radius:3px;background:var(--c-sup2);overflow:hidden;margin-top:4px}
+.barrita i{display:block;height:100%;background:var(--c-tinta)}
+.nota{font-size:13px;color:var(--c-suave);margin:0}
+.nota b{color:var(--c-tinta)}
+.tag{font:600 10.5px/1 var(--f-num);padding:2px 5px;border:1px solid var(--c-aviso);color:var(--c-aviso);border-radius:3px;vertical-align:1px}
+.aviso-caja{border:1px solid var(--c-mal);background:var(--c-mal-s);border-radius:var(--r-2);padding:var(--e-3);display:flex;flex-direction:column;gap:8px}
+.aviso-caja b{color:var(--c-mal);font:700 17px/1.2 var(--f-rot)}
+.aviso-caja p{margin:0;font-size:14px}
+.cargando{display:flex;flex-direction:column;gap:8px}
+.esq{height:14px;border-radius:3px;background:linear-gradient(90deg,var(--c-sup2),var(--c-linea),var(--c-sup2));background-size:200% 100%;animation:brillo 1.4s linear infinite}
+@keyframes brillo{to{background-position:-200% 0}}
+@media (prefers-reduced-motion:reduce){.giro,.esq{animation:none}}
+.solo-movil{display:none}
+
+/* Móvil: vista arriba, pasos como pestañas numeradas, veredicto fijo abajo, al alcance del pulgar */
+@media (max-width:760px){
+  .app{height:auto;min-height:100vh;display:flex;flex-direction:column;padding-bottom:84px}
+  .cab{height:52px;padding:0 12px;gap:8px;position:sticky;top:0;z-index:5}
+  .marca span,.ficha,.escena .flecha,.cab .btn:not(.solo-movil){display:none}
+  .vista{order:1} .pasos{order:2} .panel{order:3}
+  .escena{margin-left:0;flex:1} .escena .actual{min-width:0;flex:1}
+  .solo-movil{display:inline-flex}
+  .vista{height:44vh;min-height:300px;flex:none}
+  .barra.herr{display:none} .miniaturas figure{width:96px} .miniaturas img{height:56px} .miniaturas figcaption{font-size:11px}
+  .etq{display:none}
+  .pasos{flex-direction:row;padding:8px 10px;gap:6px;overflow-x:auto;border-right:0;border-bottom:1px solid var(--c-linea);position:sticky;top:52px;z-index:4}
+  .pasos h2,.sub,.pie-pasos,.paso small{display:none}
+  .paso{grid-template-columns:26px auto;align-items:center;gap:6px;padding:6px 10px;flex:none}
+  .paso .n{width:26px;height:26px;font-size:14px}
+  .paso b{font-size:15px}
+  .paso[aria-current="step"]::before{left:8px;right:8px;top:auto;bottom:-9px;height:3px;width:auto}
+  .panel{border-left:0;overflow:visible}
+  .p-cab{position:static}
+  .ciclo{position:fixed;left:0;right:0;bottom:0;height:76px;z-index:6;grid-template-columns:1fr;padding:8px 12px;box-shadow:0 -4px 14px rgba(0,0,0,.08)}
+  .cinta{display:none}
+  .veredicto .dato b{font-size:19px}
+}
+
+.vista{container-type:size}
+.lienzo{position:absolute;left:50%;top:50%;width:max(100cqw,120.4cqh);aspect-ratio:1996/1658;transform:translate(-54%,-47%)}
+.lienzo>img{display:block;width:100%;height:100%}
+.lienzo .etq{transform:translate(-50%,-130%)}
+</style>
+</head>
+<body>
+<div class="app">
+  <header class="cab">
+    <div class="marca"><i aria-hidden="true"></i><span>Gemelo de la celda UR3e</span></div>
+    <nav class="escena" aria-label="Escenas del grupo">
+      <button class="flecha" aria-label="Escena anterior">‹</button>
+      <button class="actual" aria-haspopup="dialog"><b>Tu mesa</b><small>sin guardar · basada en «Por defecto»</small></button>
+      <button class="flecha" aria-label="Escena siguiente">›</button>
+    </nav>
+    <div class="ficha"><span class="borrador">BORRADOR</span><span>UR3e B · nominal</span><span>perfil curso</span></div>
+    <button class="btn">Guardar escena</button>
+    <button class="btn solo-movil" aria-label="Guardar escena">Guardar</button>
+  </header>
+
+  <nav class="pasos" aria-label="Pasos">
+    <h2>Guion</h2>
+    <button class="paso hecho" data-paso="1" aria-current="step"><span class="n">1</span><span><b>Disponer la celda</b><small>Dónde va cada cosa</small></span></button>
+    <ul class="sub" data-mostrar-en="normal fallo calculando">
+      <li><button><span>Robot y pinza</span><i class="i-ok"></i></button></li>
+      <li><button data-mostrar-en="normal calculando"><span>Platos y cajas</span><i class="i-ok"></i></button><button data-mostrar-en="fallo"><span>Platos y cajas</span><i class="i-mal"></i></button></li>
+      <li><button><span>Bandeja y persona</span><i class="i-ok"></i></button></li>
+      <li><button aria-pressed="true"><span>Cámaras</span><i class="i-aviso"></i></button></li>
+      <li><button><span>Marcadores ArUco</span><i class="i-ok"></i></button></li>
+    </ul>
+    <button class="paso" data-paso="2" data-mostrar-en="normal fallo"><span class="n">2</span><span><b>Calcular trayectorias</b><small>Al día con la disposición</small></span></button>
+    <button class="paso" data-paso="2" data-mostrar-en="calculando" style="background:var(--c-sup2)"><span class="n"><span class="giro" aria-hidden="true"></span></span><span><b>Calcular trayectorias</b><small>Calculando el plato 2º…</small></span></button>
+    <button class="paso hecho" data-paso="3" data-mostrar-en="normal"><span class="n">3</span><span><b>Comprobar la demo</b><small>Completa · 2 platos</small></span></button>
+    <button class="paso mal" data-paso="3" data-mostrar-en="fallo"><span class="n">3</span><span><b>Comprobar la demo</b><small>No puede empezar</small></span></button>
+    <button class="paso" data-paso="3" data-mostrar-en="calculando"><span class="n">3</span><span><b>Comprobar la demo</b><small>Espera al cálculo</small></span></button>
+    <button class="paso" data-paso="4"><span class="n">4</span><span><b>Guardar y exportar</b><small>Escena del grupo y ficheros ROS</small></span></button>
+    <p class="pie-pasos">Medidas del 10-11 · el gemelo no envía nada a ROS</p>
+  </nav>
+
+  <main class="vista" aria-label="Vista 3D de la celda">
+    <div class="lienzo"><img src="img/escena.jpg" alt="Vista 3D de la celda: robot B, dos platos sobre cajas, zona de fruta, persona con la bandeja y tres cámaras en sus brazos articulados">
+    <span class="etq sel" style="left:50.1%;top:40.5%">Cám. cenital · V2</span>
+    <span class="etq" style="left:38.8%;top:53.5%">Plato 2º</span>
+    <span class="etq" style="left:49.8%;top:53.5%">Plato 1º</span>
+    <span class="etq" style="left:29%;top:57.5%">Zona de fruta</span>
+    </div>
+    <div class="barra vistas" role="group" aria-label="Vista"><button aria-pressed="true">3D</button><button aria-pressed="false">Planta</button><button aria-pressed="false">Lateral</button><button aria-pressed="false">Persona</button></div>
+    <div class="barra herr" role="group" aria-label="Herramientas"><button aria-pressed="true">Mover</button><button aria-pressed="false">Girar</button><button aria-pressed="false">Medir</button></div>
+    <div class="calc" data-mostrar-en="calculando" role="status"><span class="giro" aria-hidden="true"></span>Calculando el plato 2º… <button class="btn">Parar</button></div>
+    <div class="miniaturas">
+      <figure class="sel"><img src="img/cam0.jpg" alt="Lo que ve la cámara cenital"><figcaption>Cenital <span class="num">V2</span></figcaption></figure>
+      <figure><img src="img/cam1.jpg" alt="Lo que ve la cámara de entrega"><figcaption>Entrega <span class="num">V1</span></figcaption></figure>
+      <figure><img src="img/cam2.jpg" alt="Lo que ve la cámara de la persona"><figcaption>Persona <span class="num">V1</span></figcaption></figure>
+    </div>
+  </main>
+
+  <aside class="panel" aria-label="Panel del paso">
+    <div class="p-cab">
+      <div class="ruta">1 · Disponer la celda › Cámaras</div>
+      <h1>Cámara cenital</h1>
+      <p><span class="chip v2">Visión 2</span>&nbsp; Fruta, ArUco de la zona y platos</p>
+    </div>
+
+    <section class="bloque" data-mostrar-en="normal fallo">
+      <h2>¿Sirve para sus tareas? <small>en la entrada de la red, 640 px</small></h2>
+      <table class="tareas">
+        <thead><tr><th>Tarea</th><th style="text-align:right">Píxeles</th><th style="text-align:right">Estado</th></tr></thead>
+        <tbody>
+          <tr><td>Fruta de 45 mm <span class="tag">SUPUESTO</span><div class="barrita"><i style="width:53%"></i></div></td><td class="num">17 / 32 px</td><td style="text-align:right"><span class="estado aviso">Límite</span></td></tr>
+          <tr><td>ArUco de la zona, 40 mm<div class="barrita"><i style="width:100%"></i></div></td><td class="num">42 / 14 px</td><td style="text-align:right"><span class="estado ok">Cumple</span></td></tr>
+          <tr><td>Profundidad de campo<div class="barrita"><i style="width:88%"></i></div></td><td class="num">37–73 cm</td><td style="text-align:right"><span class="estado aviso">Límite</span></td></tr>
+        </tbody>
+      </table>
+      <p class="nota"><b>Peor punto de la fruta:</b> zona, punto 2 · <span class="num">0,90 mm/px</span>. Cumple desde 32 px en la red. <b>Profundidad:</b> el plato 1º queda fuera.</p>
+    </section>
+
+    <section class="bloque" data-mostrar-en="calculando">
+      <h2>¿Sirve para sus tareas? <small>se recalcula al terminar</small></h2>
+      <div class="cargando" aria-label="Cargando"><div class="esq" style="width:90%"></div><div class="esq" style="width:70%"></div><div class="esq" style="width:80%"></div></div>
+    </section>
+
+    <section class="bloque">
+      <h2>Óptica y modo</h2>
+      <div class="campo"><label for="f">Focal (zoom de la lente)</label><output class="num">3,6 mm</output><input id="f" type="range" min="36" max="100" value="36"></div>
+      <div class="segm" role="group" aria-label="Modo"><button aria-pressed="true">1920×1080 · 120</button><button aria-pressed="false">1280×960</button><button aria-pressed="false">2048×1536</button></div>
+      <p class="nota">Campo <span class="num">79° × 50°</span> · altura <span class="num">410 mm</span> · <span class="num">0,51 mm/px</span> en el punto de mira <span class="tag">SIN VALIDAR</span></p>
+    </section>
+
+    <section class="bloque">
+      <h2>Orientación</h2>
+      <div class="campo"><label for="g">Giro</label><output class="num">2°</output><input id="g" type="range" min="-180" max="180" value="2"></div>
+      <div class="campo"><label for="i">Inclinación</label><output class="num">57°</output><input id="i" type="range" min="-60" max="89" value="57"></div>
+    </section>
+
+    <section class="bloque" data-mostrar-en="normal">
+      <h2>Tapada por el brazo <small>transporte de los platos · 68,9 s</small></h2>
+      <table class="tareas">
+        <thead><tr><th>Objetivo</th><th style="text-align:right">Todo tapado</th><th style="text-align:right">Algún punto</th></tr></thead><tbody>
+        <tr><td>Fruta de 45 mm</td><td class="num">0,0 %</td><td class="num">15,2 %</td></tr>
+        <tr><td>ArUco de la zona</td><td class="num">0,0 %</td><td class="num">16,8 %</td></tr>
+      </tbody></table>
+    </section>
+  </aside>
+
+  <footer class="ciclo" aria-label="Veredicto y ciclo de la demo">
+    <div class="veredicto" data-mostrar-en="normal">
+      <button class="play" aria-label="Reproducir la demo">▶</button>
+      <span class="sello ok">Completa</span>
+      <span class="dato"><b class="num">136,8 s</b><small>2 platos · 0 choques · 4 pausas de la bandeja</small></span>
+    </div>
+    <div class="veredicto" data-mostrar-en="fallo">
+      <button class="play" aria-label="Reproducir la demo" disabled style="opacity:.4">▶</button>
+      <span class="sello mal">No empieza</span>
+      <span class="dato"><b>Coger los platos</b><small>chocaría la muñeca 2 con la mesa (27 mm)</small></span>
+    </div>
+    <div class="veredicto" data-mostrar-en="calculando">
+      <button class="play" aria-label="Reproducir la demo" disabled style="opacity:.4">▶</button>
+      <span class="sello viejo">Sin calcular</span>
+      <span class="dato"><b class="num" style="color:var(--c-suave)">136,8 s</b><small>veredicto anterior al último cambio</small></span>
+    </div>
+    <div class="cinta" data-mostrar-en="normal calculando">
+      <div class="tramos" aria-label="Fases del ciclo">
+        <span class="hecho" style="flex:100" title="Recepción, 0–10 s">Recepción</span><span class="hecho" style="flex:743" title="Servicio 1, 10–84 s">Servicio 1 · fruta y plato 1º</span><span class="ahora" style="flex:481" title="Servicio 2, 84–132 s">Servicio 2 · plato 2º</span><span style="flex:44" title="Vuelta al reposo">↩</span>
+        <i class="pausa" style="left:48.2%" title="Pausa: la bandeja se aparta 27 mm (66 s)"></i><i class="pausa" style="left:60.9%"></i><i class="pausa" style="left:88.6%"></i><i class="pausa" style="left:96%"></i>
+      </div>
+      <div class="escala num"><span>0 s</span><span>30</span><span>60</span><span>90</span><span>120</span><span>136,8 s</span></div>
+    </div>
+    <div class="cinta" data-mostrar-en="fallo">
+      <div class="tramos"><span class="mal" style="flex:1">El coordinador rechaza el pedido antes de mover el brazo</span></div>
+      <div class="escala num"><span>0 s</span><span>la demo no llega a empezar</span></div>
+    </div>
+  </footer>
+</div>
+
+<aside data-mostrar-en="fallo" class="aviso-caja" style="position:fixed;left:252px;top:72px;max-width:420px;z-index:3;background:var(--c-sup)">
+  <b>La demo no puede empezar</b>
+  <p>El coordinador ensaya en seco cada paso antes de mover nada. Con los platos sobre la mesa, el robot real no puede cogerlos en horizontal por el borde: <b style="font:600 14px var(--f-ui);color:var(--c-tinta)">chocaría la muñeca 2 con la mesa (27 mm)</b>, con el 1º y con el 2º.</p>
+  <p><b style="font:600 14px var(--f-ui);color:var(--c-tinta)">Qué cambiar:</b> ponlos sobre la caja, o mueve los platos unos centímetros respecto a la base.</p>
+  <div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn pri">Ver dónde falla</button><button class="btn">Buscar una disposición que funcione</button></div>
+</aside>
+
+<script>
+function aplicarEstado(){const e=new URLSearchParams(location.hash.slice(1)).get('estado')||'normal';document.documentElement.dataset.estado=e;document.querySelectorAll('[data-mostrar-en]').forEach(el=>{el.hidden=!el.dataset.mostrarEn.split(' ').includes(e)});}
+addEventListener('hashchange',aplicarEstado);aplicarEstado();
+</script>
+</body>
+</html>

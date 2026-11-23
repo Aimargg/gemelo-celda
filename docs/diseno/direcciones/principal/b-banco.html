@@ -1,0 +1,310 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>B · Banco de ensayo</title>
+<style>
+@font-face{font-family:"IBM Plex Sans";src:url(fuentes/ibm-plex-sans-latin-400-normal.woff2) format("woff2");font-weight:400;font-display:swap}
+@font-face{font-family:"IBM Plex Sans";src:url(fuentes/ibm-plex-sans-latin-500-normal.woff2) format("woff2");font-weight:500;font-display:swap}
+@font-face{font-family:"IBM Plex Sans";src:url(fuentes/ibm-plex-sans-latin-600-normal.woff2) format("woff2");font-weight:600;font-display:swap}
+@font-face{font-family:"IBM Plex Sans";src:url(fuentes/ibm-plex-sans-latin-700-normal.woff2) format("woff2");font-weight:700;font-display:swap}
+@font-face{font-family:"IBM Plex Mono";src:url(fuentes/ibm-plex-mono-latin-400-normal.woff2) format("woff2");font-weight:400;font-display:swap}
+@font-face{font-family:"IBM Plex Mono";src:url(fuentes/ibm-plex-mono-latin-500-normal.woff2) format("woff2");font-weight:500;font-display:swap}
+@font-face{font-family:"IBM Plex Mono";src:url(fuentes/ibm-plex-mono-latin-600-normal.woff2) format("woff2");font-weight:600;font-display:swap}
+
+/* Tokens */
+:root{
+  --f-ui:"IBM Plex Sans",system-ui,sans-serif; --f-num:"IBM Plex Mono",ui-monospace,monospace;
+  --c-cromo:#e4e8ec; --c-sup:#ffffff; --c-sup2:#f4f6f8; --c-div:#d3dae1; --c-borde-campo:#8796a5;
+  --c-tinta:#1b2530; --c-suave:#5c6876; --c-acento:#2a6a94; --c-acento-s:#e3eef6;
+  --c-ok:#1f7a46; --c-aviso:#8a5c00; --c-mal:#b3321e; --c-mal-s:#f8e3de;
+  --c-v1:#7046a8; --c-v2:#14706a; --c-rob:#2a6a94;
+  --c-medido:#1f7a46; --c-supuesto:#8a5c00; --c-fabricante:#2a6a94;
+  --r-1:3px; --r-2:6px; --e-1:4px; --e-2:8px; --e-3:12px; --e-4:16px;
+  --alto-fila:28px;
+}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
+  --c-cromo:#0e1317; --c-sup:#161c22; --c-sup2:#1c242b; --c-div:#2a343e; --c-borde-campo:#5d6b79;
+  --c-tinta:#e4e9ee; --c-suave:#98a6b4; --c-acento:#7fb3d6; --c-acento-s:#1d3240;
+  --c-ok:#56c286; --c-aviso:#e6b04a; --c-mal:#ef7a62; --c-mal-s:#3a1c16; --c-v1:#b598ea; --c-v2:#55c4bc; --c-rob:#82b7dc;
+  --c-medido:#56c286; --c-supuesto:#e6b04a; --c-fabricante:#82b7dc; color-scheme:dark}}
+*{box-sizing:border-box} html,body{height:100%;margin:0}
+body{background:var(--c-cromo);color:var(--c-tinta);font:13px/1.4 var(--f-ui);-webkit-font-smoothing:antialiased}
+button,input,select{font:inherit;color:inherit}
+:focus-visible{outline:2px solid var(--c-acento);outline-offset:1px}
+[hidden]{display:none!important}
+.num{font-family:var(--f-num);font-variant-numeric:tabular-nums}
+
+.app{height:100vh;display:grid;grid-template-columns:240px minmax(0,1fr) 360px;grid-template-rows:44px 36px minmax(0,1fr) 26px;
+  grid-template-areas:"menu menu menu" "arbol capas insp" "arbol vista insp" "estado estado estado";gap:0}
+
+/* Barra de menú: mínima, como un programa de escritorio */
+.menu{grid-area:menu;display:flex;align-items:center;gap:var(--e-2);padding:0 var(--e-3);background:var(--c-sup);border-bottom:1px solid var(--c-div)}
+.menu .logo{font-weight:700;font-size:14px;display:flex;align-items:center;gap:8px;margin-right:var(--e-3);white-space:nowrap}
+.menu .logo i{width:18px;height:18px;border-radius:4px;background:var(--c-acento)}
+.sep{width:1px;height:22px;background:var(--c-div);margin:0 var(--e-1)}
+.hb{display:inline-flex;align-items:center;gap:6px;border:1px solid transparent;background:none;border-radius:var(--r-2);padding:4px 8px;cursor:pointer;min-height:30px;font-weight:500;white-space:nowrap}
+.hb:hover{background:var(--c-sup2);border-color:var(--c-div)}
+.hb[aria-pressed="true"]{background:var(--c-acento-s);border-color:var(--c-acento);color:var(--c-acento)}
+.hb kbd{font:500 11px var(--f-num);color:var(--c-suave);border:1px solid var(--c-div);border-radius:3px;padding:0 4px}
+.hb.pri{background:var(--c-acento);border-color:var(--c-acento);color:#fff}
+.escena-sel{display:flex;align-items:center;gap:8px;border:1px solid var(--c-borde-campo);border-radius:var(--r-2);padding:3px 10px;min-height:30px;background:var(--c-sup);min-width:220px;cursor:pointer}
+.escena-sel small{color:var(--c-suave)}
+.der{margin-left:auto;display:flex;gap:var(--e-2);align-items:center}
+
+/* Árbol de la celda: cada elemento con su estado */
+.arbol{grid-area:arbol;background:var(--c-sup);border-right:1px solid var(--c-div);overflow:auto;display:flex;flex-direction:column}
+.arbol h2,.insp h2{margin:0;padding:10px var(--e-3) 6px;font-size:11.5px;font-weight:600;color:var(--c-suave)}
+.arbol ul{list-style:none;margin:0;padding:0 6px}
+.nodo{width:100%;display:grid;grid-template-columns:14px 16px minmax(0,1fr) auto;align-items:center;gap:4px;height:var(--alto-fila);border:0;background:none;border-radius:var(--r-1);padding:0 6px;cursor:pointer;text-align:left}
+.nodo:hover{background:var(--c-sup2)}
+.nodo[aria-selected="true"]{background:var(--c-acento);color:#fff}
+.nodo[aria-selected="true"] .meta{color:#dbe9f3}
+.nodo .tw{color:var(--c-suave);font-size:10px}
+.nodo .ic{width:12px;height:12px;border-radius:2px;border:1.5px solid currentColor;opacity:.7}
+.nodo .meta{font:500 11.5px var(--f-num);color:var(--c-suave)}
+.nodo.h2{padding-left:24px}
+.dot{width:8px;height:8px;border-radius:50%;display:inline-block}
+.d-ok{background:var(--c-ok)} .d-aviso{background:var(--c-aviso)} .d-mal{background:var(--c-mal)} .d-no{background:var(--c-borde-campo)}
+.nodo[aria-selected="true"] .dot{box-shadow:0 0 0 2px #fff}
+.resumen{margin-top:auto;border-top:1px solid var(--c-div);padding:var(--e-3);display:grid;grid-template-columns:1fr 1fr;gap:6px 10px}
+.resumen dt{color:var(--c-suave);font-size:12px} .resumen dd{margin:0;text-align:right;font:500 12.5px var(--f-num)}
+
+/* Capas: lo que se dibuja encima de la escena */
+.capas{grid-area:capas;display:flex;align-items:center;gap:4px;padding:0 var(--e-2);background:var(--c-sup2);border-bottom:1px solid var(--c-div);overflow-x:auto}
+.capas .tit{color:var(--c-suave);font-size:12px;margin-right:4px}
+.capa{display:inline-flex;align-items:center;gap:6px;border:1px solid var(--c-div);background:var(--c-sup);border-radius:999px;padding:2px 10px;font-size:12px;cursor:pointer;min-height:26px;white-space:nowrap}
+.capa[aria-pressed="true"]{border-color:var(--c-acento);color:var(--c-acento);background:var(--c-acento-s);font-weight:600}
+
+/* Vista */
+.vista{grid-area:vista;position:relative;overflow:hidden;background:#e8ecf0}
+.vista>img.escena3d{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;object-position:40% 30%}
+.paleta{position:absolute;left:var(--e-3);top:var(--e-3);display:flex;flex-direction:column;gap:2px;background:var(--c-sup);border:1px solid var(--c-div);border-radius:var(--r-2);padding:3px;box-shadow:0 2px 6px rgba(0,0,0,.1)}
+.paleta button{width:64px;border:0;background:none;border-radius:var(--r-1);padding:6px 2px;font-size:11.5px;font-weight:500;cursor:pointer;display:flex;flex-direction:column;align-items:center;gap:2px}
+.paleta button span{font:600 11px var(--f-num);color:var(--c-suave)}
+.paleta button[aria-pressed="true"]{background:var(--c-acento);color:#fff}
+.paleta button[aria-pressed="true"] span{color:#dbe9f3}
+.cubo{position:absolute;right:var(--e-3);top:var(--e-3);display:grid;grid-template-columns:repeat(2,auto);gap:2px;background:var(--c-sup);border:1px solid var(--c-div);border-radius:var(--r-2);padding:3px}
+.cubo button{border:0;background:none;padding:4px 8px;border-radius:var(--r-1);cursor:pointer;font-size:12px}
+.cubo button[aria-pressed="true"]{background:var(--c-sup2);font-weight:600}
+.gizmo{position:absolute;left:calc(50.1% - 60px);top:calc(40.5% - 60px);width:120px;height:120px;pointer-events:none}
+.etq{position:absolute;font:500 11px/1 var(--f-num);background:var(--c-acento);color:#fff;border-radius:3px;padding:3px 6px;white-space:nowrap}
+.pip{position:absolute;right:var(--e-3);bottom:var(--e-3);width:300px;border:1px solid var(--c-div);border-radius:var(--r-2);overflow:hidden;background:var(--c-sup);box-shadow:0 4px 14px rgba(0,0,0,.15)}
+.pip header{display:flex;justify-content:space-between;align-items:center;padding:4px 8px;font-size:12px;font-weight:600;border-bottom:1px solid var(--c-div)}
+.pip img{display:block;width:100%;height:168px;object-fit:cover}
+.pip .bbox{position:absolute;border:1.5px solid var(--c-v2)}
+.toast{position:absolute;left:50%;bottom:var(--e-3);transform:translateX(-50%);background:var(--c-tinta);color:var(--c-sup);padding:6px 12px;border-radius:var(--r-2);font-size:12.5px;display:flex;align-items:center;gap:8px}
+.barra-prog{width:120px;height:4px;background:#ffffff40;border-radius:2px;overflow:hidden}.barra-prog i{display:block;height:100%;width:62%;background:#fff}
+
+/* Inspector */
+.insp{grid-area:insp;background:var(--c-sup);border-left:1px solid var(--c-div);overflow:auto}
+.i-cab{padding:var(--e-3);border-bottom:1px solid var(--c-div);display:flex;flex-direction:column;gap:4px}
+.i-cab .t{display:flex;align-items:center;gap:8px;font-size:15px;font-weight:600}
+.i-cab .r{color:var(--c-suave);font-size:12px}
+.grupo{font:600 11px/1 var(--f-num);padding:3px 6px;border-radius:3px;color:#fff}
+.g-v2{background:var(--c-v2)} .g-v1{background:var(--c-v1)} .g-rob{background:var(--c-rob)}
+details{border-bottom:1px solid var(--c-div)}
+summary{list-style:none;cursor:pointer;padding:8px var(--e-3);font-weight:600;display:flex;justify-content:space-between;align-items:center}
+summary::-webkit-details-marker{display:none}
+summary::after{content:"▾";color:var(--c-suave);font-size:11px}
+details:not([open]) summary::after{content:"▸"}
+summary small{font-weight:400;color:var(--c-suave);margin-left:auto;margin-right:8px}
+.props{display:grid;grid-template-columns:96px minmax(0,1fr);gap:4px 8px;align-items:center;padding:0 var(--e-3) var(--e-3)}
+.props label{color:var(--c-suave);font-size:12px}
+.xyz{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:4px}
+.cmp{display:flex;align-items:center;border:1px solid var(--c-borde-campo);border-radius:var(--r-1);background:var(--c-sup);height:26px;overflow:hidden}
+.cmp b{font:600 10.5px var(--f-num);color:var(--c-suave);padding:0 5px;border-right:1px solid var(--c-div);height:100%;display:flex;align-items:center;background:var(--c-sup2)}
+.cmp input{border:0;background:none;width:100%;min-width:0;padding:0 5px;font:500 12.5px var(--f-num);text-align:right}
+.cmp i{font:400 11px var(--f-num);color:var(--c-suave);padding-right:5px;font-style:normal}
+.org{font:600 10px/1 var(--f-num);padding:2px 4px;border-radius:2px;border:1px solid currentColor;justify-self:start}
+.o-m{color:var(--c-medido)} .o-s{color:var(--c-supuesto)} .o-f{color:var(--c-fabricante)}
+select{border:1px solid var(--c-borde-campo);border-radius:var(--r-1);height:26px;padding:0 6px;background:var(--c-sup);width:100%}
+/* Matriz de tareas: firma de esta dirección */
+.matriz{padding:0 var(--e-3) var(--e-3)}
+.matriz table{width:100%;border-collapse:collapse;font-size:12.5px}
+.matriz th{font-size:11px;font-weight:600;color:var(--c-suave);text-align:right;padding:4px 0}
+.matriz th:first-child{text-align:left}
+.matriz td{padding:5px 0;border-top:1px solid var(--c-div);text-align:right}
+.matriz td:first-child{text-align:left}
+.celda{display:inline-flex;align-items:center;gap:5px;font:500 12px var(--f-num)}
+.celda.ok::before,.celda.aviso::before,.celda.mal::before{content:"";width:8px;height:8px;border-radius:50%}
+.celda.ok::before{background:var(--c-ok)} .celda.aviso::before{background:var(--c-aviso)} .celda.mal::before{background:var(--c-mal)}
+.celda.na{color:var(--c-suave)}
+.esq{height:12px;border-radius:2px;background:var(--c-sup2);margin:6px 0}
+
+/* Barra de estado */
+.estado{grid-area:estado;display:flex;align-items:center;gap:var(--e-4);padding:0 var(--e-3);background:var(--c-sup);border-top:1px solid var(--c-div);font:500 12px var(--f-num);color:var(--c-suave);white-space:nowrap;overflow:hidden}
+.estado b{color:var(--c-tinta)}
+.estado .v{display:inline-flex;align-items:center;gap:6px;font-family:var(--f-ui);font-weight:600}
+.v.ok{color:var(--c-ok)} .v.mal{color:var(--c-mal)} .v.aviso{color:var(--c-aviso)}
+
+/* Panel de fallo */
+.fallo{position:absolute;left:var(--e-3);right:var(--e-3);top:calc(var(--e-3) + 4px);margin-left:90px;max-width:520px;background:var(--c-sup);border:1px solid var(--c-mal);border-left:4px solid var(--c-mal);border-radius:var(--r-2);padding:var(--e-3);box-shadow:0 4px 14px rgba(0,0,0,.12)}
+.fallo b{color:var(--c-mal)} .fallo p{margin:4px 0}
+.solo-movil{display:none}
+
+@media (max-width:760px){
+  body{font-size:14px}
+  .app{height:auto;display:flex;flex-direction:column}
+  .menu{height:48px;position:sticky;top:0;z-index:5}
+  .menu .logo span,.menu .sep,.menu .hb:not(.solo-movil):not(.pri),.der .hb:not(.pri){display:none}
+  .escena-sel{min-width:0;flex:1} .der .num{display:none}
+  .solo-movil{display:inline-flex}
+  .vista{order:1;height:46vh;min-height:300px;flex:none}
+  .capas{order:2;height:44px}
+  .paleta{flex-direction:row} .paleta button{width:56px}
+  .pip{width:150px} .pip img{height:84px}
+  .cubo{display:none}
+  .arbol{order:3;border-right:0;max-height:none}
+  .arbol ul{display:flex;gap:6px;overflow-x:auto;padding:0 10px 10px}
+  .arbol ul li{flex:none}
+  .nodo{grid-template-columns:auto auto;height:36px;border:1px solid var(--c-div);border-radius:999px;padding:0 12px}
+  .nodo .tw,.nodo .ic,.nodo .meta{display:none}
+  .nodo.h2{padding-left:12px}
+  .resumen{display:none}
+  .insp{order:4;border-left:0}
+  .props{grid-template-columns:1fr}
+  .cmp{height:36px} .cmp input{height:100%} input[type=range]{min-height:28px}
+  .estado{order:0;position:sticky;bottom:0;height:44px;font-size:12.5px}
+  .estado .lejos{display:none}
+  .fallo{margin-left:0;top:auto;bottom:var(--e-3)}
+}
+
+.vista{container-type:size}
+.lienzo{position:absolute;left:50%;top:50%;width:max(100cqw,120.4cqh);aspect-ratio:1996/1658;transform:translate(-54%,-47%)}
+.lienzo>img{display:block;width:100%;height:100%}
+.lienzo .etq{transform:translate(-50%,-130%)}
+</style>
+</head>
+<body>
+<div class="app">
+  <header class="menu">
+    <div class="logo"><i aria-hidden="true"></i><span>Gemelo UR3e</span></div>
+    <button class="escena-sel" aria-haspopup="dialog"><b>Tu mesa</b><small>sin guardar</small><span style="margin-left:auto">▾</span></button>
+    <span class="sep"></span>
+    <button class="hb">Deshacer <kbd>Ctrl Z</kbd></button>
+    <button class="hb" data-mostrar-en="normal fallo">Calcular <kbd>C</kbd></button>
+    <button class="hb" aria-pressed="true" data-mostrar-en="calculando">Parar cálculo</button>
+    <button class="hb">Reproducir demo <kbd>Espacio</kbd></button>
+    <div class="der">
+      <span class="num" style="color:var(--c-suave)">UR3e B · nominal · curso</span>
+      <button class="hb">Exportar a ROS</button>
+      <button class="hb pri">Guardar</button>
+    </div>
+  </header>
+
+  <nav class="arbol" aria-label="Elementos de la celda">
+    <h2>Celda</h2>
+    <ul role="tree">
+      <li><button class="nodo" role="treeitem"><span class="tw">▾</span><span class="ic"></span><span>Robot B · UR3e</span><span class="dot d-ok"></span></button></li>
+      <li><button class="nodo h2" role="treeitem"><span class="tw"></span><span class="ic"></span><span>Pinza RG2</span><span class="meta">60 mm</span></button></li>
+      <li><button class="nodo" role="treeitem"><span class="tw">▾</span><span class="ic"></span><span>Platos</span><span class="dot d-ok" data-mostrar-en="normal calculando"></span><span class="dot d-mal" data-mostrar-en="fallo"></span></button></li>
+      <li><button class="nodo h2" role="treeitem"><span class="tw"></span><span class="ic"></span><span>Plato 1º</span><span class="meta" data-mostrar-en="normal calculando">caja 10 cm</span><span class="meta" data-mostrar-en="fallo" style="color:var(--c-mal)">no se coge</span></button></li>
+      <li><button class="nodo h2" role="treeitem"><span class="tw"></span><span class="ic"></span><span>Plato 2º</span><span class="meta" data-mostrar-en="normal calculando">caja 10 cm</span><span class="meta" data-mostrar-en="fallo" style="color:var(--c-mal)">no se coge</span></button></li>
+      <li><button class="nodo" role="treeitem"><span class="tw"></span><span class="ic"></span><span>Zona de fruta</span><span class="dot d-ok"></span></button></li>
+      <li><button class="nodo" role="treeitem"><span class="tw">▾</span><span class="ic"></span><span>Persona y bandeja</span><span class="dot d-ok"></span></button></li>
+      <li><button class="nodo" role="treeitem"><span class="tw">▾</span><span class="ic"></span><span>Cámaras</span><span class="dot d-aviso"></span></button></li>
+      <li><button class="nodo h2" role="treeitem" aria-selected="true"><span class="tw"></span><span class="ic"></span><span>Cenital</span><span class="meta">V2</span></button></li>
+      <li><button class="nodo h2" role="treeitem"><span class="tw"></span><span class="ic"></span><span>Entrega</span><span class="meta">V1</span></button></li>
+      <li><button class="nodo h2" role="treeitem"><span class="tw"></span><span class="ic"></span><span>Persona</span><span class="meta">V1</span></button></li>
+      <li><button class="nodo" role="treeitem"><span class="tw">▸</span><span class="ic"></span><span>Marcadores ArUco</span><span class="meta">6</span></button></li>
+    </ul>
+    <dl class="resumen">
+      <dt>Ciclo</dt><dd>136,8 s</dd><dt>Choques</dt><dd>0</dd><dt>Pausas</dt><dd>4</dd><dt>USB, bus 1</dt><dd style="color:var(--c-mal)">590/384</dd>
+    </dl>
+  </nav>
+
+  <div class="capas" role="group" aria-label="Capas sobre la escena">
+    <span class="tit">Capas</span>
+    <button class="capa" aria-pressed="true">Campos de cámara</button>
+    <button class="capa" aria-pressed="false">Alcance a 3,5 cm</button>
+    <button class="capa" aria-pressed="false">Oclusión</button>
+    <button class="capa" aria-pressed="false">Colisión</button>
+    <button class="capa" aria-pressed="false">Marcos TF</button>
+    <button class="capa" aria-pressed="true">Foto de la mesa</button>
+    <button class="capa" aria-pressed="true">Etiquetas</button>
+  </div>
+
+  <main class="vista" aria-label="Vista 3D de la celda">
+    <div class="lienzo"><img src="img/escena.jpg" alt="Vista 3D de la celda con el robot B, platos sobre cajas, fruta, persona con bandeja y tres cámaras">
+    <span class="etq" style="left:50.1%;top:40.5%">camara_cenital</span>
+     <svg class="gizmo" viewBox="0 0 120 120" aria-hidden="true"><line x1="60" y1="60" x2="110" y2="70" stroke="#d1433a" stroke-width="3"/><line x1="60" y1="60" x2="30" y2="95" stroke="#2f9a4f" stroke-width="3"/><line x1="60" y1="60" x2="60" y2="8" stroke="#2f6fd0" stroke-width="3"/><circle cx="60" cy="60" r="5" fill="#fff" stroke="#1b2530" stroke-width="2"/></svg>
+    </div>
+    <div class="paleta" role="group" aria-label="Herramienta">
+      <button aria-pressed="true">Mover<span>W</span></button>
+      <button aria-pressed="false">Girar<span>E</span></button>
+      <button aria-pressed="false">Medir<span>M</span></button>
+      <button aria-pressed="false">Pinza IK<span>I</span></button>
+    </div>
+    <div class="cubo" role="group" aria-label="Vista"><button aria-pressed="true">3D</button><button>Planta</button><button>Lateral</button><button>Persona</button></div>
+    <figure class="pip" style="margin:0"><header><span>Por la cámara cenital</span><span class="num" style="color:var(--c-suave)">640 × 480</span></header><img src="img/cam0.jpg" alt="Lo que ve la cámara cenital"></figure>
+    <div class="toast" data-mostrar-en="calculando" role="status">Calculando el plato 2º: agarre 1 de 17 <span class="barra-prog"><i></i></span></div>
+    <div class="fallo" data-mostrar-en="fallo" role="alert">
+      <b>La demo no puede empezar · Plato 1º y Plato 2º</b>
+      <p>El robot real no puede cogerlos en horizontal por el borde: chocaría la muñeca 2 con la mesa (27 mm). Ponlos sobre la caja.</p>
+      <p style="display:flex;gap:6px"><button class="hb pri">Ver dónde falla</button><button class="hb" style="border-color:var(--c-borde-campo)">Buscar una disposición</button></p>
+    </div>
+  </main>
+
+  <aside class="insp" aria-label="Propiedades">
+    <div class="i-cab">
+      <h1 class="t" style="margin:0">Cámara cenital <span class="grupo g-v2">V2</span></h1>
+      <div class="r num">camara_cenital · padre base_link</div>
+    </div>
+    <details open>
+      <summary>Posición <small>base_link</small></summary>
+      <div class="props">
+        <label>Cámara, mm</label><div class="xyz"><span class="cmp"><b>x</b><input value="−264" aria-label="x"></span><span class="cmp"><b>y</b><input value="−439" aria-label="y"></span><span class="cmp"><b>z</b><input value="410" aria-label="z"></span></div>
+        <label>Mira a, mm</label><div class="xyz"><span class="cmp"><b>x</b><input value="−254" aria-label="mira x"></span><span class="cmp"><b>y</b><input value="−169" aria-label="mira y"></span><span class="cmp"><b>z</b><input value="0" aria-label="mira z"></span></div>
+        <label>Origen</label><span class="org o-s">SUPUESTO · elegido en el gemelo</span>
+      </div>
+    </details>
+    <details open>
+      <summary>Óptica</summary>
+      <div class="props">
+        <label>Focal</label><span class="cmp"><input value="3,6" aria-label="Focal"><i>mm</i></span>
+        <label>Modo</label><select aria-label="Modo"><option>1920×1080 · 120 fps · MJPEG</option></select>
+        <label>Campo</label><span class="num">79° × 50° <span class="org o-s">SIN VALIDAR</span></span>
+        <label>Resolución</label><span class="num">0,51 mm/px en la mira</span>
+        <label>Distorsión</label><select aria-label="Distorsión"><option>Ninguna (lente ideal)</option></select>
+      </div>
+    </details>
+    <details open>
+      <summary>Tareas <small>px en la red de 640</small></summary>
+      <div class="matriz" data-mostrar-en="normal fallo">
+        <table>
+          <thead><tr><th>Objetivo</th><th>Cumple</th><th>Tiene</th><th>Tapado*</th></tr></thead>
+          <tbody>
+            <tr><td>Fruta 45 mm</td><td class="num">≥ 32 px</td><td><span class="celda aviso">17 px</span></td><td class="num">15,2 %</td></tr>
+            <tr><td>ArUco 40 mm</td><td class="num">≥ 14 px</td><td><span class="celda ok">42 px</span></td><td class="num">16,8 %</td></tr>
+            <tr><td>Enfoque</td><td class="num">8 objetivos</td><td><span class="celda aviso">7 de 8</span></td><td class="num">—</td></tr>
+          </tbody>
+          <tfoot><tr><td colspan="4" style="text-align:left;color:var(--c-suave);font-size:11.5px;border-top:0">* algún punto tapado durante el transporte de los platos</td></tr></tfoot>
+        </table>
+      </div>
+      <div class="matriz" data-mostrar-en="calculando"><div class="esq"></div><div class="esq" style="width:80%"></div><div class="esq" style="width:60%"></div><p style="color:var(--c-suave);margin:4px 0 0">La oclusión se recalcula al terminar.</p></div>
+    </details>
+    <details>
+      <summary>Captura sintética <small>PNG + JSON</small></summary>
+    </details>
+    <details>
+      <summary>USB <small>bus 1</small></summary>
+    </details>
+  </aside>
+
+  <footer class="estado">
+    <span class="v ok" data-mostrar-en="normal"><span class="dot d-ok"></span>Demo completa</span>
+    <span class="v mal" data-mostrar-en="fallo"><span class="dot d-mal"></span>No empieza: platos 1º y 2º</span>
+    <span class="v aviso" data-mostrar-en="calculando"><span class="dot d-aviso"></span>Sin calcular</span>
+    <span>ciclo <b>136,8 s</b></span><span class="lejos">choques <b>0</b> · roces <b>0</b> · pausas <b>4</b></span>
+    <span class="lejos">TCP <b>−220, −120, 250 mm</b></span>
+    <span class="lejos" style="margin-left:auto">huella 4ed74ed6 · medidas del 10-11 · BORRADOR</span>
+  </footer>
+</div>
+<script>
+function aplicarEstado(){const e=new URLSearchParams(location.hash.slice(1)).get('estado')||'normal';document.documentElement.dataset.estado=e;document.querySelectorAll('[data-mostrar-en]').forEach(el=>{el.hidden=!el.dataset.mostrarEn.split(' ').includes(e)});}
+addEventListener('hashchange',aplicarEstado);aplicarEstado();
+</script>
+</body>
+</html>

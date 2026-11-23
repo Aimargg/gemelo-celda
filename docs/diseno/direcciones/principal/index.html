@@ -1,0 +1,280 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Direcciones de diseño</title>
+<!--
+  Visor de direcciones. Copia este archivo como index.html en la carpeta de las direcciones
+  y rellena el bloque de configuración de abajo. El diseño es neutro a propósito: no debe
+  competir con las propuestas.
+-->
+<script type="application/json" id="config">
+{
+  "titulo": "Gemelo de la celda UR3e · remodelado",
+  "contexto": "La pantalla principal del gemelo: colocar la celda, ver si la demo sale y por qué no, y ajustar las cámaras. La usan los ocho del grupo en su portátil, de vez en cuando y sin experiencia en robótica. Contenido real del gemelo del 23-11 (disposición por defecto, perfil curso).",
+  "anchos": {
+    "movil": [
+      390,
+      844
+    ],
+    "escritorio": [
+      1440,
+      900
+    ]
+  },
+  "direcciones": [
+    {
+      "nombre": "A · Guion de la demo",
+      "archivo": "a-guion.html",
+      "concepto": "La interfaz sigue el proceso del grupo, el mismo del guion de la demo: 1 Disponer, 2 Calcular, 3 Comprobar y 4 Guardar y exportar. Abajo, el ciclo de la demo como una cinta con su veredicto y sus pausas.",
+      "sirve": "Es la más fácil de aprender para quien abre el gemelo una vez a la semana: siempre se ve en qué paso se está y qué falta. El veredicto (¿sale la demo?) está siempre a la vista.",
+      "sacrifica": "Ir y venir entre partes cuesta un clic más, y la cinta de abajo le quita unos 90 px de alto a la vista 3D.",
+      "estados": [
+        "normal",
+        "fallo",
+        "calculando"
+      ]
+    },
+    {
+      "nombre": "B · Banco de ensayo",
+      "archivo": "b-banco.html",
+      "concepto": "Como un programa de simulación de células robóticas: árbol de la celda con el estado de cada elemento, vista 3D con paleta de herramientas y capas, e inspector con campos numéricos, su origen (MEDIDO, SUPUESTO) y atajos de teclado.",
+      "sirve": "Es la más rápida y densa para quien ya conoce el gemelo: escribes 410 mm en vez de arrastrar un deslizador y ves todas las piezas de un vistazo. Se parece a lo que usarán en ROS (RViz, Foxglove).",
+      "sacrifica": "Explica poco. Quien no sabe qué ajustar no encuentra un camino guiado, y en el móvil es la más apretada.",
+      "estados": [
+        "normal",
+        "fallo",
+        "calculando"
+      ]
+    },
+    {
+      "nombre": "C · Parte de decisiones",
+      "archivo": "c-parte.html",
+      "concepto": "La disposición como un parte que el grupo tendrá que defender ante el profesor: primero el veredicto en grande, después cada decisión (robot, platos, bandeja, cámaras, USB, exportar) con su estado y su evidencia. La firma es la matriz cámara × tarea con las tres cámaras a la vez.",
+      "sirve": "Responde en un segundo a «¿sale la demo y qué falla?», y la matriz enseña de golpe qué cámara no sirve para qué tarea. Es la más clara para enseñar el gemelo en una reunión.",
+      "sacrifica": "La vista 3D es más pequeña y editar queda un nivel más abajo, dentro de cada decisión. Es la menos directa para mover cosas.",
+      "estados": [
+        "normal",
+        "fallo",
+        "calculando"
+      ]
+    }
+  ]
+}
+</script>
+<style>
+  :root {
+    --fondo: #ececec;
+    --superficie: #ffffff;
+    --texto: #1a1a1a;
+    --texto-suave: #555555;
+    --borde: #c8c8c8;
+    --activo: #1a1a1a;
+    color-scheme: light;
+  }
+  * { box-sizing: border-box; }
+  [hidden] { display: none !important; }
+  body {
+    margin: 0;
+    font: 15px/1.45 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    background: var(--fondo);
+    color: var(--texto);
+  }
+  header {
+    position: sticky; top: 0; z-index: 2;
+    background: var(--superficie);
+    border-bottom: 1px solid var(--borde);
+    padding: 12px 20px;
+    display: flex; flex-wrap: wrap; gap: 12px 24px; align-items: center;
+  }
+  header h1 { font-size: 17px; margin: 0; font-weight: 600; }
+  header p { margin: 0; color: var(--texto-suave); flex: 1 1 280px; }
+  .grupo { display: flex; gap: 4px; align-items: center; flex-wrap: wrap; }
+  .grupo span { color: var(--texto-suave); margin-right: 4px; }
+  button {
+    font: inherit; color: var(--texto); background: var(--superficie);
+    border: 1px solid var(--borde); border-radius: 6px; padding: 6px 12px; cursor: pointer;
+    min-height: 32px;
+  }
+  button[aria-pressed="true"] { background: var(--activo); color: #fff; border-color: var(--activo); }
+  button:focus-visible, a:focus-visible { outline: 3px solid #2563eb; outline-offset: 2px; }
+  main { padding: 20px; }
+  .rejilla { display: grid; gap: 20px; grid-template-columns: repeat(var(--columnas, 2), minmax(0, 1fr)); }
+  .tarjeta {
+    background: var(--superficie); border: 1px solid var(--borde); border-radius: 8px;
+    padding: 14px; min-width: 0;
+  }
+  .tarjeta h2 { font-size: 16px; margin: 0 0 4px; }
+  .tarjeta dl { margin: 8px 0 12px; display: grid; grid-template-columns: max-content 1fr; gap: 2px 10px; }
+  .tarjeta dt { color: var(--texto-suave); }
+  .tarjeta dd { margin: 0; }
+  .marco { position: relative; overflow: hidden; border: 1px solid var(--borde); border-radius: 6px; background: #fafafa; margin: 0 auto; max-width: 100%; }
+  .marco iframe { position: absolute; top: 0; left: 0; border: 0; transform-origin: 0 0; background: #fff; }
+  .marco .aviso { position: absolute; inset: 0; display: grid; place-items: center; color: var(--texto-suave); padding: 12px; text-align: center; }
+  .pie-marco { display: flex; justify-content: space-between; gap: 8px; margin-top: 6px; color: var(--texto-suave); font-size: 13px; }
+  .pie-marco a { color: var(--texto); display: inline-flex; align-items: center; min-height: 24px; }
+  .par { display: grid; gap: 16px; grid-template-columns: minmax(0, 1fr) minmax(0, 3fr); align-items: start; }
+  @media (max-width: 900px) {
+    header { position: static; }
+    .rejilla { grid-template-columns: minmax(0, 1fr); }
+    .par { grid-template-columns: minmax(0, 1fr); }
+  }
+</style>
+</head>
+<body>
+<header>
+  <h1 id="titulo">Direcciones</h1>
+  <p id="contexto"></p>
+  <div class="grupo" role="group" aria-label="Vista">
+    <span>Vista</span>
+    <button type="button" data-vista="movil" aria-pressed="true">Comparar en móvil</button>
+    <button type="button" data-vista="escritorio" aria-pressed="false">Comparar en escritorio</button>
+    <button type="button" data-vista="una" aria-pressed="false">Una a una</button>
+  </div>
+  <div class="grupo" role="group" aria-label="Estado" id="estados"></div>
+  <div class="grupo" role="group" aria-label="Dirección" id="selector-una" hidden></div>
+</header>
+<main id="principal"></main>
+
+<script>
+(function () {
+  const cfg = JSON.parse(document.getElementById('config').textContent);
+  const ETIQUETA_ESTADO = { normal: 'Normal', vacio: 'Vacío', error: 'Error', carga: 'Carga' };
+  const estado = { vista: 'movil', estado: 'normal', una: 0 };
+  const principal = document.getElementById('principal');
+
+  document.getElementById('titulo').textContent = cfg.titulo || 'Direcciones';
+  document.getElementById('contexto').textContent = cfg.contexto || '';
+  document.title = (cfg.titulo ? cfg.titulo + ' · ' : '') + 'Direcciones';
+
+  const todosEstados = [...new Set(cfg.direcciones.flatMap(d => d.estados || ['normal']))];
+  const cajaEstados = document.getElementById('estados');
+  cajaEstados.innerHTML = '<span>Estado</span>';
+  todosEstados.forEach(e => {
+    const b = document.createElement('button');
+    b.type = 'button'; b.dataset.estado = e; b.textContent = ETIQUETA_ESTADO[e] || e;
+    b.setAttribute('aria-pressed', String(e === estado.estado));
+    cajaEstados.appendChild(b);
+  });
+
+  const selUna = document.getElementById('selector-una');
+  selUna.innerHTML = '<span>Dirección</span>';
+  cfg.direcciones.forEach((d, i) => {
+    const b = document.createElement('button');
+    b.type = 'button'; b.dataset.una = i; b.textContent = d.nombre;
+    b.setAttribute('aria-pressed', String(i === 0));
+    selUna.appendChild(b);
+  });
+
+  function url(d) {
+    return d.archivo + (estado.estado && estado.estado !== 'normal' ? '#estado=' + estado.estado : '');
+  }
+
+  function marco(d, tipo) {
+    const [w, h] = cfg.anchos[tipo];
+    const caja = document.createElement('div');
+    const m = document.createElement('div');
+    m.className = 'marco';
+    m.dataset.w = w; m.dataset.h = h;
+    const tiene = (d.estados || ['normal']).includes(estado.estado);
+    if (tiene) {
+      const f = document.createElement('iframe');
+      f.src = url(d);
+      f.width = w; f.height = h;
+      f.title = `${d.nombre}, ${tipo === 'movil' ? 'móvil' : 'escritorio'}, estado ${ETIQUETA_ESTADO[estado.estado] || estado.estado}`;
+      m.appendChild(f);
+    } else {
+      const av = document.createElement('div');
+      av.className = 'aviso';
+      av.textContent = 'Esta dirección no tiene prototipado este estado.';
+      m.appendChild(av);
+    }
+    caja.appendChild(m);
+    const pie = document.createElement('div');
+    pie.className = 'pie-marco';
+    pie.innerHTML = `<span>${tipo === 'movil' ? 'Móvil' : 'Escritorio'} · ${w}×${h}</span>`;
+    if (tiene) {
+      const a = document.createElement('a');
+      a.href = url(d); a.target = '_blank'; a.rel = 'noopener';
+      a.textContent = 'Abrir a tamaño real';
+      pie.appendChild(a);
+    }
+    caja.appendChild(pie);
+    return caja;
+  }
+
+  function ficha(d) {
+    const t = document.createElement('article');
+    t.className = 'tarjeta';
+    const h = document.createElement('h2'); h.textContent = d.nombre; t.appendChild(h);
+    const dl = document.createElement('dl');
+    [['Concepto', d.concepto], ['Sirve', d.sirve], ['Sacrifica', d.sacrifica]].forEach(([k, v]) => {
+      if (!v) return;
+      const dt = document.createElement('dt'); dt.textContent = k;
+      const dd = document.createElement('dd'); dd.textContent = v;
+      dl.append(dt, dd);
+    });
+    t.appendChild(dl);
+    return t;
+  }
+
+  function pintar() {
+    principal.innerHTML = '';
+    selUna.hidden = estado.vista !== 'una';
+    if (estado.vista === 'una') {
+      const d = cfg.direcciones[estado.una];
+      const t = ficha(d);
+      const par = document.createElement('div'); par.className = 'par';
+      par.append(marco(d, 'movil'), marco(d, 'escritorio'));
+      t.appendChild(par);
+      principal.appendChild(t);
+    } else {
+      const rejilla = document.createElement('div');
+      rejilla.className = 'rejilla';
+      const n = cfg.direcciones.length;
+      rejilla.style.setProperty('--columnas', estado.vista === 'movil' ? n : Math.min(n, 2));
+      cfg.direcciones.forEach(d => {
+        const t = ficha(d);
+        t.appendChild(marco(d, estado.vista));
+        rejilla.appendChild(t);
+      });
+      principal.appendChild(rejilla);
+    }
+    escalar();
+  }
+
+  function escalar() {
+    document.querySelectorAll('.marco').forEach(m => {
+      const w = Number(m.dataset.w), h = Number(m.dataset.h);
+      const disponible = m.parentElement.clientWidth;
+      const s = Math.min(1, disponible / w);
+      m.style.width = Math.round(w * s) + 'px';
+      m.style.height = Math.round(h * s) + 'px';
+      const f = m.querySelector('iframe');
+      if (f) f.style.transform = `scale(${s})`;
+    });
+  }
+
+  document.addEventListener('click', ev => {
+    const b = ev.target.closest('button');
+    if (!b) return;
+    if (b.dataset.vista) {
+      estado.vista = b.dataset.vista;
+      document.querySelectorAll('[data-vista]').forEach(x => x.setAttribute('aria-pressed', String(x === b)));
+    } else if (b.dataset.estado) {
+      estado.estado = b.dataset.estado;
+      document.querySelectorAll('[data-estado]').forEach(x => x.setAttribute('aria-pressed', String(x === b)));
+    } else if (b.dataset.una !== undefined) {
+      estado.una = Number(b.dataset.una);
+      document.querySelectorAll('[data-una]').forEach(x => x.setAttribute('aria-pressed', String(x === b)));
+    } else return;
+    pintar();
+  });
+
+  new ResizeObserver(escalar).observe(document.body);
+  pintar();
+})();
+</script>
+</body>
+</html>

@@ -1,0 +1,222 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>C · Parte de decisiones</title>
+<style>
+@font-face{font-family:"Schibsted Grotesk";src:url(fuentes/schibsted-grotesk-latin-400-normal.woff2) format("woff2");font-weight:400;font-display:swap}
+@font-face{font-family:"Schibsted Grotesk";src:url(fuentes/schibsted-grotesk-latin-500-normal.woff2) format("woff2");font-weight:500;font-display:swap}
+@font-face{font-family:"Schibsted Grotesk";src:url(fuentes/schibsted-grotesk-latin-600-normal.woff2) format("woff2");font-weight:600;font-display:swap}
+@font-face{font-family:"Schibsted Grotesk";src:url(fuentes/schibsted-grotesk-latin-700-normal.woff2) format("woff2");font-weight:700;font-display:swap}
+@font-face{font-family:"Schibsted Grotesk";src:url(fuentes/schibsted-grotesk-latin-800-normal.woff2) format("woff2");font-weight:800;font-display:swap}
+@font-face{font-family:"Martian Mono";src:url(fuentes/martian-mono-latin-400-normal.woff2) format("woff2");font-weight:400;font-display:swap}
+@font-face{font-family:"Martian Mono";src:url(fuentes/martian-mono-latin-500-normal.woff2) format("woff2");font-weight:500;font-display:swap}
+
+:root{
+  --f-ui:"Schibsted Grotesk",system-ui,sans-serif; --f-num:"Martian Mono",ui-monospace,monospace;
+  --c-papel:#fbfbf9; --c-fondo:#e9ebe8; --c-linea:#d9dcd6; --c-linea-f:#8d9289;
+  --c-tinta:#121417; --c-suave:#5e6268; --c-acento:#0f5f5a; --c-acento-s:#dcece9;
+  --c-ok:#1d6b3a; --c-ok-s:#e4f2e8; --c-aviso:#8a4a00; --c-aviso-s:#fbefd8; --c-mal:#a3261a; --c-mal-s:#fbe6e2;
+  --c-v1:#6b3fa0; --c-v2:#0f5f5a; --c-rob:#255f8a;
+  --r-1:2px; --r-2:10px; --e-2:8px; --e-3:12px; --e-4:16px; --e-5:24px; --e-6:32px;
+}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
+  --c-papel:#15181a; --c-fondo:#0d0f10; --c-linea:#2a2f33; --c-linea-f:#6b7278; --c-tinta:#eceeec; --c-suave:#a1a7ac;
+  --c-acento:#5cc2b8; --c-acento-s:#173430; --c-ok:#5fc285; --c-ok-s:#163222; --c-aviso:#e9a751; --c-aviso-s:#352611; --c-mal:#f07a68; --c-mal-s:#3a1a15;
+  --c-v1:#b598ea; --c-v2:#5cc2b8; --c-rob:#82b7dc; color-scheme:dark}}
+*{box-sizing:border-box} html,body{height:100%;margin:0}
+body{background:var(--c-fondo);color:var(--c-tinta);font:15px/1.5 var(--f-ui);-webkit-font-smoothing:antialiased}
+button,input,select{font:inherit;color:inherit}
+:focus-visible{outline:2px solid var(--c-acento);outline-offset:2px}
+[hidden]{display:none!important}
+.num{font-family:var(--f-num);font-variant-numeric:tabular-nums;font-size:.86em;letter-spacing:-.01em}
+
+.app{height:100vh;display:grid;grid-template-columns:minmax(0,1.25fr) minmax(460px,1fr);grid-template-rows:minmax(0,1fr)}
+
+/* Escena a la izquierda, a sangre */
+.vista{position:relative;overflow:hidden;background:#e8ecf0}
+.vista>img.escena3d{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;object-position:42% 30%}
+.flot{position:absolute;display:flex;gap:4px;background:var(--c-papel);border-radius:999px;padding:4px;box-shadow:0 2px 10px rgba(0,0,0,.12)}
+.flot button{border:0;background:none;border-radius:999px;padding:6px 12px;font-weight:600;font-size:14px;cursor:pointer;min-height:34px;color:var(--c-suave)}
+.flot button[aria-pressed="true"]{background:var(--c-tinta);color:var(--c-papel)}
+.flot.vistas{left:var(--e-4);bottom:var(--e-4)} .flot.herr{right:var(--e-4);bottom:var(--e-4)}
+.marca{position:absolute;left:var(--e-4);top:var(--e-4);background:var(--c-papel);border-radius:var(--r-2);padding:10px 14px;box-shadow:0 2px 10px rgba(0,0,0,.12);display:flex;flex-direction:column}
+.marca b{font-weight:800;font-size:17px;letter-spacing:-.01em}
+.marca small{color:var(--c-suave);font-size:13px}
+.etq{position:absolute;font:500 11px/1 var(--f-num);background:var(--c-papel);border:1.5px solid var(--c-tinta);border-radius:999px;padding:4px 8px;white-space:nowrap}
+.etq.mal{border-color:var(--c-mal);color:var(--c-mal);background:var(--c-mal-s)}
+
+/* El parte: veredicto primero, después cada decisión con su evidencia */
+.parte{background:var(--c-papel);overflow:auto;display:flex;flex-direction:column}
+.p-top{display:flex;align-items:center;gap:var(--e-3);padding:var(--e-3) var(--e-5);border-bottom:1px solid var(--c-linea);position:sticky;top:0;background:var(--c-papel);z-index:2}
+.esc{display:flex;flex-direction:column;min-width:0;flex:1}
+.esc label{font-size:12.5px;color:var(--c-suave)}
+.esc select{border:0;background:none;font-weight:700;font-size:17px;padding:0;margin-left:-2px;max-width:100%;cursor:pointer;min-height:30px}
+.btn{border:1.5px solid var(--c-tinta);background:var(--c-papel);border-radius:999px;padding:7px 16px;font-weight:600;font-size:14px;cursor:pointer;min-height:38px;white-space:nowrap}
+.btn.pri{background:var(--c-tinta);color:var(--c-papel)}
+.btn.leve{border-color:var(--c-linea-f)}
+
+.veredicto{padding:var(--e-5) var(--e-5) var(--e-4);border-bottom:1px solid var(--c-linea)}
+.veredicto .sobre{font-size:13px;color:var(--c-suave);display:flex;gap:10px;flex-wrap:wrap}
+.veredicto h1{font-size:38px;line-height:1.05;letter-spacing:-.025em;font-weight:800;margin:6px 0 10px}
+.veredicto h1 em{font-style:normal;color:var(--c-ok)}
+.veredicto.mal h1 em{color:var(--c-mal)}
+.cifras{display:flex;gap:var(--e-6);flex-wrap:wrap}
+.cifras div{display:flex;flex-direction:column}
+.cifras b{font:500 21px/1.1 var(--f-num);letter-spacing:-.02em}
+.cifras small{color:var(--c-suave);font-size:13px}
+.acciones{display:flex;gap:8px;margin-top:var(--e-4);flex-wrap:wrap}
+.viejo{color:var(--c-suave)} .viejo h1{color:var(--c-suave)}
+.prog{height:4px;background:var(--c-linea);border-radius:2px;overflow:hidden;margin-top:12px}.prog i{display:block;height:100%;width:62%;background:var(--c-tinta)}
+
+.decision{border-bottom:1px solid var(--c-linea)}
+.d-fila{width:100%;display:grid;grid-template-columns:minmax(0,1fr) auto auto;gap:var(--e-3);align-items:center;padding:14px var(--e-5);border:0;background:none;text-align:left;cursor:pointer}
+.d-fila:hover{background:#00000005}
+.d-fila h2{margin:0;font-size:18px;font-weight:700;letter-spacing:-.01em}
+.d-fila p{margin:2px 0 0;color:var(--c-suave);font-size:14px}
+.d-fila .flecha{color:var(--c-suave);font-size:14px}
+.sem{display:inline-flex;align-items:center;gap:6px;font-size:13px;font-weight:600;padding:4px 10px;border-radius:999px;white-space:nowrap}
+.sem.ok{background:var(--c-ok-s);color:var(--c-ok)} .sem.aviso{background:var(--c-aviso-s);color:var(--c-aviso)} .sem.mal{background:var(--c-mal-s);color:var(--c-mal)} .sem.na{background:var(--c-fondo);color:var(--c-suave)}
+.d-cuerpo{padding:0 var(--e-5) var(--e-5);display:flex;flex-direction:column;gap:var(--e-4)}
+.ev{font:500 10px/1 var(--f-num);letter-spacing:.02em;padding:3px 6px;border-radius:var(--r-1);border:1px solid currentColor;white-space:nowrap}
+.ev.med{color:var(--c-ok)} .ev.sup{color:var(--c-aviso)} .ev.sv{color:var(--c-suave)}
+
+/* Firma: la matriz cámara × tarea, las tres cámaras a la vez */
+.matriz{width:100%;border-collapse:separate;border-spacing:4px}
+.matriz th{font-size:12.5px;font-weight:600;color:var(--c-suave);text-align:center;padding:0 0 2px}
+.matriz th.f{text-align:left}
+.matriz td{text-align:center;border-radius:6px;padding:9px 4px;font:500 12.5px var(--f-num)}
+.matriz td.f{text-align:left;font:700 15px var(--f-ui);padding-left:0;white-space:nowrap}
+.matriz td.f small{display:block;font:500 12px var(--f-ui);color:var(--c-suave)}
+.m-ok{background:var(--c-ok-s);color:var(--c-ok)} .m-aviso{background:var(--c-aviso-s);color:var(--c-aviso)} .m-mal{background:var(--c-mal-s);color:var(--c-mal)} .m-na{background:transparent;color:var(--c-suave);border:1px dashed var(--c-linea)!important}
+.matriz td.sel{outline:2px solid var(--c-tinta);outline-offset:1px}
+.leyenda{display:flex;gap:var(--e-4);font-size:13px;color:var(--c-suave);flex-wrap:wrap}
+.detalle{border-left:3px solid var(--c-tinta);padding:2px 0 2px var(--e-3);font-size:14px}
+.detalle p{margin:0 0 4px}
+.ajustes{display:grid;grid-template-columns:1fr 1fr;gap:var(--e-3)}
+.campo{display:flex;flex-direction:column;gap:2px}
+.campo label{font-size:13px;color:var(--c-suave);display:flex;justify-content:space-between}
+.campo label b{font:500 12.5px var(--f-num);color:var(--c-tinta)}
+.campo input{accent-color:var(--c-tinta);min-height:28px}
+.esq{height:40px;border-radius:6px;background:var(--c-fondo)}
+.aviso-fallo{background:var(--c-mal-s);border-radius:var(--r-2);padding:var(--e-4);display:flex;flex-direction:column;gap:6px}
+.aviso-fallo b{color:var(--c-mal)}
+
+@media (max-width:760px){
+  .app{height:auto;grid-template-columns:1fr;grid-template-rows:auto}
+  .vista{height:46vh;min-height:300px;position:sticky;top:0;z-index:1}
+  .marca{display:none}
+  .flot.herr{display:none}
+  .flot button{padding:6px 10px}
+  .flot.vistas{bottom:30px}
+  .parte{position:relative;z-index:2;border-radius:18px 18px 0 0;margin-top:-18px;box-shadow:0 -6px 20px rgba(0,0,0,.12)}
+  .p-top{padding:var(--e-3) var(--e-4);border-radius:18px 18px 0 0}
+  .p-top .btn.leve{display:none}
+  .veredicto,.d-fila,.d-cuerpo{padding-left:var(--e-4);padding-right:var(--e-4)}
+  .veredicto h1{font-size:29px}
+  .cifras{gap:var(--e-4)}
+  .matriz{border-spacing:3px} .matriz td{padding:8px 2px;font-size:11px} .matriz th{font-size:11.5px}
+  .matriz td.f{font-size:13.5px}
+  .ajustes{grid-template-columns:1fr}
+}
+
+.vista{container-type:size}
+.lienzo{position:absolute;left:50%;top:50%;width:max(100cqw,120.4cqh);aspect-ratio:1996/1658;transform:translate(-54%,-47%)}
+.lienzo>img{display:block;width:100%;height:100%}
+.lienzo .etq{transform:translate(-50%,-130%)}
+</style>
+</head>
+<body>
+<div class="app">
+  <main class="vista" aria-label="Vista 3D de la celda">
+    <div class="lienzo"><img src="img/escena.jpg" alt="Vista 3D de la celda: robot B, platos sobre cajas, fruta, persona con la bandeja y tres cámaras">
+    <span class="etq" style="left:50.1%;top:40.5%">Cenital · V2</span>
+    <span class="etq" data-mostrar-en="normal calculando" style="left:49.8%;top:53.5%">Plato 1º</span>
+    <span class="etq mal" data-mostrar-en="fallo" style="left:49.8%;top:53.5%">Plato 1º · no se coge</span>
+    </div>
+    <div class="marca"><b>Gemelo de la celda UR3e</b><small>BORRADOR · medidas del 10-11</small></div>
+    <div class="flot vistas" role="group" aria-label="Vista"><button aria-pressed="true">3D</button><button aria-pressed="false">Planta</button><button aria-pressed="false">Lateral</button><button aria-pressed="false">Persona</button></div>
+    <div class="flot herr" role="group" aria-label="Herramientas"><button aria-pressed="true">Mover</button><button aria-pressed="false">Girar</button><button aria-pressed="false">Medir</button></div>
+  </main>
+
+  <section class="parte" aria-label="Parte de la disposición">
+    <div class="p-top">
+      <div class="esc"><label for="esc">Escena</label><select id="esc"><option>Tu mesa · sin guardar</option></select></div>
+      <button class="btn leve">Exportar a ROS</button>
+      <button class="btn pri">Guardar</button>
+    </div>
+
+    <div class="veredicto" data-mostrar-en="normal">
+      <div class="sobre"><span>UR3e B · nominal</span><span>perfil curso</span><span>2 platos</span></div>
+      <h1>La demo se <em>completa</em>.</h1>
+      <div class="cifras">
+        <div><b>136,8 s</b><small>ciclo</small></div>
+        <div><b>0</b><small>choques</small></div>
+        <div><b>4</b><small>pausas de la bandeja</small></div>
+        <div><b>21 · 16 mm</b><small>error al colocar</small></div>
+      </div>
+      <div class="acciones"><button class="btn pri">▶ Ver la demo</button><button class="btn leve">Validar con el perfil curso</button></div>
+    </div>
+    <div class="veredicto mal" data-mostrar-en="fallo">
+      <div class="sobre"><span>UR3e B · nominal</span><span>perfil curso</span><span>2 platos</span></div>
+      <h1>La demo <em>no puede empezar</em>.</h1>
+      <div class="aviso-fallo">
+        <b>Coger los platos 1º y 2º</b>
+        <span>El robot real no puede cogerlos en horizontal por el borde: chocaría la muñeca 2 con la mesa (27 mm). Ponlos sobre la caja.</span>
+        <div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn pri">Ver dónde falla</button><button class="btn">Buscar una disposición</button></div>
+      </div>
+    </div>
+    <div class="veredicto viejo" data-mostrar-en="calculando">
+      <div class="sobre"><span>Calculando el plato 2º: agarre 1 de 17</span></div>
+      <h1>Hay cambios sin calcular.</h1>
+      <div class="cifras"><div><b>136,8 s</b><small>ciclo anterior</small></div></div>
+      <div class="prog" role="progressbar" aria-valuenow="62" aria-valuemin="0" aria-valuemax="100"><i></i></div>
+    </div>
+
+    <article class="decision">
+      <button class="d-fila" aria-expanded="false"><span><h2>Robot y pinza</h2><p>B a la derecha · RG2 a 60 mm · TCP 198 mm</p></span><span class="sem ok">Alcanza todo</span><span class="flecha">▸</span></button>
+    </article>
+    <article class="decision">
+      <button class="d-fila" aria-expanded="false"><span><h2>Platos</h2><p data-mostrar-en="normal calculando">Sobre cajas de 10 cm · agarre por el borde</p><p data-mostrar-en="fallo">Sobre la mesa · agarre por el borde</p></span><span class="sem ok" data-mostrar-en="normal">Se cogen</span><span class="sem mal" data-mostrar-en="fallo">No se cogen</span><span class="sem na" data-mostrar-en="calculando">Calculando</span><span class="flecha">▸</span></button>
+    </article>
+    <article class="decision">
+      <button class="d-fila" aria-expanded="false"><span><h2>Bandeja y persona</h2><p>A 1,00 m del suelo · balanceo 2,0 cm · M0</p></span><span class="sem ok">4 pausas</span><span class="flecha">▸</span></button>
+    </article>
+    <article class="decision">
+      <button class="d-fila" aria-expanded="true"><span><h2>Cámaras</h2><p>Tres ELP de 3,6 mm · 1920×1080 MJPEG</p></span><span class="sem mal">2 no cumplen</span><span class="flecha">▾</span></button>
+      <div class="d-cuerpo">
+        <table class="matriz" data-mostrar-en="normal fallo">
+          <thead><tr><th class="f">Cámara</th><th>Fruta</th><th>ArUco</th><th>Cara</th><th>Mano</th><th>Bandeja</th></tr></thead>
+          <tbody>
+            <tr><td class="f">Cenital<small>Visión 2</small></td><td class="m-aviso">17 px</td><td class="m-ok">42 px</td><td class="m-na">—</td><td class="m-na">—</td><td class="m-na">—</td></tr>
+            <tr><td class="f">Entrega<small>Visión 1</small></td><td class="m-na">—</td><td class="m-mal sel">11 px</td><td class="m-na">—</td><td class="m-na">—</td><td class="m-ok">0,9 px</td></tr>
+            <tr><td class="f">Persona<small>Visión 1</small></td><td class="m-na">—</td><td class="m-na">—</td><td class="m-ok">66 px</td><td class="m-mal">12 px</td><td class="m-ok">0,7 px</td></tr>
+          </tbody>
+        </table>
+        <div data-mostrar-en="calculando" style="display:flex;flex-direction:column;gap:6px"><div class="esq"></div><div class="esq"></div><div class="esq"></div></div>
+        <div class="leyenda"><span>Píxeles en el peor punto · bandeja: desenfoque</span><span><span class="ev sup">SUPUESTO</span> umbrales sin fuente comprobable</span></div>
+        <div class="detalle">
+          <p><b>Entrega · ArUco de la bandeja (32 mm):</b> 11 px; el mínimo de OpenCV es 14 px. Peor punto: marcador 6, a 2,88 mm/px. <span class="ev sup">SUPUESTO</span></p>
+          <p style="color:var(--c-suave)">El ArUco de la entrega (60 mm) sí cumple, con 74 px.</p>
+        </div>
+        <div class="ajustes">
+          <div class="campo"><label>Focal de la entrega <b>3,6 mm</b></label><input type="range" min="36" max="100" value="36" aria-label="Focal"></div>
+          <div class="campo"><label>Inclinación <b>34°</b></label><input type="range" min="-60" max="89" value="34" aria-label="Inclinación"></div>
+        </div>
+      </div>
+    </article>
+    <article class="decision">
+      <button class="d-fila" aria-expanded="false"><span><h2>USB</h2><p>Las tres en el bus 1 · 589,8 de 384,0 Mbit/s reservados</p></span><span class="sem mal">No caben</span><span class="flecha">▸</span></button>
+    </article>
+    <article class="decision">
+      <button class="d-fila" aria-expanded="false"><span><h2>Exportar a ROS</h2><p>27 ficheros · base_link · huella 4ed74ed6</p></span><span class="sem na">Listo</span><span class="flecha">▸</span></button>
+    </article>
+  </section>
+</div>
+<script>
+function aplicarEstado(){const e=new URLSearchParams(location.hash.slice(1)).get('estado')||'normal';document.documentElement.dataset.estado=e;document.querySelectorAll('[data-mostrar-en]').forEach(el=>{el.hidden=!el.dataset.mostrarEn.split(' ').includes(e)});}
+addEventListener('hashchange',aplicarEstado);aplicarEstado();
+</script>
+</body>
+</html>
