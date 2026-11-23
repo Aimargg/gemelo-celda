@@ -3,52 +3,56 @@
 <title>Gemelo de la celda UR3e</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600;700;800&family=IBM+Plex+Mono:wght@400;500;600&display=swap">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow:wght@400;500;600;700&family=Barlow+Condensed:wght@500;600;700&family=JetBrains+Mono:wght@400;500;700&display=swap">
 <style>
-/* Concepto: banco de trabajo del laboratorio. El visor 3D manda; el panel es la libreta de medidas.
-   Color: gris azulado de las tapas del UR, amarillo de la cinta de carrocero de la mesa, verde/ámbar/rojo para el alcance. */
+/* Concepto (dirección A «Guion de la demo», docs/diseno/sistema-visual.md): la interfaz sigue el proceso del grupo, numerado
+   como el guion de la demo (Celda → Cámaras → Alcance → Demo → Exportar), y el veredicto de la demo está siempre a la vista
+   en la cinta del ciclo, abajo a la izquierda de la vista 3D. Color: gris de taller, tinta oscura para lo que se pulsa,
+   amarillo de la cinta de carrocero de la mesa para el paso actual y el progreso, verde/ámbar/rojo solo para estados.
+   La rejilla (cabecera de 42 px, vista | panel de 384 px) es la de antes: el lienzo 3D mide lo mismo (998 × 828 a 1440 × 900). */
 :root{
-  --bg:#eef1f4; --panel:#ffffff; --panel2:#f4f6f8; --ink:#18212b; --muted:#5a6776; --line:#d6dde4; --line2:#e6ebf0;
-  --accent:#2f6f98; --accent-soft:#dcebf5; --cap:#7dadcc; --tape:#e6b422; --tape-ink:#18212b;
-  --ok:#2c7a4b; --ok-soft:#dff1e6; --warn:#8a5a00; --warn-soft:#fbefd2; --bad:#b23a24; --bad-soft:#f8e1dc;
-  --v1:#7a4fb5; --v2:#1f7a74; --rob:#2f6f98;
+  --bg:#eceef0; --panel:#ffffff; --panel2:#f5f6f7; --ink:#16202a; --muted:#56626e; --line:#d5d9de; --line2:#e7eaed; --line-f:#9aa3ad;
+  --accent:#2a6a94; --accent-soft:#e1edf5; --cap:#7dadcc; --tape:#f2c230; --tape-ink:#16202a; --tape-edge:#a77c00; --tape-soft:#fbefc6;
+  --ok:#1f7a46; --ok-soft:#e2f1e7; --warn:#8a5c00; --warn-soft:#fff3d6; --bad:#b3321e; --bad-soft:#f8e3de;
+  --v1:#7046a8; --v2:#14706a; --rob:#2a6a94;
   --scene-bg:#e8ecf0; --scene-floor:#d9dfe5; --scene-grid:#c3ccd5;
-  --f-ui:"Archivo",system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
-  --f-mono:"IBM Plex Mono",ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+  --f-ui:"Barlow",system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+  --f-rot:"Barlow Condensed","Barlow",system-ui,sans-serif;
+  --f-mono:"JetBrains Mono",ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
   --r:8px;
 }
 @media (prefers-color-scheme: dark){:root:not([data-theme="light"]){
-  --bg:#0f1418; --panel:#161d23; --panel2:#1c242c; --ink:#e3e9ef; --muted:#93a2b1; --line:#2a343e; --line2:#222b33;
-  --accent:#7fb3d6; --accent-soft:#1d3240; --cap:#7dadcc; --tape:#e8bd3a; --tape-ink:#161d23;
-  --ok:#4cb879; --ok-soft:#173226; --warn:#e0a43a; --warn-soft:#352a12; --bad:#e3654c; --bad-soft:#3a1d18;
-  --v1:#b392e6; --v2:#53c2bb; --rob:#7fb3d6;
+  --bg:#0f1418; --panel:#171e24; --panel2:#1d252c; --ink:#e5eaef; --muted:#9aa8b6; --line:#2b353f; --line2:#222b33; --line-f:#5b6877;
+  --accent:#82b7dc; --accent-soft:#1d3240; --cap:#7dadcc; --tape:#e8bd3a; --tape-ink:#161d23; --tape-edge:#e8bd3a; --tape-soft:#3a3012;
+  --ok:#56c286; --ok-soft:#16301f; --warn:#e6b04a; --warn-soft:#33280f; --bad:#ef7a62; --bad-soft:#3a1c16;
+  --v1:#b598ea; --v2:#55c4bc; --rob:#82b7dc;
   --scene-bg:#141b21; --scene-floor:#1b232a; --scene-grid:#27323c; color-scheme:dark}}
 :root[data-theme="dark"]{
-  --bg:#0f1418; --panel:#161d23; --panel2:#1c242c; --ink:#e3e9ef; --muted:#93a2b1; --line:#2a343e; --line2:#222b33;
-  --accent:#7fb3d6; --accent-soft:#1d3240; --cap:#7dadcc; --tape:#e8bd3a; --tape-ink:#161d23;
-  --ok:#4cb879; --ok-soft:#173226; --warn:#e0a43a; --warn-soft:#352a12; --bad:#e3654c; --bad-soft:#3a1d18;
-  --v1:#b392e6; --v2:#53c2bb; --rob:#7fb3d6;
+  --bg:#0f1418; --panel:#171e24; --panel2:#1d252c; --ink:#e5eaef; --muted:#9aa8b6; --line:#2b353f; --line2:#222b33; --line-f:#5b6877;
+  --accent:#82b7dc; --accent-soft:#1d3240; --cap:#7dadcc; --tape:#e8bd3a; --tape-ink:#161d23; --tape-edge:#e8bd3a; --tape-soft:#3a3012;
+  --ok:#56c286; --ok-soft:#16301f; --warn:#e6b04a; --warn-soft:#33280f; --bad:#ef7a62; --bad-soft:#3a1c16;
+  --v1:#b598ea; --v2:#55c4bc; --rob:#82b7dc;
   --scene-bg:#141b21; --scene-floor:#1b232a; --scene-grid:#27323c; color-scheme:dark}
 html,body{height:100%}
-body{background:var(--bg);color:var(--ink);font:14px/1.45 var(--f-ui);-webkit-font-smoothing:antialiased}
+body{background:var(--bg);color:var(--ink);font:14.5px/1.45 var(--f-ui);-webkit-font-smoothing:antialiased}
 *{box-sizing:border-box}
 button,select,input,textarea{font:inherit;color:inherit}
 :focus-visible{outline:2px solid var(--accent);outline-offset:2px}
 .app{height:100%;display:grid;grid-template-rows:auto minmax(0,1fr);gap:10px;padding-block:10px;
   padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px))}
-.top{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap}
+.top{display:flex;align-items:center;justify-content:space-between;gap:14px;height:42px;min-width:0}
 .brand{display:flex;align-items:center;gap:12px;min-width:0}
-.mark{width:34px;height:34px;border-radius:7px;background:var(--cap);position:relative;flex:none;overflow:hidden}
+.mark{width:30px;height:30px;border-radius:7px;background:var(--cap);position:relative;flex:none;overflow:hidden}
 .mark::after{content:"";position:absolute;left:-6px;right:-6px;bottom:7px;height:8px;background:var(--tape);transform:rotate(-14deg)}
-h1{font-size:19px;line-height:1.15;margin:0;font-weight:800;letter-spacing:-.01em;text-wrap:balance}
-.sub{margin:2px 0 0;color:var(--muted);font-size:12.5px}
+h1{font:700 21px/1.05 var(--f-rot);margin:0;letter-spacing:.005em;white-space:nowrap}
+.sub{margin:1px 0 0;color:var(--muted);font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .escNav{display:flex;align-items:center;gap:6px;min-width:0;flex:1 1 360px;max-width:640px}
-.escNav .nb{flex:none;width:32px;height:38px;border:1px solid var(--line);background:var(--panel);border-radius:7px;cursor:pointer;font-size:18px;line-height:1;color:var(--ink)}
+.escNav .nb{flex:none;width:32px;height:38px;border:1px solid var(--line);background:var(--panel);border-radius:6px;cursor:pointer;font-size:18px;line-height:1;color:var(--ink)}
 .escNav .nb:disabled{opacity:.4;cursor:default}
-.escCur{flex:1;min-width:0;display:flex;align-items:center;gap:8px;border:1px solid var(--line);background:var(--panel);border-radius:7px;padding:4px 10px;height:38px;cursor:pointer;text-align:left}
-.escCur:hover{border-color:var(--accent)}
+.escCur{flex:1;min-width:0;display:flex;align-items:center;gap:8px;border:1px solid var(--line);background:var(--panel);border-radius:6px;padding:4px 10px;height:38px;cursor:pointer;text-align:left}
+.escCur:hover{border-color:var(--ink)}
 .escTxt{min-width:0;flex:1;display:flex;flex-direction:column}
-.escTxt b{font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.escTxt b{font-size:14px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .escTxt small{font:500 11px/1.25 var(--f-mono);color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .escCur .car{color:var(--muted);font-size:11px}
 .dot{width:9px;height:9px;border-radius:50%;flex:none;background:var(--line)}
@@ -69,8 +73,8 @@ h1{font-size:19px;line-height:1.15;margin:0;font-weight:800;letter-spacing:-.01e
 .escLista .btns{flex:none;display:flex;gap:6px;align-items:center}
 details.escSec summary{cursor:pointer;font-weight:600;font-size:13px}
 .chips{display:flex;gap:6px;flex-wrap:wrap}
-.chip{font:500 11.5px/1 var(--f-mono);padding:6px 8px;border-radius:999px;border:1px solid var(--line);background:var(--panel);color:var(--muted);white-space:nowrap}
-.chip.draft{background:var(--tape);border-color:var(--tape);color:var(--tape-ink);font-weight:600}
+.chip{font:500 11.5px/1 var(--f-mono);padding:6px 8px;border-radius:4px;border:1px solid var(--line);background:var(--panel);color:var(--muted);white-space:nowrap}
+.chip.draft{background:var(--tape);border-color:var(--tape);color:var(--tape-ink);font-weight:700}
 .work{display:grid;grid-template-columns:minmax(0,1fr) 384px;gap:10px;min-height:0}
 .view{position:relative;min-height:0;border-radius:var(--r);overflow:hidden;background:var(--scene-bg);border:1px solid var(--line);touch-action:none}
 .view canvas{display:block;width:100%;height:100%}
@@ -78,29 +82,29 @@ details.escSec summary{cursor:pointer;font-weight:600;font-size:13px}
 .lbl{font:500 10.5px/1 var(--f-mono);padding:3px 5px;border-radius:4px;background:color-mix(in srgb,var(--panel) 86%,transparent);color:var(--ink);border:1px solid var(--line);white-space:nowrap;transform:translateY(-10px)}
 .lbl.tf{background:transparent;border:0;color:var(--muted);font-size:10px;padding:0}
 .lbl.warn{border-color:var(--bad);color:var(--bad)}
-.vbar{position:absolute;top:10px;display:flex;gap:4px;background:color-mix(in srgb,var(--panel) 92%,transparent);border:1px solid var(--line);border-radius:7px;padding:3px;z-index:3}
+.vbar{position:absolute;top:10px;display:flex;gap:2px;background:var(--panel);border:1px solid var(--line);border-radius:var(--r);padding:3px;z-index:3;box-shadow:0 1px 2px rgba(0,0,0,.06)}
 .vbar.l{left:10px}.vbar.r{right:10px}
-.vbar button{border:0;background:transparent;padding:6px 9px;border-radius:5px;cursor:pointer;font-size:12.5px;font-weight:600;color:var(--muted)}
-.vbar button[aria-pressed="true"]{background:var(--accent-soft);color:var(--accent)}
+.vbar button{border:0;background:transparent;padding:6px 10px;border-radius:6px;cursor:pointer;font-size:13.5px;font-weight:600;color:var(--muted);min-height:32px}
+.vbar button[aria-pressed="true"]{background:var(--ink);color:var(--panel)}
 .vbar button:hover{color:var(--ink)}
 [hidden]{display:none!important}
 .hudcol{position:absolute;left:10px;top:52px;z-index:4;display:flex;flex-direction:column;align-items:flex-start;gap:6px;max-width:calc(100% - 20px)}
 .hud{display:flex;flex-direction:column;gap:4px;max-width:100%}
-.hudline{font:500 11.5px/1.3 var(--f-mono);background:color-mix(in srgb,var(--panel) 92%,transparent);border:1px solid var(--line);border-radius:6px;padding:5px 8px;font-variant-numeric:tabular-nums;width:max-content;max-width:100%}
+.hudline{font:500 11.5px/1.3 var(--f-mono);background:var(--panel);border:1px solid var(--line);border-radius:4px;padding:5px 8px;font-variant-numeric:tabular-nums;width:max-content;max-width:100%}
 .hudline b{font-weight:600}
 .pill{display:inline-block;font:600 10.5px/1 var(--f-mono);padding:3px 6px;border-radius:4px;vertical-align:1px}
 .pill.ok{background:var(--ok-soft);color:var(--ok)}.pill.warn{background:var(--warn-soft);color:var(--warn)}.pill.bad{background:var(--bad-soft);color:var(--bad)}
 .pill.v1{background:color-mix(in srgb,var(--v1) 16%,transparent);color:var(--v1)}.pill.v2{background:color-mix(in srgb,var(--v2) 16%,transparent);color:var(--v2)}.pill.rob{background:color-mix(in srgb,var(--rob) 16%,transparent);color:var(--rob)}
 .pip{position:absolute;right:10px;bottom:10px;z-index:3;display:flex;gap:6px;pointer-events:none}
-.pip .tile{border:1px solid var(--line);border-radius:6px;overflow:hidden;position:relative;background:transparent}
+.pip .tile{border:2px solid var(--panel);border-radius:4px;overflow:hidden;position:relative;background:transparent}
 .pip .tile span{position:absolute;left:4px;top:4px;font:600 10px/1 var(--f-mono);padding:3px 5px;border-radius:3px;background:color-mix(in srgb,var(--panel) 90%,transparent);color:var(--ink)}
 .toast{position:absolute;left:50%;top:54px;transform:translateX(-50%);z-index:4;background:var(--ink);color:var(--panel);padding:7px 12px;border-radius:6px;font-size:12.5px;opacity:0;transition:opacity .2s;pointer-events:none;max-width:90%}
 .toast.on{opacity:1}
 .loading{position:absolute;inset:0;display:grid;place-items:center;z-index:5;background:var(--scene-bg);color:var(--muted);font:500 13px var(--f-mono)}
-.calcBar{display:flex;gap:10px;align-items:center;max-width:100%;background:var(--panel);border:1px solid var(--warn);border-radius:8px;padding:6px 6px 6px 12px;font-size:12.5px;font-weight:600;box-shadow:0 4px 14px rgba(0,0,0,.12)}
+.calcBar{display:flex;gap:10px;align-items:center;max-width:100%;background:var(--panel);border:1px solid var(--tape-edge);border-left:5px solid var(--tape);border-radius:var(--r);padding:6px 6px 6px 12px;font-size:13.5px;font-weight:600;box-shadow:0 4px 14px rgba(0,0,0,.12)}
 .calcBar #calcTxt{min-width:0;overflow-wrap:anywhere}
 .calcBar .btn{flex:none}
-.valBar{display:flex;gap:10px;align-items:center;max-width:100%;background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:6px 6px 6px 12px;font-size:12.5px;box-shadow:0 4px 14px rgba(0,0,0,.12)}
+.valBar{display:flex;gap:10px;align-items:center;max-width:100%;background:var(--panel);border:1px solid var(--line);border-radius:var(--r);padding:6px 6px 6px 12px;font-size:13px;box-shadow:0 4px 14px rgba(0,0,0,.12)}
 .valBar #valTxt{min-width:0;display:flex;gap:8px;align-items:center;overflow-wrap:anywhere}
 .valBar .btn{flex:none}
 .valFilas{display:flex;flex-direction:column;gap:3px}
@@ -114,29 +118,39 @@ details.escSec summary{cursor:pointer;font-weight:600;font-size:13px}
 .dot.none{background:transparent;border:1.5px solid var(--muted)}
 .camMode{position:absolute;top:52px;right:10px;z-index:4;display:flex;gap:8px;align-items:center;background:var(--panel);border:1px solid var(--line);border-radius:6px;padding:5px 8px;font-size:12.5px}
 .panel{min-height:0;overflow:auto;background:var(--panel);border:1px solid var(--line);border-radius:var(--r);display:flex;flex-direction:column}
-.tabs{position:sticky;top:0;z-index:2;display:grid;grid-template-columns:repeat(5,1fr);background:var(--panel);border-bottom:1px solid var(--line)}
-.tabs button{border:0;background:transparent;padding:11px 4px 10px;font-weight:600;font-size:12.5px;color:var(--muted);cursor:pointer;border-bottom:2px solid transparent}
-.tabs button[aria-selected="true"]{color:var(--ink);border-bottom-color:var(--tape)}
-.tab{padding:14px;display:flex;flex-direction:column;gap:16px}
+/* Pasos del guion: las pestañas de siempre, numeradas y unidas por una línea; el paso actual con la cinta amarilla */
+.tabs{position:sticky;top:0;z-index:2;display:grid;grid-template-columns:repeat(5,1fr);background:var(--panel);border-bottom:1px solid var(--line);padding:10px 6px 8px}
+.tabs::before{content:"";position:absolute;left:12%;right:12%;top:24px;height:2px;background:var(--line)}
+.tabs button{position:relative;border:0;background:transparent;padding:0 2px;display:flex;flex-direction:column;align-items:center;gap:4px;cursor:pointer;color:var(--muted);min-height:44px}
+.tabs .n{width:28px;height:28px;border-radius:50%;display:grid;place-items:center;font:700 15px/1 var(--f-rot);border:2px solid var(--line-f);background:var(--panel);color:var(--muted);position:relative}
+.tabs .t{font:600 14px/1.1 var(--f-rot);letter-spacing:.01em;white-space:nowrap}
+.tabs .pd{position:absolute;right:-3px;top:-3px;width:10px;height:10px;border-radius:50%;border:2px solid var(--panel);background:transparent}
+.tabs .pd.ok{background:var(--ok)} .tabs .pd.warn{background:var(--warn)} .tabs .pd.bad{background:var(--bad)}
+.tabs button:hover .n{border-color:var(--ink);color:var(--ink)}
+.tabs button[aria-selected="true"]{color:var(--ink)}
+.tabs button[aria-selected="true"] .n{background:var(--tape);border-color:var(--tape-edge);color:var(--tape-ink)}
+.tab{padding:16px;display:flex;flex-direction:column;gap:18px}
 .sec{display:flex;flex-direction:column;gap:8px}
-.sec h2{margin:0;font-size:11.5px;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);font-weight:700}
-.sec h3{margin:0;font-size:14px;font-weight:700}
-.hint{margin:0;color:var(--muted);font-size:12.5px}
+.sec h2{margin:0;font:600 17px/1.2 var(--f-rot);letter-spacing:.005em;color:var(--ink)}
+.sec h3{margin:0;font:600 15.5px/1.2 var(--f-rot)}
+.hint{margin:0;color:var(--muted);font-size:13px;line-height:1.42}
 .row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
 .row > label{flex:1;min-width:0}
-.seg{display:grid;grid-auto-flow:column;grid-auto-columns:1fr;border:1px solid var(--line);border-radius:7px;padding:2px;gap:2px;background:var(--panel2)}
-.seg button{border:0;background:transparent;border-radius:5px;padding:6px 6px;font-size:12.5px;font-weight:600;color:var(--muted);cursor:pointer}
-.seg button[aria-pressed="true"]{background:var(--panel);color:var(--ink);box-shadow:0 0 0 1px var(--line)}
-.btn{border:1px solid var(--line);background:var(--panel2);border-radius:6px;padding:7px 10px;font-weight:600;font-size:12.5px;cursor:pointer}
-.btn:hover{border-color:var(--accent)}
-.btn.pri{background:var(--accent);border-color:var(--accent);color:var(--panel)}
+.seg{display:grid;grid-auto-flow:column;grid-auto-columns:1fr;border:1px solid var(--line-f);border-radius:6px;padding:0;gap:0;background:var(--panel);overflow:hidden}
+.seg button{border:0;background:transparent;border-radius:0;padding:7px 6px;font-size:13.5px;font-weight:600;color:var(--ink);cursor:pointer;min-height:34px}
+.seg button+button{border-left:1px solid var(--line-f)}
+.seg button:hover{background:var(--panel2)}
+.seg button[aria-pressed="true"]{background:var(--ink);color:var(--panel)}
+.btn{border:1px solid var(--line-f);background:var(--panel);border-radius:6px;padding:7px 12px;font-weight:600;font-size:13.5px;cursor:pointer;min-height:34px}
+.btn:hover{border-color:var(--ink)}
+.btn.pri{background:var(--ink);border-color:var(--ink);color:var(--panel)}
 .btn[aria-pressed="true"]{background:var(--accent-soft);border-color:var(--accent);color:var(--accent)}
 .btn:disabled{opacity:.5;cursor:not-allowed}
 .btns{display:flex;flex-wrap:wrap;gap:6px}
 .field{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:2px 8px;align-items:center}
-.field label{font-size:12.5px;color:var(--muted)}
-.field output{font:500 12px var(--f-mono);font-variant-numeric:tabular-nums}
-.field input[type=range]{grid-column:1 / -1;width:100%;accent-color:var(--accent)}
+.field label{font-size:13.5px;color:var(--ink)}
+.field output{font:500 12.5px var(--f-mono);font-variant-numeric:tabular-nums}
+.field input[type=range]{grid-column:1 / -1;width:100%;accent-color:var(--ink);min-height:24px}
 .tareas{display:grid;gap:7px;margin:8px 0}.tareas h4{margin:0;font-size:12.5px;font-weight:600}.tarea{display:grid;gap:2px;font-size:12.5px}
 .tarea>div{display:flex;justify-content:space-between;align-items:center;gap:8px}.tarea .hint{font-size:11.5px;overflow-wrap:anywhere}
 .oclu{display:grid;gap:7px;margin:8px 0}.oclu h4{margin:0;font-size:12.5px;font-weight:600}.ocl-fila{display:grid;gap:2px;font-size:12.5px}
@@ -151,12 +165,13 @@ select{border:1px solid var(--line);background:var(--panel2);border-radius:6px;p
 .grid2{display:grid;grid-template-columns:1fr 1fr;gap:6px 12px}
 .kv{display:grid;grid-template-columns:auto minmax(0,1fr);gap:4px 10px;font-size:12.5px}
 .kv dt{color:var(--muted)}.kv dd{margin:0;font:500 12px var(--f-mono);font-variant-numeric:tabular-nums;text-align:right;overflow-wrap:anywhere}
-.card{border:1px solid var(--line);border-radius:7px;padding:10px;display:flex;flex-direction:column;gap:8px;background:var(--panel)}
-.card.sel{border-color:var(--accent);box-shadow:0 0 0 1px var(--accent)}
+.card{border:1px solid var(--line);border-radius:var(--r);padding:12px;display:flex;flex-direction:column;gap:8px;background:var(--panel)}
+.card.sel{border-color:var(--ink);box-shadow:0 0 0 1px var(--ink)}
+.card header h3{font:600 17px/1.2 var(--f-rot);margin:0}
 .card header{display:flex;justify-content:space-between;align-items:center;gap:8px}
 .objlist{display:grid;grid-template-columns:1fr 1fr;gap:6px}
 .objlist button{text-align:left;border:1px solid var(--line);background:var(--panel2);border-radius:6px;padding:7px 8px;font-size:12.5px;font-weight:600;cursor:pointer;display:flex;justify-content:space-between;gap:6px;align-items:center}
-.objlist button[aria-pressed="true"]{border-color:var(--accent);background:var(--accent-soft);color:var(--accent)}
+.objlist button[aria-pressed="true"]{border-color:var(--ink);background:var(--ink);color:var(--panel)}
 .dot{width:8px;height:8px;border-radius:50%;flex:none;background:var(--muted)}
 .dot.ok{background:var(--ok)}.dot.warn{background:var(--warn)}.dot.bad{background:var(--bad)}
 .legend{display:flex;gap:10px;flex-wrap:wrap;font-size:12px;color:var(--muted)}
@@ -166,8 +181,8 @@ select{border:1px solid var(--line);background:var(--panel2);border-radius:6px;p
 .steps{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:2px}
 .steps li{display:grid;grid-template-columns:22px minmax(0,1fr);gap:8px;padding:6px 6px;border-radius:6px;font-size:12.5px}
 .steps li .n{font:600 11px/22px var(--f-mono);text-align:center;border-radius:50%;width:22px;height:22px;background:var(--panel2);color:var(--muted);border:1px solid var(--line)}
-.steps li.on{background:var(--accent-soft)}
-.steps li.on .n{background:var(--accent);color:var(--panel);border-color:var(--accent)}
+.steps li.on{background:var(--tape-soft)}
+.steps li.on .n{background:var(--tape);color:var(--tape-ink);border-color:var(--tape-edge)}
 .steps li.done .n{background:var(--ok-soft);color:var(--ok);border-color:var(--ok-soft)}
 .steps li small{display:block;color:var(--muted);font-size:11.5px}
 .graph{width:100%;height:auto;display:block;border:1px solid var(--line);border-radius:7px;background:var(--panel2)}
@@ -181,9 +196,9 @@ select{border:1px solid var(--line);background:var(--panel2);border-radius:6px;p
 .log{list-style:none;margin:0;padding:0;font:500 11px/1.4 var(--f-mono);display:flex;flex-direction:column;gap:3px;max-height:150px;overflow:auto}
 .log li{display:grid;grid-template-columns:42px minmax(0,1fr);gap:6px;color:var(--muted)}
 .log li b{color:var(--ink);font-weight:600}
-.big{font:700 22px/1.1 var(--f-ui);font-variant-numeric:tabular-nums}
+.big{font:700 23px/1.1 var(--f-rot);font-variant-numeric:tabular-nums}
 .stats{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}
-.stat{border:1px solid var(--line);border-radius:7px;padding:8px;display:flex;flex-direction:column;gap:2px;min-width:0}
+.stat{border:1px solid var(--line);border-radius:6px;padding:8px;display:flex;flex-direction:column;gap:2px;min-width:0}
 .stat small{color:var(--muted);font-size:11px}
 textarea{width:100%;min-height:120px;border:1px solid var(--line);border-radius:6px;background:var(--panel2);padding:8px;font:500 11.5px/1.45 var(--f-mono);resize:vertical}
 .tbl{width:100%;border-collapse:collapse;font-size:12px}
@@ -230,10 +245,40 @@ textarea{width:100%;min-height:120px;border:1px solid var(--line);border-radius:
 #rosLista{display:flex;flex-direction:column;gap:12px}
 .rosLista .btns{flex:none;gap:4px;flex-wrap:nowrap}
 .rosLista .btn{padding:5px 8px;font-size:12px}
+/* Cinta del ciclo: el veredicto de la demo, siempre a la vista, abajo a la izquierda de la vista 3D (no tapa las miniaturas) */
+.ciclo{position:absolute;left:10px;bottom:10px;z-index:3;width:356px;max-width:calc(100% - 20px);background:var(--panel);border:1px solid var(--line);border-radius:var(--r);padding:8px 10px 9px;display:flex;flex-direction:column;gap:7px;box-shadow:0 2px 10px rgba(0,0,0,.12);pointer-events:none}
+.ciclo .cab{display:flex;align-items:center;gap:10px;min-width:0}
+.ciclo .play{pointer-events:auto;flex:none;width:36px;height:36px;border-radius:50%;border:0;background:var(--ink);color:var(--panel);cursor:pointer;display:grid;place-items:center;font-size:13px}
+.ciclo .play:disabled{opacity:.35;cursor:default}
+.ciclo .sello{flex:none;font:700 13.5px/1 var(--f-rot);letter-spacing:.05em;text-transform:uppercase;padding:7px 8px;border-radius:4px;background:var(--panel2);color:var(--muted);border:1px dashed var(--line-f)}
+.ciclo .sello.ok{background:var(--ok);border-color:var(--ok);color:var(--panel)} .ciclo .sello.bad{background:var(--bad);border-color:var(--bad);color:var(--panel)}
+.ciclo .sello.lista{background:var(--panel);border:1px solid var(--ink);color:var(--ink)}
+.ciclo .sello.warn{background:var(--warn-soft);border:1px solid var(--warn);color:var(--warn)} .ciclo .sello.on{background:var(--tape);border-color:var(--tape-edge);color:var(--tape-ink)}
+.ciclo .dato{min-width:0;display:flex;flex-direction:column}
+.ciclo .dato b{font:700 19px/1.05 var(--f-rot);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.ciclo .dato small{font-size:12.5px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.ciclo .tramos{display:flex;gap:2px;height:8px}
+.ciclo .tramos i{flex:1;border-radius:2px;background:var(--line2);border-bottom:2px solid var(--line)}
+.ciclo .tramos i.hecho{background:var(--tape-soft);border-color:var(--tape-edge)} .ciclo .tramos i.on{background:var(--tape);border-color:var(--tape-edge)} .ciclo .tramos i.fail{background:var(--bad);border-color:var(--bad)}
+.ciclo .paso{font:500 11.5px/1.2 var(--f-mono);color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+/* Matriz cámara × tarea de la pestaña Cámaras */
+.camMatriz{width:100%;border-collapse:separate;border-spacing:3px;margin:0 -3px}
+.camMatriz th{font:600 12px/1.2 var(--f-ui);color:var(--muted);text-align:center;padding:0 0 2px}
+.camMatriz th:first-child{text-align:left}
+.camMatriz td{text-align:center;border-radius:4px;padding:0;font:500 12px var(--f-mono)}
+.camMatriz td button{width:100%;min-height:34px;border:0;border-radius:4px;background:transparent;font:inherit;color:inherit;cursor:pointer;padding:4px 2px}
+.camMatriz td.f{text-align:left;font:600 15px/1.1 var(--f-rot);white-space:nowrap;padding-right:4px}
+.camMatriz td.f small{display:block;font:500 11.5px var(--f-ui);color:var(--muted)}
+.camMatriz td.ok{background:var(--ok-soft);color:var(--ok)} .camMatriz td.warn{background:var(--warn-soft);color:var(--warn)} .camMatriz td.bad{background:var(--bad-soft);color:var(--bad)}
+.camMatriz td.na{color:var(--muted);border:1px dashed var(--line)}
+.camMatriz .m{font-weight:700}
+.sr{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0}
+.tarea.marcada{outline:2px solid var(--ink);outline-offset:3px;border-radius:2px}
 .foot{font-size:11.5px;color:var(--muted)}
 .foot a{color:var(--accent)}
 @media (max-width:900px){
   .app{height:auto;min-height:100%}
+  .top{height:auto;flex-wrap:wrap}
   .work{grid-template-columns:minmax(0,1fr)}
   .view{height:62vh;min-height:340px}
   .panel{overflow:visible}
@@ -241,7 +286,7 @@ textarea{width:100%;min-height:120px;border:1px solid var(--line);border-radius:
 }
 @media (max-width:1400px){ #chipConf{display:none} }
 @media (max-width:1100px){ .escNav{order:3;flex-basis:100%;max-width:none} }
-@media (max-width:600px){ .escLista li{flex-direction:column} .vbar.r{top:50px} .hudcol{top:92px} .camMode{top:92px} .calcBar{font-size:11.5px} .hudline{font-size:10px;padding:4px 6px} }
+@media (max-width:600px){ .sub{display:none} .tabs .t{font-size:12.5px} .ciclo{width:auto;right:10px} .camMatriz td{font-size:10.5px} .camMatriz td button{white-space:nowrap;padding:4px 1px} .camMatriz td.f{font-size:13.5px} .escLista li{flex-direction:column} .vbar.r{top:50px} .hudcol{top:92px} .camMode{top:92px} .calcBar{font-size:11.5px} .hudline{font-size:10px;padding:4px 6px} }
 @media (max-width:480px){ .stats{grid-template-columns:1fr 1fr} .objlist{grid-template-columns:1fr} .vbar button{padding:6px 7px} }
 </style>
 
@@ -293,16 +338,21 @@ textarea{width:100%;min-height:120px;border:1px solid var(--line);border-radius:
       <div class="valBar" id="valBar" role="status" hidden><span id="valTxt"></span><button class="btn" id="btnValidar">Validar con perfil curso</button></div>
       <div class="hud" id="hud"></div></div>
       <div class="pip" id="pip"></div>
+      <div class="ciclo" id="ciclo" role="group" aria-label="Veredicto de la demo">
+        <div class="cab"><button class="play" id="cicloPlay" aria-label="Reproducir la demo">▶</button><span class="sello" id="cicloSello" role="status">Sin calcular</span><span class="dato"><b id="cicloDato">—</b><small id="cicloSub">Pulsa «Calcular trayectorias»</small></span></div>
+        <div class="tramos" id="cicloTramos" aria-hidden="true"></div>
+        <div class="paso" id="cicloPaso"></div>
+      </div>
       <div class="toast" id="toast" role="status" aria-live="polite"></div>
       <div class="loading" id="loading">Cargando el UR3e…</div>
     </section>
     <aside class="panel" aria-label="Panel de control">
-      <nav class="tabs" role="tablist">
-        <button role="tab" data-tab="escena" aria-selected="true">Escena</button>
-        <button role="tab" data-tab="alcance" aria-selected="false">Alcance</button>
-        <button role="tab" data-tab="camaras" aria-selected="false">Cámaras</button>
-        <button role="tab" data-tab="demo" aria-selected="false">Demo</button>
-        <button role="tab" data-tab="datos" aria-selected="false">Datos</button>
+      <nav class="tabs" role="tablist" aria-label="Pasos: de la disposición de la celda a los ficheros de ROS">
+        <button role="tab" data-tab="escena" aria-selected="true"><span class="n">1<i class="pd" id="pdEscena"></i></span><span class="t">Celda</span></button>
+        <button role="tab" data-tab="camaras" aria-selected="false"><span class="n">2<i class="pd" id="pdCamaras"></i></span><span class="t">Cámaras</span></button>
+        <button role="tab" data-tab="alcance" aria-selected="false"><span class="n">3<i class="pd" id="pdAlcance"></i></span><span class="t">Alcance</span></button>
+        <button role="tab" data-tab="demo" aria-selected="false"><span class="n">4<i class="pd" id="pdDemo"></i></span><span class="t">Demo</span></button>
+        <button role="tab" data-tab="datos" aria-selected="false"><span class="n">5<i class="pd" id="pdDatos"></i></span><span class="t">Exportar</span></button>
       </nav>
 
       <div class="tab" data-panel="escena">
@@ -386,6 +436,11 @@ textarea{width:100%;min-height:120px;border:1px solid var(--line);border-radius:
       </div>
 
       <div class="tab" data-panel="camaras" hidden>
+        <div class="sec" id="camMatrizSec">
+          <h2>¿Sirve cada cámara para sus tareas?</h2>
+          <table class="camMatriz" id="camMatriz"><thead><tr><th>Cámara</th><th>Fruta</th><th>ArUco</th><th>Cara</th><th>Mano</th><th>Bandeja</th><th>Enfoque</th></tr></thead><tbody></tbody></table>
+          <p class="hint">Píxeles en el peor punto de cada objetivo (bandeja: desenfoque; enfoque: objetivos dentro de la profundidad de campo). Pulsa una casilla para ver el detalle en la tarjeta de su cámara. Los umbrales son SUPUESTOS salvo los del ArUco.</p>
+        </div>
         <div class="sec">
           <h2>ELP-USB12MP01-UFV · Sony IMX577 · 3,6–10 mm</h2>
           <p class="hint">Zoom y enfoque manuales: no hay autoenfoque que mueva la calibración, pero hay que fijar los anillos con cinta tras calibrar. La resolución de 1920×1080 a 120 fps es MJPEG por USB 2.0; que use todo el ancho del sensor está sin validar.</p>
@@ -4199,6 +4254,7 @@ function marcoTF(nombre, padre) {
 
 // ======================= Demo: motor de tiempo =======================
 const D = { carga: null, planes: 0, sustituidos: 0, autocol: 0, run: 0, playing: false, rate: 1, vel: 0.25, modo: 'M0', amp: 0.02, motion: 0, estado: 'REPOSO', personaOff: 0, errores: [], minCam: {}, activo: false, fase: 0, fin: null, choques: 0, roces: 0, pausas: 0, rozando: new Map(), platoEnPinza: null, piezaObjetivo: null };
+const CICLO = { html: '', ult: null, platos: null, pd: {}, camFirma: '', n: 0 }; // la cinta del ciclo (TU.1): lo último pintado y lo que lee
 let simT = 0; const ANIMS = [], LOOPS = [];
 function anim(T, fn) { const run = D.run; return new Promise((res, rej) => ANIMS.push({ t0: simT, T: Math.max(T, 1e-3), fn, res, rej, run })); }
 function until(fn) { const run = D.run; return new Promise((res, rej) => LOOPS.push({ fn, res, rej, run })); }
@@ -4376,7 +4432,7 @@ function comprobarPlan0(opts, pf) {
   robot.setQ(q0);
   return out;
 }
-function pintarCheck(lista) { $('#dCheck').innerHTML = lista.map(c => `<li class="${c.cls}">${c.txt}</li>`).join(''); }
+function pintarCheck(lista, pf = null) { $('#dCheck').innerHTML = lista.map(c => `<li class="${c.cls}">${c.txt}</li>`).join(''); if (pf) CICLO.ult = { clave: claveCiclo(pf), lista }; } // pf: la lista es una comprobación previa de verdad (la cinta del ciclo la usa)
 function verPosturaImposible() {
   const P = D.posturaImposible; if (!P) return; D.activo = false; robot.setQ(P.q); pinza.setApertura(P.w); sincronizarSliders(); actualizarHUD(); // modo manual: el HUD dice con qué choca
   if (P.c) { marcaChoque.position.copy(baseAMundo(P.c.p[0], P.c.p[1], P.c.p[2])); marcaChoque.visible = true; D.marcaHasta = simT + 1e9; }
@@ -4392,7 +4448,7 @@ async function demo(pf) {
   // desde la misma (DT10). D.falloDemo: el fallo de esta demo, con su causa (la validación lo lee, T1.8).
   PERFIL.de(pf); const run = D.run; D.t0 = simT; D.faseInicio = simT + D.fase; D.fin = null; D.ctx = {}; D.perfilDemo = pf; D.falloDemo = null;
   try {
-    const chk = comprobarPlan({ perfil: pf }); pintarCheck(chk); orientarCajas(pf);
+    const chk = comprobarPlan({ perfil: pf }); pintarCheck(chk, pf); orientarCajas(pf);
     const graves = chk.filter(c => c.grave); if (graves.length) throw new FalloDemo(graves.map(g => g.txt).join(' '), 'previo', { causa: 'previo', items: graves });
     paso(0); estado('REPOSO'); publicar('/v1/dialog_state', ['ident'], { paso: 'reposo', mensaje: 'Haz el gesto de inicio' }); await esperar(1.2);
     paso(1); estado('IDENTIFICANDO');
@@ -4709,14 +4765,81 @@ function actualizarHUD() {
 function pintarCaja() {
   $$('#segCaja button').forEach(x => x.setAttribute('aria-pressed', (x.dataset.v === '1') === L.caja.on));
   $('#cajaH').value = Math.round(L.caja.h * 100); $('#cajaHOut').textContent = `${Math.round(L.caja.h * 100)} cm`; $('#cajaH').disabled = !L.caja.on;
-  if (!robot) return; if (sinPlan()) { $('#cajaInfo').innerHTML = '<dt>Agarre de los platos</dt><dd><span class="pill warn">sin calcular</span> pulsa «Calcular trayectorias»</dd>'; return; }
-  $('#cajaInfo').innerHTML = platosActivos().map(([k]) => { const pl = planPlatoCache(k, PERFIL_EXPLORA); const n = k === 'plato1' ? '1º' : '2º'; if (!pl) { const f = planForzado(k, PERFIL_EXPLORA); return `<dt>Coger el plato ${n}</dt><dd><span class="pill bad">${f && f.choque ? `imposible: ${textoChoque(f.choque)}${f.hol.min < 0 ? `, ${mm(-f.hol.min)} mm` : ''}` : 'sin dirección posible'}</span></dd>`; } const h = pl.hol.min; return `<dt>Holgura al coger el plato ${n}</dt><dd><span class="pill ${h < -0.002 ? 'bad' : h < 0.01 ? 'warn' : 'ok'}">${h < -0.002 ? `choca con la ${pl.hol.contra}: ${mm(h)} mm` : `${mm(h)} mm`}</span></dd>`; }).join('');
+  if (!robot) return; if (sinPlan()) { CICLO.platos = null; $('#cajaInfo').innerHTML = '<dt>Agarre de los platos</dt><dd><span class="pill warn">sin calcular</span> pulsa «Calcular trayectorias»</dd>'; return; }
+  const platos = []; // también para la cinta del ciclo (CICLO.platos): qué plato no se puede coger y por qué
+  $('#cajaInfo').innerHTML = platosActivos().map(([k]) => { const pl = planPlatoCache(k, PERFIL_EXPLORA); const n = k === 'plato1' ? '1º' : '2º'; if (!pl) { const f = planForzado(k, PERFIL_EXPLORA); const txt = f && f.choque ? `imposible: ${textoChoque(f.choque)}${f.hol.min < 0 ? `, ${mm(-f.hol.min)} mm` : ''}` : 'sin dirección posible'; platos.push({ ok: false, n, txt: `Coger el plato ${n}: ${txt}` }); return `<dt>Coger el plato ${n}</dt><dd><span class="pill bad">${txt}</span></dd>`; } platos.push({ ok: true, n }); const h = pl.hol.min; return `<dt>Holgura al coger el plato ${n}</dt><dd><span class="pill ${h < -0.002 ? 'bad' : h < 0.01 ? 'warn' : 'ok'}">${h < -0.002 ? `choca con la ${pl.hol.contra}: ${mm(h)} mm` : `${mm(h)} mm`}</span></dd>`; }).join('');
+  CICLO.platos = platos;
 }
+// ======================= Cinta del ciclo y estado de los pasos (remodelado de la interfaz, TU.1) =======================
+// Solo lee lo que ya existe (el cálculo, la demo, la última comprobación previa y los agarres de los platos) y lo pinta en
+// #ciclo y en los puntos de los pasos: nunca calcula, ni planifica, ni mueve nada (I6). Se repinta con el HUD y solo si cambia.
+function claveCiclo(pf) { return `${pf}|${planesAlDia(pf)}|${D.amp}|` + JSON.stringify(L, (k, v) => k === 'f' || k === 'modo' || k === 'roll' ? undefined : v); } // la comprobación previa vale para esta disposición (la óptica de las cámaras no cuenta), este balanceo y estos planes
+function textoCorto(t, n = 110) { const s = String(t || '').replace(/<[^>]*>/g, '').replace(/\s+/g, ' ').trim(); return s.length > n ? s.slice(0, n - 1) + '…' : s; }
+function estadoCiclo() {
+  const pl = n => `${n} plato${n > 1 ? 's' : ''}`;
+  if (CALC.activo) return { cls: 'on', sello: VAL.activo ? 'Validando' : 'Calculando', dato: textoCorto(CALC.txt || 'Calculando…', 60), sub: 'el veredicto llega al terminar', pd: '' };
+  if (D.activo && !D.fin) return { cls: 'on', sello: D.playing ? 'En curso' : 'En pausa', dato: `${fmt(D.motion, 1)} s de movimiento`, sub: `${D.estado} · ${D.choques} choques · ${D.pausas} pausas`, pd: '' };
+  if (D.fin === 'ok') return { cls: 'ok', sello: 'Completa', dato: `${fmt(D.motion, 1)} s de movimiento`, sub: `${pl(L.pedido)} · ${D.choques} choques · ${D.roces} roces · ${D.pausas} pausas`, pd: D.choques ? 'warn' : 'ok' };
+  if (D.fin === 'previo') return { cls: 'bad', sello: 'No empieza', dato: 'La demo no puede empezar', sub: textoCorto(D.falloDemo && D.falloDemo.msg) || 'mira el detalle en el paso 4', pd: 'bad' };
+  if (D.fin === 'abort') return { cls: 'warn', sello: 'Abortada', dato: `Paso ${D.paso + 1} de ${PASOS.length}`, sub: textoCorto(D.falloDemo && D.falloDemo.msg) || 'la bandeja no volvió: brazo retirado', pd: 'warn' };
+  if (D.fin) return { cls: 'bad', sello: 'Parada', dato: `Paso ${D.paso + 1} de ${PASOS.length}`, sub: textoCorto(D.falloDemo && D.falloDemo.msg) || 'mira el detalle en el paso 4', pd: 'bad' };
+  if (sinPlan()) return { cls: '', sello: 'Sin calcular', dato: 'Hay cambios sin calcular', sub: 'pulsa «Calcular trayectorias»', pd: '' };
+  const pf = planesAlDia(perfilEscena()) ? perfilEscena() : PERFIL_EXPLORA, ck = CICLO.ult && CICLO.ult.clave === claveCiclo(pf) ? CICLO.ult.lista : null;
+  // los graves de la comprobación previa y, de los agarres de explorar, los platos que la comprobación no nombre ya
+  const gCk = (ck || []).filter(c => c.grave), nombrado = n => gCk.some(c => textoCorto(c.txt).startsWith(`Plato ${n}`));
+  const graves = [...gCk, ...(CICLO.platos || []).filter(p => !p.ok && !nombrado(p.n))];
+  if (graves.length) return { cls: 'bad', sello: 'No empieza', dato: graves.length > 1 ? `${graves.length} pasos imposibles` : 'Un paso imposible', sub: textoCorto(graves[0].txt), pd: 'bad' };
+  if (!ck) return { cls: '', sello: 'Sin comprobar', dato: `${pl(L.pedido)} · perfil ${perfilEscena()}`, sub: 'los platos se cogen; el paso 4 comprueba el resto', pd: '' };
+  return { cls: 'lista', sello: 'Lista', dato: `${pl(L.pedido)} · perfil ${perfilEscena()}`, sub: 'comprobación previa sin problemas', pd: 'ok' };
+}
+const PD_TXT = { ok: 'todo bien', warn: 'algo en el límite', bad: 'hay un problema' };
+function ponerPd(id, cls) { if (CICLO.pd[id] === cls) return; CICLO.pd[id] = cls; const el = document.getElementById(id); if (el) { el.className = 'pd' + (cls ? ' ' + cls : ''); el.innerHTML = cls ? `<span class="sr">: ${PD_TXT[cls]}</span>` : ''; } }
+function pintarCiclo() {
+  const e = estadoCiclo(), enDemo = D.activo || (D.fin && D.fin !== 'previo'), i = D.paso;
+  const tramos = PASOS.map((_, k) => `<i class="${!enDemo ? '' : D.fin === 'ok' || k < i ? 'hecho' : k === i ? (D.fin ? 'fail' : 'on') : ''}"></i>`).join('');
+  const paso = enDemo && i >= 0 && PASOS[i] ? `${i + 1}/${PASOS.length} · ${PASOS[i][0]}: ${PASOS[i][1]}` : `Guion de ${PASOS.length} pasos, de «${PASOS[0][0]}» a «${PASOS[PASOS.length - 1][0]}»`;
+  const dp = $('#dPlay'), pausa = dp.textContent === 'Pausar';
+  const html = [e.cls, e.sello, e.dato, e.sub, tramos, paso, pausa, dp.disabled].join('¦');
+  if (html !== CICLO.html) {
+    CICLO.html = html; $('#cicloSello').className = 'sello' + (e.cls ? ' ' + e.cls : ''); $('#cicloSello').textContent = e.sello;
+    $('#cicloDato').textContent = e.dato; $('#cicloSub').textContent = e.sub; $('#cicloSub').title = e.sub; $('#cicloTramos').innerHTML = tramos; $('#cicloPaso').textContent = paso;
+    const b = $('#cicloPlay'); b.textContent = pausa ? '❚❚' : '▶'; b.setAttribute('aria-label', pausa ? 'Pausar la demo' : 'Reproducir la demo'); b.disabled = dp.disabled;
+  }
+  ponerPd('pdDemo', e.pd); ponerPd('pdEscena', (CICLO.platos || []).some(p => !p.ok) ? 'bad' : '');
+  if (CICLO.camFirma !== firmaCams()) ponerPd('pdCamaras', ''); // la matriz se pintó con otras cámaras: el punto ya no vale
+  CICLO.n++;
+}
+function firmaCams() { return JSON.stringify([L.cams, L.sensor, L.persona, L.bandeja, L.zona]); }
+$('#cicloPlay').addEventListener('click', () => $('#dPlay').click());
+// Matriz cámara × tarea de la pestaña Cámaras: lo mismo que las tarjetas (tareasCam), resumido; el punto del paso 2 es el peor
+function pintarMatrizCams() {
+  const COLS = [['fruta'], ['aruco-zona', 'aruco-entrega', 'aruco-bandeja'], ['pupilas'], ['mano'], ['desenfoque']], RANGO = { ok: 0, limite: 1, no: 2, fuera: 3 };
+  let peor = -1;
+  $('#camMatriz tbody').innerHTML = Object.keys(L.cams).map(k => {
+    const c = L.cams[k], { tareas, campo } = tareasCam(k);
+    const MARCA = { ok: '✓', warn: '!', bad: '✗' };
+    const celda = (t, cls, txt, titulo, valor) => `<td class="${cls}"><button data-mcam="${k}" data-mtarea="${t}" title="${esc(titulo)}"><span class="v">${valor}</span> <span class="m" aria-hidden="true">${MARCA[cls]}</span><span class="sr">: ${txt}</span></button></td>`;
+    const celdas = COLS.map(claves => {
+      const ts = tareas.filter(t => claves.includes(t.clave)); if (!ts.length) return '<td class="na" aria-label="no aplica">—</td>';
+      const t = ts.reduce((a, b) => RANGO[b.res.estado] > RANGO[a.res.estado] ? b : a), r = t.res, e = TAREAS.ESTADOS[r.estado]; peor = Math.max(peor, RANGO[r.estado]);
+      return celda(t.clave, e.cls, e.txt, `${t.titulo}: ${e.txt}`, r.px === null ? e.txt : `${fmt(r.px, r.px < 10 ? 1 : 0)} px`);
+    });
+    const ec = TAREAS.ESTADOS[campo.estado]; peor = Math.max(peor, RANGO[campo.estado]);
+    celdas.push(celda('campo', ec.cls, ec.txt, `Profundidad de campo: ${ec.txt}`, campo.total ? `${campo.dentro}/${campo.total}` : ec.txt));
+    return `<tr><td class="f">${esc(c.nombre)}<small>${c.grupo === 'V1' ? 'Visión 1' : 'Visión 2'}</small></td>${celdas.join('')}</tr>`;
+  }).join('');
+  CICLO.camFirma = firmaCams(); CICLO.pd.pdCamaras = null; ponerPd('pdCamaras', peor < 0 ? '' : ['ok', 'warn', 'bad', 'bad'][peor]);
+}
+$('#camMatriz').addEventListener('click', e => {
+  const b = e.target.closest('button[data-mcam]'); if (!b) return;
+  const fila = $(`#camCards .card[data-cam="${b.dataset.mcam}"] .tarea[data-tarea="${b.dataset.mtarea}"]`); if (!fila) return;
+  fila.scrollIntoView({ block: 'center', behavior: 'smooth' }); fila.classList.add('marcada'); setTimeout(() => fila.classList.remove('marcada'), 1600);
+});
 // Comprobación previa de la pestaña Demo: la del perfil de la escena si sus trayectorias están al día; si no, la de explorar
 function actualizarCheck() {
   if ($('[data-panel="demo"]').hidden || D.activo || !robot) return; pintarPerfilDemo();
   if (sinPlan()) { pintarCheck([{ cls: 'warn', txt: 'Hay cambios sin calcular. Pulsa «Calcular trayectorias» o reproduce la demo, que calcula antes de mover el brazo.' }]); return; }
-  const pf = planesAlDia(perfilEscena()) ? perfilEscena() : PERFIL_EXPLORA; pintarCheck(comprobarPlan({ perfil: pf }));
+  const pf = planesAlDia(perfilEscena()) ? perfilEscena() : PERFIL_EXPLORA; pintarCheck(comprobarPlan({ perfil: pf }), pf);
   $('#dCheckPerfil').textContent = pf === perfilEscena() ? `Con el perfil de la escena («${pf}»).` : `Con el perfil de explorar («${pf}»): las trayectorias del perfil de la escena («${perfilEscena()}») se calculan al reproducir la demo, al validar o al guardar.`;
 }
 function toast(t) { if (AVISO_ROBOT) { t = t ? `${t} · ${AVISO_ROBOT}` : AVISO_ROBOT; AVISO_ROBOT = null; } const el = $('#toast'); el.textContent = t; el.classList.add('on'); clearTimeout(el._t); el._t = setTimeout(() => el.classList.remove('on'), 2800); }
@@ -5420,6 +5543,7 @@ pintarDistCfg(); distRefrescar();
 // pintarCamaras lo llama: rehace los campos si cambia la lista de cámaras o algún modo; si no, solo recalcula
 function usbRefrescar() { if (usbFirma() !== USB_FIRMA || !$('#usbCuerpo').firstElementChild) usbPintar(); else usbActualizar(); }
 function pintarCamaras() {
+  pintarMatrizCams();
   $('#camCards').innerHTML = Object.keys(L.cams).map(k => {
     const c = L.cams[k], m = metricasCam(k); const gp = c.grupo === 'V1' ? 'v1' : 'v2';
     const visCls = m.dentro === m.total && !m.tapados.length ? 'ok' : (m.dentro >= m.total * 0.6 ? 'warn' : 'bad');
@@ -6134,7 +6258,7 @@ function bucle(now) {
   for (const [a, t] of aristasOn) if (simT > t) { aristasOn.delete(a); dibujarGrafo(); }
   if (camAnim) { camAnim.s = Math.min(1, camAnim.s + dt * 1.6); const k = smooth(camAnim.s); cam.position.lerpVectors(camAnim.p0, camAnim.p, k); orbit.target.lerpVectors(camAnim.t0, camAnim.t, k); if (camAnim.s >= 1) camAnim = null; }
   orbit.update();
-  if (robot && frame % 6 === 0) { actualizarHUD(); if (frame % 18 === 0) { pintarCalc(); vigilarEscena(); } if (D.playing) for (const k in CAMS) { const m = metricasCam(k, true); D.minCam[k] = Math.min(D.minCam[k] ?? Infinity, m.libre); } }
+  if (robot && frame % 6 === 0) { actualizarHUD(); if (frame % 18 === 0) { pintarCalc(); vigilarEscena(); pintarCiclo(); } if (D.playing) for (const k in CAMS) { const m = metricasCam(k, true); D.minCam[k] = Math.min(D.minCam[k] ?? Infinity, m.libre); } }
   camT += dt; if (camT > 0.8 && !$('[data-panel="camaras"]').hidden && D.playing) { camT = 0; pintarCamaras(); }
   if (!D.sinRender) render();
 }

@@ -19,6 +19,9 @@ y no es fuente del repo del proyecto de Robótica (invariante I9).
   leen con un contexto, sin globales (T2.1). `exportar.js` (`EXPORTAR`) es el único formateador: convierte el modelo de
   `modeloExportacion()` (`app.js`, sin redondear y en `base_link`) en el texto de cada fichero exportado (T2.2).
   `EXPORTAR.tar` los empaqueta en el `.tar` del panel «Exportar a ROS» (T2.6); la guía de U4 es `docs/validar-en-ros.md`.
+- `docs/diseno/`: sistema visual de la interfaz (`sistema-visual.md`: tokens de `:root` en `src/part1.html`, pasos, cinta del
+  ciclo y matriz de cámaras; TU.1) y las direcciones prototipadas. La rejilla (cabecera de 42 px, panel de 384 px) no se cambia
+  sin volver a medir las huellas del lienzo de `tests/e2e/distorsion.test.mjs`.
 - `tools/build.sh` → `dist/gemelo-celda.html` (artefacto de claude.ai, con el gancho `window.__g` y `?prueba`).
 - `tools/build_web.sh` → `index.html` (GitHub Pages; quita el gancho y añade `config.js`). Llama a `build.sh`.
 - `web_src/`: plantillas con `@@CLAVE@@` y `PEGA_AQUI`. `tests/`: arnés de pruebas. `tests/mocks/`: simulacros de Firestore
