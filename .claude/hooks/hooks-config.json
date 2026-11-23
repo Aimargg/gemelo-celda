@@ -3,25 +3,57 @@
   "proteger": [
     {
       "nombre": "construidos-y-de-usuario",
-      "archivos": ["index.html", "config.js", "firebase.js", "ur3e-malla.json", "mesa.jpg", "firestore.rules"],
+      "archivos": [
+        "index.html",
+        "config.js",
+        "firebase.js",
+        "ur3e-malla.json",
+        "mesa.jpg",
+        "firestore.rules"
+      ],
       "modo": "bloquear",
       "motivo": "CLAUDE.md: index.html no se edita a mano (cambia src/ y ejecuta npm run build); firebase.js, config.js, ur3e-malla.json, mesa.jpg y las reglas de Firestore no se tocan sin su puerta (P3)."
     },
     {
       "nombre": "simulacros-y-escenas-fijas",
-      "rutas": ["tests/mocks/**", "tests/fixtures/escenas-v8/**"],
+      "rutas": [
+        "tests/mocks/**",
+        "tests/fixtures/escenas-v8/**"
+      ],
       "modo": "bloquear",
       "motivo": "CLAUDE.md e I1: los simulacros no se tocan y el codigo de escenas-v8 es fijo; su esperado solo se recalcula con npm run caracterizar -- --escenas."
     },
     {
       "nombre": "tests-existentes",
-      "rutas": ["tests/**", "package.json", "package-lock.json"],
+      "solo_versionados": true,
+      "rutas": [
+        "tests/unit/**",
+        "tests/e2e/**",
+        "tests/fixtures/**",
+        "tests/medidas/**"
+      ],
       "modo": "preguntar",
-      "motivo": "Modificar un test existente, el manifiesto o el lockfile necesita motivo: si el comportamiento esperado no ha cambiado, corrige el código, no el test. Las dependencias nuevas van por P6. Si la tarea lo pide, déjalo como pregunta."
+      "motivo": "Modificar un test existente, el manifiesto o el lockfile necesita motivo: si el comportamiento esperado no ha cambiado, corrige el código, no el test. Las dependencias nuevas van por P6. Si la tarea lo pide, déjalo como pregunta. tests/niveles.mjs y tests/README.md no se protegen (decisión del usuario, 2026-11-19): son el registro de niveles y su explicación, y un e2e nuevo tiene que darse de alta en ellos (CLAUDE.md).",
+      "archivos": [
+        "camera-info.mjs",
+        "collision-object.mjs",
+        "medir.mjs",
+        "navegador.mjs",
+        "rcl-params.mjs",
+        "scene-texto.mjs",
+        "servidor.mjs",
+        "tar-sistema.mjs",
+        "package.json",
+        "package-lock.json"
+      ]
     },
     {
       "nombre": "proteccion-de-los-hooks",
-      "rutas": [".claude/hooks/**", ".claude/settings.json", ".claude/settings.local.json"],
+      "rutas": [
+        ".claude/hooks/**",
+        ".claude/settings.json",
+        ".claude/settings.local.json"
+      ],
       "modo": "preguntar",
       "motivo": "Estos archivos definen las protecciones del repo; cambiarlos lo decide el usuario."
     }

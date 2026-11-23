@@ -448,6 +448,35 @@ const EXPORTAR = (() => {
   // Todos los ficheros de ROS de la disposición, en orden fijo: los de T2.2 + T2.4, los de la escena (T2.3) y los de las cámaras (T2.5)
   const todos = (m, O) => [...ficherosRos(m, O), ...ficherosEscena(m, O), ...ficherosCamaras(m, O)];
 
+  // ---------- Tablero de la bandeja (T4.4): tablero_bandeja.yaml, aparte de los ficheros de ROS (no entra en todos() ni en el .tar) ----------
+  // m = { ctx, tablero: TABLERO.modelo(...) } (src/tablero.js: diccionario, orden de las esquinas, marcadores [{ id, lado, x, y,
+  // yaw, esquinas [[x, y, z] × 4] }] y la alineación { alineado, texto }), todo en metros y radianes en el marco de la bandeja.
+  // Las mismas reglas que los ros__parameters (rcl: YAML 1.1 y 1.2 leen lo mismo, sin alias ni listas de mapas), con el redondeo
+  // de I7 (1 mm y 0,001 rad): cada esquina es un array de tres doubles con nombre, en el orden de OpenCV.
+  function tableroYaml(m, O) {
+    const T = m.tablero, og = k => O.yaml(k, m.ctx), mar = og('marcadores'), sup = og('disposicion'), nom = og('nombre_frame');
+    const nodos = [mapa('tablero',
+      hoja('frame_id', cad('bandeja'), nom),
+      hoja('diccionario', cad(T.diccionario), mar),
+      hoja('ids', lista(T.marcadores.map(k => ent(k.id))), mar),
+      hoja('orden_esquinas', lista(T.orden.map(cad)), 'orden de OpenCV: arriba-izquierda, arriba-derecha, abajo-derecha y abajo-izquierda del patrón'),
+      ...T.marcadores.map(k => mapa(`marcador_${ent(k.id)}`,
+        hoja('id', ent(k.id), mar),
+        hoja('lado_m', d3(k.lado), mar),
+        hoja('centro_m', lista([d3(k.x), d3(k.y), d3(0)]), sup),
+        hoja('yaw_rad', a3(k.yaw), `${sup}; giro del patrón sobre z, hacia +y de la bandeja`),
+        ...T.orden.map((o, i) => hoja(o, lista(k.esquinas[i].map(d3)), `${sup}; esquina del patrón con z saliendo de la cara impresa`)))))];
+    return [`# tablero_bandeja.yaml · gemelo de la celda UR3e · generado por el gemelo (IA), BORRADOR\n`,
+      `# Tablero de marcadores ArUco (${limpio(T.diccionario)}) de la bandeja: ids, lado y esquinas de cada marcador, para cv2.aruco.estimatePoseBoard.\n`,
+      '# Marco: bandeja (el de la TF bandeja, tf/bandeja.yaml). Metros y radianes (REP-103), redondeo a 1 mm y 0,001 rad (I7): con un lado que no es múltiplo de 2 mm el cuadrado escrito se desvía hasta 1 mm del ideal.\n',
+      '# El tablero es plano, en z = 0 (la cara de arriba de la bandeja; el dibujo del gemelo lo levanta 0,6 mm). Cada marcador sigue el convenio de ArUco de OpenCV: x a la derecha, y hacia arriba y z saliendo de la cara impresa; con yaw_rad = 0 sus ejes son los de la bandeja.\n',
+      '# Esquinas de cada marcador_<id>: arriba_izquierda, arriba_derecha, abajo_derecha, abajo_izquierda, en ese orden (orden_esquinas), como las que OpenCV devuelve al detectar.\n',
+      "# Carga: yaml.safe_load(texto)['/**']['ros__parameters']['tablero']; objPoints = una matriz 4×3 por marcador con sus esquinas en el orden de orden_esquinas e ids = ids, para el Board de estimatePoseBoard [SIN VALIDAR con OpenCV].\n",
+      `# Origen de cada valor, al final de su línea (D8): ${[...new Set([O.tipo('marcadores', m.ctx), O.tipo('disposicion', m.ctx)])].join(' y ')}; los ids, el lado y las posiciones son una propuesta del gemelo, sin medir.\n`,
+      ...(T.alineacion.alineado ? [`# AVISO: ${limpio(T.alineacion.texto)}.\n`] : []),
+    ].join('') + raiz(nodos);
+  }
+
   // ---------- Paquete .tar (T2.6, decisión 2 de su brief): los ficheros tal cual, bajo una carpeta raíz ----------
   // Formato ustar (POSIX.1-1988) sin comprimir y determinista: la misma lista da los mismos bytes. Por entrada, una cabecera
   // de 512 bytes (name 0–99, mode 100, uid 108, gid 116, size 124, mtime 136, chksum 148, typeflag 156, magic «ustar\0» 257,
@@ -512,6 +541,6 @@ const EXPORTAR = (() => {
     return out;
   }
 
-  return { r3, rad3, huella, cuaternion, posiciones, parametros, ficherosRos, ficherosEscena, ficherosCamaras, todos, tar };
+  return { r3, rad3, huella, cuaternion, posiciones, parametros, ficherosRos, ficherosEscena, ficherosCamaras, todos, tablero: tableroYaml, tar };
 })();
 if (typeof module !== 'undefined') module.exports = EXPORTAR;

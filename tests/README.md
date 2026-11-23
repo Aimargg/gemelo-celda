@@ -35,10 +35,12 @@ Duraciones medidas en el contenedor de 2 núcleos (SwiftShader, sin GPU): «ante
 | Fichero | Nivel | Tests | Antes (s) | Ahora (s) | Invariantes y motivo |
 |---|---|---|---|---|---|
 | `balanceo-salida` | tarea | 2 | — | 38 | T2.8 (DT30): en la disposición v27 del barrido, la demo «curso» se completa en tres fases de la bandeja y la salida no la toca; las muestras del balanceo son el obstáculo «bandeja», a 1 mm y sin la fase |
+| `captura` | tarea | 3 | — | 58 | T4.6: botón «Captura sintética» por cámara con su aviso, PNG descargado válido de 640 × 480 (CRC, IDAT) con los píxeles que leyó la página, esquinas de ArUco del JSON en su sitio (2 px), JSON de la descarga = vista previa, persona sin dibujar, escena y lienzo como estaban, tiempos (la primera captura espera a la cola de SwiftShader: unos 5 s, solo se imprime; las demás ≤ 2 s, medidas 0,05–0,2 s); lo que se anota en cenital, entrega y persona; focal y modo; la web sin gancho. Medido el 2026-11-21 en un portátil con Windows (`node --test`, 27 + 17 + 13 s) |
 | `carga` | tarea | 3 | 59 | 31 | los dos destinos (D2) y la red cerrada (I2) |
 | `datos` | tarea | 2 + 6 | — | 23 | I7: posiciones.yaml y la tabla de fuentes del panel «Datos» byte a byte (T2.1), red de T2.2–T2.5 |
 | `deuda-f2` | tarea | 1 + 2 | — | 17 | T2.7: DT35 (zonas de plan durante la demo; posiciones.yaml de una v10 con textos raros, en YAML 1.1 y 1.2), DT31 (aviso de la capa del otro robot) y DT41 (`#btnCalc` tras un cálculo) en una página |
 | `determinismo` | tarea | 3 | 95 | 50 | I6 con «gemelo» (A, B, A'), sin reintento de semilla (D5), banco de ensayo |
+| `distorsion` | puerta | 3 | — | 104 | T4.5: con la distorsión apagada, los píxeles por tarea, la escena y el lienzo (hash) son los del gemelo antes de T4.5; camera_info malos rechazados con su motivo; encendida, el píxel de marcadores de la mesa coincide con Brown–Conrady (1 px; D = 0 con la proyección sin distorsión); campo extra y su máximo editable; Restaurar; la web sin gancho. Medido el 2026-11-21 en un portátil con Windows (`node --test`, 53 + 28 + 22 s) |
 | `escenas-claude` | tarea | 1 | 48 | 29 | almacén de claude.ai (D2) |
 | `escenas-firestore` | tarea | 2 | 99 | 50 | I2: reglas del simulacro (campos, clave, papelera). «Guardar, editar…» medía 61,7 s antes y 36,2 s ahora |
 | `escenas-v8` | tarea | 1 + 3 | 96 | 49 | I1: las tres escenas v8 |
@@ -46,12 +48,16 @@ Duraciones medidas en el contenedor de 2 núcleos (SwiftShader, sin GPU): «ante
 | `ilegibles` | tarea | 2 | 72 | 32 | DT11 e I2 con las reglas de los dos almacenes |
 | `layout` | tarea | 3 | 139 | 67 | I1 e I2: campos v9, solo lectura, 50.000 caracteres. «web: …» medía 63,6 s antes y 31,5 s ahora |
 | `matriz` | tarea | 4 | 40 | 31 | I8: matriz «gemelo» en orden directo; comprobaciones de `matriz-curso.json` sin página |
+| `oclusion` | tarea | 5 | — | 49 | T4.2: oclusión por el brazo a lo largo del plan que deja «Calcular» (5 tramos por plato, 694 muestras de 0,1 s): una fila por objetivo en cada cámara con lo que dio el gemelo y recalculada aparte en la página (muestreo por tiempo, interpolación de ejecutar(), esferas de `colocar()` y rayo-esfera por la ecuación de segundo grado), SIN VALIDAR y sin umbral; solo lee (`CACHE_PLAN`, `L`, `firmaVal` y `D.planes` no cambian; sin plan al día, «sin plan» y sin número; con la demo en pausa y la persona apartada, las mismas cifras); el brazo tapa a la mano de la cámara de la persona (49,5 %) y deja de tapar al alejarla (0 %); con la mitad del paso cambia ≤ 0,3 puntos; paso y margen editables, Restaurar y valores malos sin aplicar; la web sin gancho. El plan entero se muestrea en 30 ms con 694 muestras y en 102 ms con 1383 (cota de la ficha: 2 s). Medido el 2026-11-22 en un portátil con Windows (`node --test`, 10 + 6 + 13 + 10 + 10 s) |
 | `perfil` | tarea | 4 | 118 | 61 | I6 con «curso» (A, B, A'), perfil de movimiento (T1.6) |
 | `robot` | tarea | 2 | 90 | 46 | I6 con el 203; dibujo = colisión = TCP (T1.4) |
 | `ros` | tarea | 1 + 54 | — | 33 | I7: parametros_celda.yaml (T2.2), TF estáticas (T2.4), escena de colisión (T2.3) y camera_info y usb_cam (T2.5) con nominal, 203 y prefijo en una página, y los mismos bytes dos veces en ella (Común-C1). T2.3 y T2.5 añadieron 24 subtests, de milisegundos cada uno |
 | `ros-referencias` | tarea | 1, 1 + 3 | — | 31 | I7: los ficheros de ROS (T2.2–T2.5) byte a byte con nominal, 203 y prefijo (Común-C3), red de T2.6 |
 | `ros-panel` | tarea | 2 (11 + 2 subtests) | — | 47 | I7 y DT38: sección «Exportar a ROS» (T2.6) con nominal, 203 y prefijo en el artefacto y la web: lista, descargas y .tar byte a byte (el .tar, con el tar del sistema), Ver y Copiar, repintado sin cálculo y descargas desactivadas durante un cálculo |
 | `sensor` | tarea | 2 | 59 | 34 | modelo de sensor (T1.7, D10) |
+| `tablero` | puerta | 3 | — | 87 | T4.4: diseñador del tablero de marcadores de la bandeja: filas por marcador (id, lado, x, y, giro), añadir y quitar, campos inválidos sin aplicar, aviso de centros alineados con su tolerancia editable, Ver, Copiar y Descargar de `tablero_bandeja.yaml` (texto a mano, reglas de ros, ida y vuelta), Restaurar; la misma sección en la web; la escena no cambia. Medido el 2026-11-22 en el contenedor (`node --test`, 44 + 23 + 19 s) |
+| `tareas` | tarea | 3 | — | 27 | T4.1: panel por cámara con los píxeles por tarea (proyección estenopeica), sus estados, origen y fuente; velocidad de la bandeja editable y Restaurar; la misma cifra en la web. Medido el 2026-11-21 en un portátil con Windows (`node --test`, 27 s) |
+| `usb` | tarea | 4 | — | 29 | T4.3: demanda USB por cámara, suma por bus y aviso «una cámara por bus» con la reserva máxima; bus, reserva, formato y factor editables; salida de `lsusb -v` pegada; la misma sección en la web. Medido el 2026-11-21 en un portátil con Windows (`node --test`, 29 s) |
 | `cambio-robot` | puerta | 3 | 186 | 122 | T1.5-3, T1.5-4 (68,6 s antes) y correcciones 1 y 2 |
 | `determinismo-demo` | puerta | 1 | 38 | 32 | I6 a nivel de demo: matriz en orden inverso (también hay I6 en la tarea) |
 | `matriz-curso` | puerta | 2 | 74 | 53 | matriz «curso» directa e inversa (I6 con «curso» también en la tarea) |
@@ -80,8 +86,8 @@ pasó a `ros-recarga`) y `ros-recarga`, medidos por el coordinador al aceptar T2
 | I3 clave | `tools/check.sh` (los dos niveles) | — |
 | I4 nada a ROS | sin test todavía (DT8, T3.1) | — |
 | I5 un solo HTML | `unit/i5` | — |
-| I6 determinismo | `determinismo` (A, B, A' «gemelo»), `robot` (con el 203), `perfil` (con «curso») | `determinismo-demo`, `matriz-curso` (órdenes inversos) |
-| I7 exportación | `exportar` (T1.5-1 con 203–206, T1.5-2 ida y vuelta), `datos` (YAML y tabla byte a byte), `ros` (parámetros y TF estáticas de ROS: reglas de rcl, mismo texto que posiciones.yaml, ida y vuelta, árbol TF, cuaterniones, cámaras frente a su cámara de render y origen; escena de colisión: validadores de CollisionObject y de .scene, escena = obstaculos(), .scene = YAML en su world; cámaras: validador de camera_info, píxeles frente a la cámara de render y usb_cam), `ros-referencias` (los ficheros de ROS byte a byte), `ros-panel` (lo que se descarga desde el panel es `ficherosRos()`, también en el .tar), `deuda-f2` (zonas de plan durante la demo y textos raros de una v10 en posiciones.yaml), `unit/marcos`, `unit/origen`, `unit/exportar`, `unit/exportar-escena`, `unit/rcl-params`, `unit/validadores-ros`, `unit/tar` | `cambio-robot` (prefijo en el YAML) |
+| I6 determinismo | `determinismo` (A, B, A' «gemelo»), `robot` (con el 203), `perfil` (con «curso»), `oclusion` (la oclusión de T4.2 solo lee `CACHE_PLAN`: ni planifica ni cambia `L`, `firmaVal` ni `D.planes`) | `determinismo-demo`, `matriz-curso` (órdenes inversos) |
+| I7 exportación | `exportar` (T1.5-1 con 203–206, T1.5-2 ida y vuelta), `datos` (YAML y tabla byte a byte), `ros` (parámetros y TF estáticas de ROS: reglas de rcl, mismo texto que posiciones.yaml, ida y vuelta, árbol TF, cuaterniones, cámaras frente a su cámara de render y origen; escena de colisión: validadores de CollisionObject y de .scene, escena = obstaculos(), .scene = YAML en su world; cámaras: validador de camera_info, píxeles frente a la cámara de render y usb_cam), `ros-referencias` (los ficheros de ROS byte a byte), `ros-panel` (lo que se descarga desde el panel es `ficherosRos()`, también en el .tar), `deuda-f2` (zonas de plan durante la demo y textos raros de una v10 en posiciones.yaml), `unit/marcos`, `unit/origen`, `unit/exportar`, `unit/exportar-escena`, `unit/rcl-params`, `unit/validadores-ros`, `unit/tar`; `distorsion` (el camera_info exportado y la escena no cambian con la distorsión: T4.5) | `cambio-robot` (prefijo en el YAML) |
 | I8 matriz | `matriz` (8 casos en orden directo) | — |
 
 ## Cierre del navegador (T2.0)
@@ -96,7 +102,7 @@ cambia: cada test cierra en su `finally`, después de sus comprobaciones. Con el
 ## Qué hay en tests/
 
 - `unit/`: `node:test` sobre el código puro de `src/` (cinemática, layout, semilla, perfiles, sensor, origen de cada valor,
-  formateador de los ficheros exportados y del .tar, I5, niveles) y los validadores de los ficheros de ROS con sus muestras que deben fallar.
+  formateador de los ficheros exportados y del .tar, modelo de distorsión y lectura de camera_info de T4.5, muestreo y rayos de la oclusión de T4.2, proyección y anotaciones de la captura sintética de T4.6, I5, niveles) y los validadores de los ficheros de ROS con sus muestras que deben fallar.
 - `e2e/`: Playwright + Chromium con SwiftShader sobre los dos destinos; `permitidos.json`, avisos de consola permitidos.
 - `fixtures/`: referencias generadas por el gemelo (`generar.mjs`, `npm run caracterizar`): matrices, escenas v8, cinemática
   del curso, `yaml/` (panel «Datos», T2.1) y `ros/<caso>/` (ficheros de ROS, T2.2–T2.5: `npm run caracterizar -- --ros`).

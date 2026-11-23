@@ -3,3 +3,4 @@ node_modules/
 clave_grupo.txt
 test-results/
 *.local
+.claude/settings.local.json

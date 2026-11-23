@@ -48,7 +48,13 @@ const ARUCO = ['1011010100110010', '0000111110011010', '0011001100101101', '1001
 // @@RNG@@
 // @@PERFIL@@
 // @@SENSOR@@
+// @@TAREAS@@
+// @@USB@@
+// @@TABLERO@@
+// @@DISTORSION@@
 // @@ORIGEN@@
+// @@CAPTURA@@
+// @@OCLUSION@@
 // @@EXPORTAR@@
 // @@CALIBRACION@@
 // Perfil con el que se explora (arrastrar, «Calcular trayectorias», el primer cálculo, la vista de cada objeto): siempre
@@ -287,7 +293,7 @@ function aruco(id, lado = 0.05) {
   const g = new THREE.Group();
   const papel = new THREE.Mesh(new THREE.PlaneGeometry(lado * 1.25, lado * 1.25), new THREE.MeshStandardMaterial({ color: '#f4f2ee', roughness: 0.9 })); papel.receiveShadow = true; g.add(papel);
   const m = new THREE.Mesh(new THREE.PlaneGeometry(lado, lado), new THREE.MeshStandardMaterial({ map: arucoTex(id), roughness: 0.85 })); m.position.z = 0.0002; m.receiveShadow = true; g.add(m);
-  g.userData.id = id; return g;
+  g.userData.id = id; g.userData.lado = lado; return g;
 }
 const plastico = (o) => new THREE.MeshPhysicalMaterial({ roughness: 0.32, clearcoat: 0.7, clearcoatRoughness: 0.18, ...o });
 function lathe(pts, mat, seg = 48) {
@@ -389,13 +395,14 @@ LBL.persona = etiqueta('Persona'); LBL.persona.position.set(0, 0, 1.85); persona
 pickables.push({ key: 'persona', obj: persona, nombre: 'Persona y bandeja', grupo: 'V1' });
 
 const bandeja = new THREE.Group(); scene.add(bandeja); OBJ.bandeja = bandeja;
+const bandMarc = []; // marcadores de la bandeja (ids 6–9, de 32 mm): los lee tareasCam (T4.1)
 const BAND = { w: 0.45, d: 0.33, e: 0.012 }; // bandeja de autoservicio típica [SUPUESTO]: con 36 cm, el borde de los platos caía sobre los dedos de quien la sujeta
 {
   const m = new THREE.MeshPhysicalMaterial({ color: '#7f95a6', roughness: 0.55, clearcoat: 0.2, bumpMap: TEX.bandeja, bumpScale: 0.0004 });
   const b = new THREE.Mesh(new RoundedBoxGeometry(BAND.d, BAND.w, BAND.e, 3, 0.004), m); b.position.z = -BAND.e / 2; b.castShadow = true; b.receiveShadow = true; bandeja.add(b);
   const rimM = new THREE.MeshPhysicalMaterial({ color: '#6b8193', roughness: 0.5, clearcoat: 0.2 });
   for (const [sx, sy, lx, ly] of [[1, 0, 0.008, BAND.w + 0.016], [-1, 0, 0.008, BAND.w + 0.016], [0, 1, BAND.d, 0.008], [0, -1, BAND.d, 0.008]]) { const r = new RoundedBoxGeometry(lx, ly, 0.012, 2, 0.003); const rm = new THREE.Mesh(r, rimM); rm.position.set(sx * (BAND.d / 2 + 0.004), sy * (BAND.w / 2 + 0.004), -0.002); rm.castShadow = true; bandeja.add(rm); }
-  [[0.14, -0.17], [0.14, 0.0], [0.14, 0.17], [-0.05, 0.205]].forEach(([u, v], i) => { const a = aruco(6 + i, 0.032); a.position.set(u, v, 0.0006); bandeja.add(a); });
+  [[0.14, -0.17], [0.14, 0.0], [0.14, 0.17], [-0.05, 0.205]].forEach(([u, v], i) => { const a = aruco(6 + i, 0.032); a.position.set(u, v, 0.0006); bandeja.add(a); bandMarc.push(a); });
 }
 const zonasB = {};
 for (const [k, v] of [['zona_primero', 0.10], ['zona_segundo', -0.10], ['zona_centro', 0]]) {
@@ -1459,7 +1466,8 @@ function cadenaPlato(pk, pl, zw, pf) {
   const rl = rutaCartesiana(ra.ruta[ra.ruta.length - 1], [{ p: pl.tcp, yaw: pl.yaw }, { p: pl.tcp.clone().add(new THREE.Vector3(0, 0, 0.08)), yaw: pl.yaw }], { ...o, permitir: ['caja:' + pk, 'plato:' + pk] });
   if (!rl.ruta) return { fallo: { ...rl, fallo: `al levantarlo de la caja, ${rl.fallo}`, fase: 'plato', etapa: 1 } };
   const qL = rl.ruta[rl.ruta.length - 1];
-  const t = colocacionConTransporte(zw, qL, pl, pl.carga, pf); return t.pc2 ? { ...t, qL } : { fallo: { ...t.fallo, etapa: 2 } };
+  // ra y rl (las dos rectas de antes del transporte) se guardan para la oclusión de T4.2, que solo las lee: no cambian nada del plan
+  const t = colocacionConTransporte(zw, qL, pl, pl.carga, pf); return t.pc2 ? { ...t, qL, ra, rl } : { fallo: { ...t.fallo, etapa: 2 } };
 }
 function cargaPlan(pk, pl) { // el plato y la fruta que llevará, en el marco de tool0 tal como quedará agarrado
   const q0 = robot.q.slice(), w0 = pinza.w; robot.setQ(pl.q); pinza.setApertura(0.006); const base = Array.from(cargaDe(OBJ[pk]));
@@ -1762,6 +1770,479 @@ function metricasCam(k, soloLibre = false) {
   }
   return { hf, vf, mmpx, dist, inc, alt: cp.z - MESA.h, aruco: 50 / mmpx, dentro, total: pts.length, fuera, tapados, libre, brazoOK: R.brazoOK, brazoD: R.brazoD, sensor: sensorEscena(), nota: ar.nota };
 }
+// Píxeles por tarea de cada cámara (T4.1, src/tareas.js): fruta, ArUco, cara y pupilas, mano, bandeja en movimiento y
+// profundidad de campo. Los supuestos editables son de la sesión: no se guardan en la escena (I1, I2)
+let TAREAS_CFG = TAREAS.cfgDefecto();
+const v3a = v => [v.x, v.y, v.z];
+// Las tareas de la cámara k, según sus objetivos (como puntosObjetivo): [{ clave, id, titulo, geos, res }] y la profundidad de campo
+function tareasCam(k) {
+  const c = L.cams[k], R = CAMS[k]; R.cam.updateMatrixWorld(true); bandeja.updateMatrixWorld(true); persona.updateMatrixWorld(true); OBJ.zona.updateMatrixWorld(true);
+  const M = MODOS[c.modo], ar = areaDe(c), cam = { w: ar.w, f: c.f, N: M.w, Nh: M.h };
+  const cp = R.cam.position.clone(), o = v3a(cp), eje = v3a(R.cam.getWorldDirection(new THREE.Vector3())), arriba = [0, 0, 1];
+  const wp = obj => obj.getWorldPosition(new THREE.Vector3());
+  // Un punto: profundidad a lo largo del eje, escorzo según el objeto (plano horizontal, segmento o de frente) y si cae en el campo
+  const punto = (nombre, p, tipo, extra = {}) => {
+    const rayo = v3a(p.clone().sub(cp).normalize()), ndc = p.clone().project(R.cam), prof = TAREAS.profundidad(v3a(p), o, eje);
+    const dentro = prof > 0 && Math.abs(ndc.x) <= 1 && Math.abs(ndc.y) <= 1 && ndc.z < 1 && ndc.z > -1;
+    return { nombre, prof, dentro, c: tipo === 'plano' ? TAREAS.escorzoPlano(rayo, arriba) : tipo === 'segmento' ? TAREAS.escorzoSegmento(rayo, extra.eje) : 1, p: v3a(p), ...extra }; // p: el punto en el mundo, que lee la oclusión (T4.2)
+  };
+  const pts = puntosObjetivo(k), de = nombre => pts.filter(([n]) => n === nombre).map(([, p]) => p), T = [];
+  const marcadores = (lista, ids, etq) => lista.map((a, i) => punto(`marcador ${ids + i} (${etq})`, wp(a), 'plano', { ladoMm: a.userData.lado * 1000 }));
+  const add = (clave, id, titulo, geos) => T.push({ clave, id, titulo, geos, res: TAREAS.evaluarVarios(id, geos, cam, TAREAS_CFG) });
+  if (k === 'cenital') {
+    add('fruta', 'fruta', `Fruta de ${fmt(TAREAS_CFG.fruta.ladoMm, 0)} mm`, de('zona').map((p, i) => punto(`zona, punto ${i + 1}`, p, 'plano')));
+    add('aruco-zona', 'aruco', `ArUco de la zona (${mm(zonaMarc[0].userData.lado)} mm)`, marcadores(zonaMarc, 0, 'zona'));
+  }
+  if (k === 'entrega') {
+    add('aruco-entrega', 'aruco', `ArUco de la entrega (${mm(OBJ.arucoE[0].userData.lado)} mm)`, marcadores(OBJ.arucoE, 4, 'entrega'));
+    add('aruco-bandeja', 'aruco', `ArUco de la bandeja (${mm(bandMarc[0].userData.lado)} mm)`, marcadores(bandMarc, 6, 'bandeja'));
+    add('desenfoque', 'desenfoque', 'Bandeja en movimiento', de('bandeja').map((p, i) => punto(`bandeja, punto ${i + 1}`, p)));
+  }
+  if (k === 'persona') {
+    // Pupilas: segmento horizontal de la cara (eje y de la persona); si la cámara ve la nuca, no se ven
+    const frente = new THREE.Vector3(1, 0, 0).transformDirection(persona.matrixWorld), ipd = v3a(new THREE.Vector3(0, 1, 0).transformDirection(persona.matrixWorld));
+    add('pupilas', 'pupilas', 'Cara: distancia entre pupilas', de('cara').map(p => { const g = punto('cara', p, 'segmento', { eje: ipd }); if (p.clone().sub(cp).dot(frente) >= 0) g.oculto = 'la cámara ve la cara de espaldas'; return g; }));
+    const manos = [...de('mano dcha.'), ...de('mano izda.')].map((p, i) => punto(i ? 'mano izda.' : 'mano dcha.', p));
+    add('mano', 'mano', 'Mano', manos); add('desenfoque', 'desenfoque', 'Bandeja en movimiento (las manos)', manos);
+  }
+  // Profundidad de campo: enfocada en el punto de mira; los objetivos son los que la cámara ve
+  const aim = new THREE.Vector3(c.mira.x, c.mira.y, c.mira.z);
+  const objetivos = pts.map(([n, p]) => punto(n, p)).filter(g => g.dentro).map(g => ({ nombre: g.nombre, prof: g.prof }));
+  return { tareas: T, campo: TAREAS.evaluarCampo(TAREAS.profundidad(v3a(aim), o, eje), objetivos, cam, TAREAS_CFG) };
+}
+// Las filas de la tarjeta de la cámara k (dentro de su <dl class="kv">): cada tarea con sus píxeles, su estado, el origen del
+// tamaño y el umbral con su fuente
+function htmlTareas(k) {
+  const { tareas, campo } = tareasCam(k), ctx = {}; // los tipos de «marcadores», «fruta» y «exposicion» no dependen del contexto
+  const tag = t => `<span class="tag ${ORIGEN.CLASE[t] || 's'}">${t}</span>`, pxf = x => fmt(x, x < 10 ? 1 : 0);
+  const umbral = u => `${u.texto} · ${u.origen === 'PLAN' ? 'PLAN: la cita no se ha podido comprobar' : 'SUPUESTO SIN VALIDAR'}`;
+  const fila = (clave, dt, tipo, e, pillTxt, px, detalle) => `<div class="tarea" data-tarea="${clave}" data-px="${px ?? ''}" data-estado="${e}"><div><span>${dt} ${tag(tipo)}</span><span class="pill ${TAREAS.ESTADOS[e].cls}">${pillTxt}</span></div><span class="hint">${detalle}</span></div>`;
+  return `<div class="tareas"><h4>Píxeles por tarea <span class="tag s">SIN VALIDAR</span></h4>` + tareas.map(t => {
+    const r = t.res, def = TAREAS.DEF[t.id], tipo = def.clave ? ORIGEN.entrada(def.clave, ctx).tipo : 'SUPUESTO', e = TAREAS.ESTADOS[r.estado];
+    const pill = r.px === null ? e.txt : `${pxf(r.px)} px${t.id === 'desenfoque' ? ' de desenfoque' : r.pxImagen !== r.px ? ' en la red' : ''} · ${e.txt}`;
+    const peor = r.estado === 'fuera' ? 'ningún punto en el campo' : `peor: ${r.punto}${r.nFuera ? ` (${r.nFuera} de ${r.nPuntos} fuera del campo)` : ''}`;
+    const img = r.px !== null && r.pxImagen !== r.px ? ` · ${pxf(r.pxImagen)} px en la imagen` : '';
+    return fila(t.clave, t.titulo, tipo, r.estado, pill, r.px, `${peor}${img}${r.nota ? ' · ' + r.nota : ''} · ${fmt(r.mmpx, 2)} mm/px · ${umbral(r.umbral)}`);
+  }).join('') + (() => {
+    const cm = v => fmt(v * 100, 0), lejos = campo.lejos === Infinity ? '∞' : cm(campo.lejos);
+    return fila('campo', 'Profundidad de campo', 'SUPUESTO', campo.estado, campo.total ? `${cm(campo.cerca)}–${lejos} cm · ${TAREAS.ESTADOS[campo.estado].txt}` : TAREAS.ESTADOS.fuera.txt, campo.total ? campo.cerca : null,
+      `enfocada a ${cm(campo.enfoque)} cm (el punto de mira); ${campo.dentro} de ${campo.total} objetivos dentro${campo.fuera.length ? ': fuera ' + [...new Set(campo.fuera)].join(', ') : ''} · ${umbral(campo.umbral)}`);
+  })() + '</div>';
+}
+function pintarTareasCfg() {
+  $('#tareasCfgCuerpo').innerHTML = TAREAS.PARAMS.map(p => {
+    const [g, n] = p.id.split('.'), plan = p.origen === 'PLAN';
+    return `<div class="field"><label for="tc_${p.id}" title="${p.fuente}">${p.nombre} <span class="tag ${plan ? 'f' : 's'}">${plan ? 'PLAN' : 'SUPUESTO · SIN VALIDAR'}</span></label><output>${p.unidad}</output><input type="number" id="tc_${p.id}" min="0" step="any" value="${TAREAS_CFG[g][n]}"${p.editable ? '' : ' disabled'}></div>`;
+  }).join('') + '<div class="btns"><button class="btn" id="btnTareasRestaurar">Restaurar los valores de partida</button></div>';
+}
+$('#tareasCfgCuerpo').addEventListener('input', e => {
+  const id = e.target.id.startsWith('tc_') ? e.target.id.slice(3) : null; if (!id) return;
+  try { TAREAS_CFG = TAREAS.fijar(TAREAS_CFG, id, e.target.valueAsNumber); e.target.removeAttribute('aria-invalid'); } catch { e.target.setAttribute('aria-invalid', 'true'); return; }
+  clearTimeout(pintarCamaras._t); pintarCamaras._t = setTimeout(pintarCamaras, 120);
+});
+$('#tareasCfgCuerpo').addEventListener('click', e => { if (e.target.closest('#btnTareasRestaurar')) { TAREAS_CFG = TAREAS.cfgDefecto(); pintarTareasCfg(); pintarCamaras(); } });
+pintarTareasCfg();
+// Oclusión por el brazo durante el ciclo (T4.2, src/oclusion.js): en qué porcentaje del ciclo tapa el brazo cada objetivo de cada
+// cámara. Solo LEE el plan que dejó «Calcular» (CACHE_PLAN de «explorar»: no planifica nada, no cambia la semilla ni los planes: I6,
+// D5); sin plan al día dice «sin plan» y no da número. Matemática pura sobre las posturas de colocar() y las esferas de colisión:
+// un solo pase, sin repintar la escena en cada muestra. El resultado se guarda con la clave de lo que lo determina, así que repintar
+// el panel (la demo lo hace cada 0,8 s) no recalcula. Los supuestos (paso y margen) son de la sesión: no se guardan (I1, I2)
+let OCLU_CFG = OCLUSION.cfgDefecto(), OCLU = { clave: '', res: null, calculos: 0 };
+// Los planes de los platos activos que se pueden muestrear: { lista: [{ pk, pl, ch }] } o { sin } si no hay plan al día (cambios sin
+// calcular, o un plan que no llega hasta la bandeja). Solo lee CACHE_PLAN
+function planesOclusion() {
+  if (!robot || sinPlan()) return { sin: 'sin plan: pulsa «Calcular trayectorias»' };
+  const lista = [];
+  for (const [pk] of platosActivos()) {
+    const pl = cachePlan(PERFIL_EXPLORA)[pk].pl, ch = pl && pl.cadena;
+    if (!ch || !ch.pc2 || !ch.ra || !ch.rl) return { sin: `sin plan: el plan del plato ${pk === 'plato1' ? '1º' : '2º'} no llega hasta la bandeja` };
+    lista.push({ pk, pl, ch });
+  }
+  return { lista };
+}
+// Los tramos de esos planes que entran en el ciclo, por plato y en el orden de la demo, con la apertura de la pinza, lo que lleva y
+// la duración que les da ejecutar() (el reparto del perfil «gemelo» con la velocidad de la demo y el factor de la persona; la
+// recta, además, su mínimo). Acercarse, levantar y llevar son las rutas del plan; salir y subir no se guardan y se aproximan por
+// interpolación articular entre sus posturas ya calculadas. El factor de la persona lee su posición: que la llame quien ya está en
+// la escena de partida
+function tramosDe(lista) {
+  const pf = PERFIL_EXPLORA, tramos = [];
+  for (const { pk, pl, ch } of lista) {
+    const pc2 = ch.pc2, tr = (id, ruta, f, largo, w, carga) => { const d = duracion(ruta, f, pf); return { id, plato: pk, ruta, acum: d.acum, S: d.S, T: Math.max(d.T, tMinCart(largo, f, pf)), w, carga }; };
+    tramos.push(tr('acercar', ch.ra.ruta, factorPersona(pl.tcp), ch.ra.largo, 0.03, null), tr('levantar', ch.rl.ruta, factorPersona(pl.tcp), ch.rl.largo, 0.006, pl.carga),
+      tr('llevar', ch.r.ruta, factorPersona(pc2.pre), ch.r.largo, 0.006, pl.carga), tr('salir', [pc2.q, pc2.qS], factorPersona(pc2.salida), 0.08, 0.03, null), tr('subir', [pc2.qS, pc2.qU], factorPersona(pc2.subida), H_SALIDA, 0.03, null));
+  }
+  return tramos;
+}
+const tramosOclusion = () => { const s = planesOclusion(); return s.sin ? s : { tramos: tramosDe(s.lista) }; };
+// Cada cámara (su centro) y los puntos de cada objetivo que ve, en base_link y en la escena de partida: los objetivos se toman
+// estáticos y con la bandeja en su pose de recepción, como se planifica (no se simula su balanceo). Los objetivos son los de las
+// tareas de T4.1 (tareasCam) con los puntos dentro del campo y no ocultos; «Bandeja en movimiento» de la persona repite las manos
+function camarasOclusion() {
+  const mb = marco(), aB = p => mb.aBase(p[0], p[1], p[2]), titulos = {};
+  const camaras = Object.keys(L.cams).map(k => {
+    const objetivos = tareasCam(k).tareas.filter(t => !(k === 'persona' && t.id === 'desenfoque')).map(t => { (titulos[k] = titulos[k] || {})[t.clave] = t.titulo; return { id: t.clave, puntos: t.geos.filter(g => g.dentro && !g.oculto).map(g => aB(g.p)) }; });
+    return { id: k, o: aB(v3a(CAMS[k].cam.position)), objetivos };
+  });
+  return { camaras, titulos };
+}
+// El resultado para el plan de ahora: { sin } sin plan al día, { error } si no se puede calcular (demasiadas muestras), o
+// { r, titulos, ms, tramos }. Con la misma clave devuelve el de antes
+function oclusionPlan() {
+  const pls = planesOclusion(); if (pls.sin) return { sin: pls.sin };
+  const clave = JSON.stringify([ROB.id, D.vel, L, OCLU_CFG, pls.lista.map(x => cachePlan(PERFIL_EXPLORA)[x.pk].key)]);
+  if (OCLU.clave === clave && OCLU.res) return OCLU.res;
+  const t0 = performance.now(); let res;
+  try {
+    // en la escena de partida y con la persona en su sitio (D.personaOff = 0 como al planificar: con la demo a medias la persona puede
+    // estar apartada), para que el resultado no dependa de en qué punto está la demo
+    const { tramos, camaras, titulos } = enEscenaDePartida(() => {
+      const off = D.personaOff; if (off) { D.personaOff = 0; aplicarBandeja(simT); }
+      try { return { tramos: tramosDe(pls.lista), ...camarasOclusion() }; } finally { D.personaOff = off; } // volver() de la escena de partida lo recoloca
+    });
+    const r = OCLUSION.calcular({ tramos, paso: OCLU_CFG.muestreo.paso, margen: OCLU_CFG.rayo.margenMm / 1000, camaras, colocar: (q, w, carga) => ({ n: colocar(q, w, carga), X: COL.X }) });
+    res = { r, titulos, tramos: tramos.map(t => t.id), ms: performance.now() - t0 };
+  } catch (e) { res = { error: e.message }; }
+  OCLU = { clave, res, calculos: OCLU.calculos + 1 }; return res;
+}
+// El bloque de la tarjeta de la cámara k: una fila por objetivo con el porcentaje del ciclo con todo tapado y con algún punto
+// tapado, la racha más larga y la nota de qué tramos entran. Sin umbral de cumple/no cumple: no hay fuente
+function htmlOclusion(k) {
+  const res = oclusionPlan(), cab = `<div class="oclu" data-oclu="${k}"><h4>Oclusión por el brazo durante el transporte de los platos <span class="tag s">SIN VALIDAR</span></h4>`;
+  if (res.sin) return `${cab}<p class="hint" data-estado="sin-plan">${res.sin}</p></div>`;
+  if (res.error) return `${cab}<p class="hint" data-estado="error">No se calcula: ${res.error}</p></div>`;
+  const cam = res.r.camaras.find(c => c.id === k), c = OCLU_CFG;
+  return cab + cam.objetivos.map(o => {
+    const pill = o.todo === null ? 'fuera de campo' : `todo tapado ${fmt(o.todo, 1)} % · algún punto ${fmt(o.alguno, 1)} %`;
+    const det = o.todo === null ? 'ningún punto del objetivo cae en el campo' : `${o.nPuntos} ${o.nPuntos === 1 ? 'punto' : 'puntos'} en el campo · racha más larga con todo tapado: ${fmt(o.racha, 1)} s`;
+    return `<div class="ocl-fila" data-obj="${o.id}" data-puntos="${o.nPuntos}" data-todo="${o.todo ?? ''}" data-alguno="${o.alguno ?? ''}" data-racha="${o.racha ?? ''}"><div><span>${res.titulos[k][o.id]}</span><span class="pill">${pill}</span></div><span class="hint">${det}</span></div>`;
+  }).join('') + `<p class="hint" data-estado="calculado">${fmt(res.r.muestras, 0)} muestras en ${fmt(res.r.T, 1)} s de ciclo (paso de ${fmt(c.muestreo.paso, 2)} s, margen de ${fmt(c.rayo.margenMm, 0)} mm). ${OCLUSION.nota([...new Set(res.tramos)])} Esferas de colisión del brazo, la pinza y lo que lleva, sin las mallas: sobresalen 11–17 mm de la malla y la oclusión sale algo por encima de la real. Sin umbral de cumple o no cumple: no hay fuente. SUPUESTO SIN VALIDAR.</p></div>`;
+}
+function pintarOcluCfg() {
+  $('#ocluCfgCuerpo').innerHTML = OCLUSION.PARAMS.map(p => {
+    const [g, n] = p.id.split('.');
+    return `<div class="field"><label for="oc_${p.id}" title="${p.fuente}">${p.nombre} <span class="tag s">SUPUESTO · SIN VALIDAR</span></label><output>${p.unidad}</output><input type="number" id="oc_${p.id}" min="0" step="any" value="${OCLU_CFG[g][n]}"></div>`;
+  }).join('') + '<div class="btns"><button class="btn" id="btnOcluRestaurar">Restaurar los valores de partida</button></div>';
+}
+$('#ocluCfgCuerpo').addEventListener('input', e => {
+  const id = e.target.id.startsWith('oc_') ? e.target.id.slice(3) : null; if (!id) return;
+  try { OCLU_CFG = OCLUSION.fijar(OCLU_CFG, id, e.target.valueAsNumber); e.target.removeAttribute('aria-invalid'); } catch { e.target.setAttribute('aria-invalid', 'true'); return; }
+  clearTimeout(pintarCamaras._t); pintarCamaras._t = setTimeout(pintarCamaras, 120);
+});
+$('#ocluCfgCuerpo').addEventListener('click', e => { if (e.target.closest('#btnOcluRestaurar')) { OCLU_CFG = OCLUSION.cfgDefecto(); pintarOcluCfg(); pintarCamaras(); } });
+pintarOcluCfg();
+// Ancho de banda USB (T4.3, src/usb.js): formato, reserva y bus de cada cámara, suma por bus y la salida de `lsusb -v` pegada. Todo
+// es de la sesión: no se guarda en la escena (I1, I2) y el texto pegado solo se analiza, no se envía a ningún sitio (I4)
+let USB_CFG = USB.cfgDefecto(), USB_LSUSB = null, USB_FIRMA = '';
+const USB_CAMS = {};
+const usbCam = k => USB_CAMS[k] || (USB_CAMS[k] = { formato: 'mjpeg', reserva: USB.RESERVA_MAX, bus: 1, disp: '' });
+const usbEsc = s => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]);
+const usbTag = (t, c) => `<span class="tag ${c}">${t}</span>`, usbSupuesto = () => usbTag('SUPUESTO · SIN VALIDAR', 's');
+const usbDispClave = d => `${d.bus}:${d.dispositivo}`;
+const usbCamaras = () => USB_LSUSB ? USB.camarasDe(USB_LSUSB) : [];
+// Las cámaras de la escena con su modo (MODOS, el de su tarjeta), su formato, su reserva y su bus
+const usbEntradas = () => Object.keys(L.cams).map(k => { const st = usbCam(k), M = MODOS[L.cams[k].modo]; return { clave: k, bus: st.bus, formato: st.formato, w: M.w, h: M.h, fps: M.fps, reserva: st.reserva }; });
+const usbFirma = () => JSON.stringify(Object.keys(L.cams).map(k => [k, L.cams[k].nombre, L.cams[k].modo])) + (USB_LSUSB ? 'lsusb' : '');
+// Pinta los campos de cada cámara (formato, bus, reserva y, con lsusb, su dispositivo) y los resultados
+function usbPintar() {
+  const devs = usbCamaras(); USB_FIRMA = usbFirma();
+  $('#usbCuerpo').innerHTML = Object.keys(L.cams).map(k => {
+    const c = L.cams[k], st = usbCam(k);
+    const disp = devs.length ? `<div class="row"><label class="hint" for="usb_disp_${k}" style="flex:none">Dispositivo</label><select id="usb_disp_${k}" style="flex:1;width:auto"><option value="">— sin elegir —</option>${devs.map(d => `<option value="${usbDispClave(d)}"${st.disp === usbDispClave(d) ? ' selected' : ''}>Bus ${d.bus} · dispositivo ${d.dispositivo} · ${usbEsc(d.nombre)} · ${fmt(d.reservaMax, 1)} Mbit/s</option>`).join('')}</select></div>` : '';
+    return `<div class="usbcam" data-cam="${k}"><div><strong>Cámara ${usbEsc(c.nombre.toLowerCase())}</strong><span class="pill" data-usb="estado"></span></div>
+      <div class="row"><label class="hint" for="usb_formato_${k}" style="flex:none">Formato</label><select id="usb_formato_${k}" style="flex:1;width:auto">${Object.entries(USB.FORMATOS).map(([id, f]) => `<option value="${id}"${id === st.formato ? ' selected' : ''}>${f.nombre}</option>`).join('')}</select>
+        <label class="hint" for="usb_bus_${k}" style="flex:none">Bus</label><input type="number" id="usb_bus_${k}" min="1" step="1" value="${st.bus}" style="width:64px"></div>
+      <div class="field"><label for="usb_reserva_${k}">Reserva (Mbit/s)</label><output>máx. ${fmt(USB.RESERVA_MAX, 1)}</output><input type="number" id="usb_reserva_${k}" min="0" max="${USB.RESERVA_MAX}" step="any" value="${st.reserva}"></div>
+      ${disp}<span class="hint" data-usb="detalle"></span></div>`;
+  }).join('');
+  usbActualizar();
+}
+// Recalcula el aviso, el estado de cada cámara y la suma por bus sin tocar los campos (así no se pierde el foco al escribir)
+function usbActualizar() {
+  let r; try { r = USB.evaluarBuses(usbEntradas(), USB_CFG); } catch (e) { $('#usbAviso').textContent = `No se puede estimar: ${e.message}`; $('#usbBuses').innerHTML = ''; return; }
+  const E = USB.ESTADOS, pct = x => `${fmt(x * 100, 0)} %`, malos = r.buses.filter(b => b.estado === 'no');
+  $('#usbAviso').innerHTML = `<strong>Aviso: ${usbEsc(r.aviso.texto)}.</strong> ` + (malos.length ? malos.map(b => `Bus ${b.bus}: ${b.claves.length === 1 ? 'la cámara no cabe' : `las ${b.claves.length} cámaras no caben`} con sus reservas o su demanda (${fmt(Math.max(b.sumaReserva, b.sumaTasa), 1)} de ${fmt(b.capacidad, 1)} Mbit/s).`).join(' ') : 'Con las reservas y los buses de ahora ningún bus se pasa.');
+  for (const c of r.camaras) {
+    const el = $(`#usbCuerpo .usbcam[data-cam="${c.clave}"]`); if (!el) continue;
+    const e = E[c.estado], M = MODOS[L.cams[c.clave].modo], pill = $('[data-usb="estado"]', el);
+    pill.className = `pill ${e.cls}`; pill.textContent = `${fmt(c.tasa, 1)} Mbit/s · ${e.txt}`;
+    Object.assign(el.dataset, { estado: c.estado, tasa: c.tasa, reserva: c.reserva, bus: c.bus });
+    $('[data-usb="detalle"]', el).innerHTML = `${M.w}×${M.h} a ${M.fps} fps (el modo de su tarjeta) · demanda estimada ${fmt(c.tasa, 1)} Mbit/s = ${pct(c.uso)} de la reserva de ${fmt(c.reserva, 1)}`
+      + (c.factorMin !== null ? ` · el MJPEG tendría que comprimir al menos ${fmt(c.factorMin, 1)}:1 para caber (supuesto: ${fmt(USB_CFG.mjpeg.factor, 1)}:1 ${usbSupuesto()})` : ' · sin comprimir: ancho × alto × bit por píxel del formato × fps')
+      + (c.reserva === USB.RESERVA_MAX ? ` · reserva máxima ${usbTag('PLAN', 'f')}` : '');
+  }
+  $('#usbBuses').innerHTML = '<h4 style="margin:6px 0 0;font-size:12.5px;font-weight:600">Por bus</h4>' + r.buses.map(b => {
+    const e = E[b.estado], libre = b.libre >= 0 ? `quedan ${fmt(b.libre, 1)}` : `faltan ${fmt(-b.libre, 1)}`;
+    return `<div class="usbbus" data-bus="${b.bus}" data-estado="${b.estado}" data-suma="${b.sumaReserva}" data-tasa="${b.sumaTasa}"><div><span>Bus ${b.bus}: ${b.claves.map(k => usbEsc(L.cams[k].nombre.toLowerCase())).join(', ')}</span><span class="pill ${e.cls}">${fmt(b.sumaReserva, 1)} de ${fmt(b.capacidad, 1)} Mbit/s · ${e.txt}</span></div>
+      <span class="hint">suma de las reservas ${fmt(b.sumaReserva, 1)} Mbit/s · suma de la demanda estimada ${fmt(b.sumaTasa, 1)} Mbit/s · capacidad ${fmt(b.capacidad, 1)} Mbit/s (${fmt(USB_CFG.bus.mbit, 0)} × ${fmt(USB_CFG.bus.periodico, 2)} ${usbSupuesto()}) · ${libre} Mbit/s de reserva</span></div>`;
+  }).join('');
+}
+// La lista de dispositivos de `lsusb -v` y, por bus, la suma de las reservas máximas de sus cámaras
+function usbPintarLsusb() {
+  const r = USB_LSUSB, cont = $('#usbLsusbRes'); if (!r) { cont.innerHTML = ''; return; }
+  const lista = r.dispositivos.map(d => {
+    let det;
+    if (!d.analizado) det = usbEsc(d.nota);
+    else if (d.esVideo) { const v = d.endpoints.filter(e => e.clase === 14), mx = v.find(e => e.mbit === d.reservaMax); det = `cámara: reserva máxima ${fmt(d.reservaMax, 1)} Mbit/s (${mx.transacciones} × ${mx.tamano} B, bInterval ${mx.bInterval}; ${v.length} ${v.length === 1 ? 'ajuste isócrono' : 'ajustes isócronos'} de vídeo)`; }
+    else det = d.endpoints.length ? 'endpoints isócronos que no son de vídeo' : 'sin endpoints isócronos de vídeo';
+    return `<div class="usbdev" data-bus="${d.bus}" data-dispositivo="${d.dispositivo}" data-video="${d.esVideo}" data-reserva="${d.reservaMax ?? ''}"><span>Bus ${d.bus} · dispositivo ${d.dispositivo} · ${usbEsc(d.id)} · ${usbEsc(d.nombre) || 'sin nombre'}</span><span class="hint">${det}</span></div>`;
+  }).join('');
+  const porBus = new Map(); for (const d of usbCamaras()) porBus.set(d.bus, [...(porBus.get(d.bus) || []), d]);
+  const cap = USB.capacidad(USB_CFG), buses = [...porBus.keys()].sort((a, b) => a - b).map(b => {
+    const ds = porBus.get(b), suma = ds.reduce((s, d) => s + d.reservaMax, 0), cabe = suma <= cap * (1 + 1e-9);
+    return `<div class="usbbus" data-lsusb-bus="${b}" data-estado="${cabe ? 'ok' : 'no'}" data-suma="${suma}"><div><span>Bus ${b}: ${ds.length} ${ds.length === 1 ? 'cámara' : 'cámaras'} con su reserva máxima</span><span class="pill ${cabe ? 'ok' : 'bad'}">${fmt(suma, 1)} de ${fmt(cap, 1)} Mbit/s · ${cabe ? 'cabe' : 'no cabe'}</span></div></div>`;
+  }).join('');
+  cont.innerHTML = lista + buses;
+}
+$('#btnUsbAnalizar').addEventListener('click', () => {
+  const txt = $('#usbLsusbTxt'), msg = $('#usbLsusbMsg');
+  try {
+    const r = USB.parsearLsusb(txt.value), n = USB.camarasDe(r).length;
+    USB_LSUSB = r; txt.removeAttribute('aria-invalid'); msg.setAttribute('role', 'status');
+    msg.textContent = `Analizado: ${r.dispositivos.length} ${r.dispositivos.length === 1 ? 'dispositivo' : 'dispositivos'}, ${n} ${n === 1 ? 'cámara' : 'cámaras'} de vídeo en alta velocidad.${n ? '' : ' Ninguna cámara: ¿falta sudo, o son USB 3?'}`;
+    const claves = usbCamaras().map(usbDispClave); for (const k in USB_CAMS) if (!claves.includes(USB_CAMS[k].disp)) USB_CAMS[k].disp = '';
+    usbPintarLsusb(); usbPintar();
+  } catch (e) {
+    // Una entrada mal formada no cambia nada: ni el análisis anterior ni lo elegido en las cámaras
+    txt.setAttribute('aria-invalid', 'true'); msg.setAttribute('role', 'alert'); msg.textContent = `No se ha aplicado nada: ${e.message}`;
+  }
+});
+$('#btnUsbQuitar').addEventListener('click', () => {
+  USB_LSUSB = null; for (const k in USB_CAMS) USB_CAMS[k].disp = '';
+  $('#usbLsusbTxt').removeAttribute('aria-invalid'); $('#usbLsusbMsg').textContent = ''; usbPintarLsusb(); usbPintar();
+});
+// Campos de cada cámara: se aplican al escribir (los inválidos se marcan y no se aplican); elegir un dispositivo de lsusb le pone su bus y su reserva máxima
+$('#usbCuerpo').addEventListener('input', usbCampo); $('#usbCuerpo').addEventListener('change', usbCampo);
+function usbCampo(e) {
+  const m = /^usb_(formato|reserva|bus|disp)_(.+)$/.exec(e.target.id || ''); if (!m || !L.cams[m[2]]) return;
+  const [, que, k] = m, st = usbCam(k);
+  if (que === 'disp' && e.type !== 'change') return;
+  try {
+    if (que === 'formato') { if (!Object.hasOwn(USB.FORMATOS, e.target.value)) throw new Error('formato desconocido'); st.formato = e.target.value; }
+    else if (que === 'reserva') st.reserva = USB.validarReserva(e.target.valueAsNumber);
+    else if (que === 'bus') { const b = e.target.valueAsNumber; if (!Number.isInteger(b) || b < 1) throw new Error('el bus es un número entero desde 1'); st.bus = b; }
+    else {
+      const d = usbCamaras().find(x => usbDispClave(x) === e.target.value);
+      if (e.target.value !== '' && !d) throw new Error('dispositivo desconocido');
+      st.disp = e.target.value; if (d) { st.bus = d.bus; st.reserva = Math.min(d.reservaMax, USB.RESERVA_MAX); }
+    }
+    e.target.removeAttribute('aria-invalid'); e.target.removeAttribute('title');
+  } catch (err) { e.target.setAttribute('aria-invalid', 'true'); e.target.title = err.message; return; }
+  if (que === 'disp') usbPintar(); else usbActualizar();
+}
+function pintarUsbCfg() {
+  $('#usbCfgCuerpo').innerHTML = USB.PARAMS.map(p => {
+    const [g, n] = p.id.split('.'), plan = p.origen === 'PLAN';
+    return `<div class="field"><label for="uc_${p.id}" title="${usbEsc(p.fuente)}">${usbEsc(p.nombre)} <span class="tag ${plan ? 'f' : 's'}">${plan ? 'PLAN' : 'SUPUESTO · SIN VALIDAR'}</span></label><output>${usbEsc(p.unidad)}</output><input type="number" id="uc_${p.id}" min="0" step="any" value="${USB_CFG[g][n]}"${p.editable ? '' : ' disabled'}></div>`;
+  }).join('');
+}
+$('#usbCfgCuerpo').addEventListener('input', e => {
+  const id = e.target.id.startsWith('uc_') ? e.target.id.slice(3) : null; if (!id) return;
+  try { USB_CFG = USB.fijar(USB_CFG, id, e.target.valueAsNumber); e.target.removeAttribute('aria-invalid'); } catch { e.target.setAttribute('aria-invalid', 'true'); return; }
+  usbActualizar(); usbPintarLsusb();
+});
+$('#btnUsbRestaurar').addEventListener('click', () => { USB_CFG = USB.cfgDefecto(); for (const k of Object.keys(USB_CAMS)) delete USB_CAMS[k]; pintarUsbCfg(); usbPintar(); usbPintarLsusb(); });
+pintarUsbCfg();
+// Tablero de la bandeja (T4.4, src/tablero.js): id, lado y posición de cada marcador ArUco en el marco de la bandeja, el aviso de
+// centros alineados y tablero_bandeja.yaml (EXPORTAR.tablero). Parte de los marcadores de la escena (bandMarc) y todo es de la
+// sesión: no se guarda en la escena, no cambia el dibujo ni L (I1, I2) y el YAML solo se muestra, se copia o se descarga (I4).
+let TAB_CFG = TABLERO.cfgDefecto();
+const tabInicial = () => bandMarc.map(a => ({ id: a.userData.id, lado: a.userData.lado, x: a.position.x, y: a.position.y, yaw: a.rotation.z }));
+let TAB_M = tabInicial();
+const tabRed = (v, d) => +v.toFixed(d); // sin la cola de coma flotante que dejan mm ↔ m y grados ↔ rad
+// Campo, texto del campo, valor que se enseña, valor del modelo (m y rad) desde el campo y atributos del input
+const TAB_CAMPOS = [
+  ['id', 'Id', m => m.id, v => v, 'min="0" max="' + TABLERO.MAX_ID + '" step="1"'],
+  ['lado', 'Lado (mm)', m => tabRed(m.lado * 1000, 3), v => v / 1000, 'min="0" step="any"'],
+  ['x', 'x (mm)', m => tabRed(m.x * 1000, 3), v => v / 1000, 'step="any"'],
+  ['y', 'y (mm)', m => tabRed(m.y * 1000, 3), v => v / 1000, 'step="any"'],
+  ['yaw', 'Giro (°)', m => tabRed(m.yaw * R2D, 4), v => v * PI / 180, 'step="any"'],
+];
+// Una fila por marcador con sus campos y «Quitar»
+function tabPintar() {
+  $('#tabTbl tbody').innerHTML = TAB_M.map((m, i) => `<tr data-fila="${i}" data-id="${m.id}">${TAB_CAMPOS.map(([c, nombre, ver, , attr]) => `<td><input type="number" data-campo="${c}" aria-label="${nombre} del marcador ${i + 1}" ${attr} value="${ver(m)}"></td>`).join('')}<td><button class="btn" data-quitar aria-label="Quitar el marcador ${i + 1}">Quitar</button></td></tr>`).join('');
+  tabActualizar();
+}
+// Recalcula el aviso, los botones de «Quitar» y, si se ve, el YAML, sin tocar los campos (así no se pierde el foco al escribir)
+function tabActualizar() {
+  const r = TABLERO.alineacion(TAB_M, TAB_CFG), el = $('#tabAviso');
+  el.textContent = r.alineado ? `Aviso: ${r.texto}.` : `Sin aviso de alineación: los ${r.n} centros no quedan sobre una recta (el mayor desvío a la recta entre los dos marcadores más separados es ${fmt(r.desvio * 1000, 1)} mm, más que la tolerancia de ${fmt(r.tolerancia * 1000, 1)} mm; SUPUESTO SIN VALIDAR).`;
+  Object.assign(el.dataset, { alineado: String(r.alineado), motivo: r.motivo || '', n: r.n, desvio: r.desvio, tolerancia: r.tolerancia });
+  $$('#tabTbl [data-quitar]').forEach(b => { b.disabled = TAB_M.length < 2; });
+  if (!$('#tabVerCaja').hidden) $('#tabVer').value = tabYaml();
+}
+// Aplica el campo de una fila al tablero si el resultado es válido (id entero de 0 a 49 y único, lado positivo, números finitos);
+// si no, lo marca y no cambia nada
+function tabAplicar(el) {
+  const c = TAB_CAMPOS.find(x => x[0] === el.dataset.campo), tr = el.closest('tr'), i = tr ? +tr.dataset.fila : -1; if (!c || !TAB_M[i]) return false;
+  const cand = TAB_M.map((m, j) => j === i ? { ...m, [c[0]]: c[3](el.valueAsNumber) } : m);
+  try { TABLERO.validar(cand); } catch (err) { el.setAttribute('aria-invalid', 'true'); el.title = err.message; return false; }
+  el.removeAttribute('aria-invalid'); el.removeAttribute('title'); TAB_M = cand; tr.dataset.id = cand[i].id; return true;
+}
+$('#tabTbl tbody').addEventListener('input', e => {
+  if (!tabAplicar(e.target)) return;
+  for (const otro of $$('#tabTbl input[aria-invalid="true"]')) tabAplicar(otro); // un id repetido deja de serlo al cambiar el otro
+  tabActualizar();
+});
+$('#tabTbl tbody').addEventListener('click', e => {
+  const b = e.target.closest('[data-quitar]'); if (!b || TAB_M.length < 2) return;
+  TAB_M = TAB_M.filter((_, j) => j !== +b.closest('tr').dataset.fila); tabPintar();
+});
+$('#btnTabAnadir').addEventListener('click', () => {
+  // el id libre siguiente al mayor en uso o, si no hay, el primero libre
+  const usados = new Set(TAB_M.map(m => m.id)), max = Math.max(...usados), libres = [...Array(TABLERO.MAX_ID + 1).keys()].filter(k => !usados.has(k)), id = libres.find(k => k > max) ?? libres[0];
+  if (id === undefined) { toast(`Los ${TABLERO.MAX_ID + 1} ids de ${TABLERO.DICCIONARIO} ya están en uso`); return; }
+  TAB_M = [...TAB_M, { id, lado: TAB_M[TAB_M.length - 1].lado, x: 0, y: 0, yaw: 0 }]; tabPintar();
+});
+function tabYaml() { return EXPORTAR.tablero({ ctx: ctxOrigen(), tablero: TABLERO.modelo(TAB_M, TAB_CFG) }, ORIGEN); }
+function tabVer() { $('#tabVerCaja').hidden = false; $('#tabVer').value = tabYaml(); }
+$('#btnTabVer').addEventListener('click', tabVer);
+$('#btnTabCopiar').addEventListener('click', async () => {
+  const t = tabYaml();
+  try { await navigator.clipboard.writeText(t); toast('Copiado: tablero_bandeja.yaml'); } catch (e) { tabVer(); const a = $('#tabVer'); a.focus(); a.select(); toast('Selecciona y copia con Ctrl+C'); }
+});
+$('#btnTabDescargar').addEventListener('click', () => descargar('tablero_bandeja.yaml', tabYaml()));
+function pintarTabCfg() {
+  $('#tabCfgCuerpo').innerHTML = TABLERO.PARAMS.map(p => {
+    const [g, n] = p.id.split('.');
+    return `<div class="field"><label for="tc_${p.id}" title="${usbEsc(p.fuente)}">${usbEsc(p.nombre)} <span class="tag s">SUPUESTO · SIN VALIDAR</span></label><output>${usbEsc(p.unidad)}</output><input type="number" id="tc_${p.id}" min="0" step="any" value="${TAB_CFG[g][n]}"${p.editable ? '' : ' disabled'}></div>`;
+  }).join('');
+}
+$('#tabCfgCuerpo').addEventListener('input', e => {
+  const id = e.target.id.startsWith('tc_') ? e.target.id.slice(3) : null; if (!id) return;
+  try { TAB_CFG = TABLERO.fijar(TAB_CFG, id, e.target.valueAsNumber); e.target.removeAttribute('aria-invalid'); } catch { e.target.setAttribute('aria-invalid', 'true'); return; }
+  tabActualizar();
+});
+$('#btnTabRestaurar').addEventListener('click', () => { TAB_CFG = TABLERO.cfgDefecto(); TAB_M = tabInicial(); $('#tabVerCaja').hidden = true; pintarTabCfg(); tabPintar(); });
+pintarTabCfg(); tabPintar();
+// Distorsión Brown–Conrady de «Ver por esta cámara» (T4.5, src/distorsion.js): DESACTIVADA por defecto. Con ella apagada el render es el de
+// siempre (no se crea ningún recurso de three). Encendida, la escena se pinta a una textura con más campo que la cámara y un fragmento
+// la remuestrea con la inversa del modelo (Newton, como DISTORSION.inversa). Todo es de la sesión: no se guarda en la escena (I1, I2),
+// no cambia L ni ningún número del gemelo ni lo que exporta camera_info (D = 0, I7) y el texto pegado solo se lee (I4)
+let DIST_CFG = DISTORSION.cfgDefecto(), DIST_FIRMA = '';
+const DIST_CAMS = {}; // k → { activa, info (camera_info leído), plan (campo del render, en caché) }
+const distEst = k => DIST_CAMS[k] || (DIST_CAMS[k] = { activa: false, info: null, plan: null });
+let DIST_R = null;
+const DIST_FS = `precision highp float;
+uniform sampler2D tDiffuse; uniform vec3 uK; uniform vec2 uP; uniform vec2 uOut; uniform vec2 uIn; varying vec2 vUv;
+vec2 dist(vec2 p) { float r2 = dot(p, p), R = 1.0 + r2 * (uK.x + r2 * (uK.y + r2 * uK.z)); return vec2(p.x * R + 2.0 * uP.x * p.x * p.y + uP.y * (r2 + 2.0 * p.x * p.x), p.y * R + uP.x * (r2 + 2.0 * p.y * p.y) + 2.0 * uP.y * p.x * p.y); }
+void main() {
+  // punto distorsionado de este píxel (x a la derecha, y hacia abajo, como OpenCV) y su inversa por Newton con el jacobiano analítico
+  vec2 d = vec2((2.0 * vUv.x - 1.0) * uOut.x, (1.0 - 2.0 * vUv.y) * uOut.y), p = d;
+  for (int i = 0; i < 24; i++) {
+    float r2 = dot(p, p), R = 1.0 + r2 * (uK.x + r2 * (uK.y + r2 * uK.z)), Rp = uK.x + r2 * (2.0 * uK.y + 3.0 * uK.z * r2);
+    vec2 e = dist(p) - d;
+    float jxx = R + 2.0 * p.x * p.x * Rp + 2.0 * uP.x * p.y + 6.0 * uP.y * p.x, jxy = 2.0 * p.x * p.y * Rp + 2.0 * uP.x * p.x + 2.0 * uP.y * p.y, jyy = R + 2.0 * p.y * p.y * Rp + 6.0 * uP.x * p.y + 2.0 * uP.y * p.x, det = jxx * jyy - jxy * jxy;
+    if (abs(det) < 1e-9) break;
+    p -= vec2(jyy * e.x - jxy * e.y, jxx * e.y - jxy * e.x) / det;
+  }
+  vec2 tc = vec2(0.5 + 0.5 * p.x / uIn.x, 0.5 - 0.5 * p.y / uIn.y);
+  if (length(dist(p) - d) > 1e-4 || tc.x < 0.0 || tc.x > 1.0 || tc.y < 0.0 || tc.y > 1.0) gl_FragColor = vec4(0.0, 0.0, 0.0, 1.0); // sin inversa o fuera del render: negro
+  else gl_FragColor = texture2D(tDiffuse, tc);
+  #include <tonemapping_fragment>
+  #include <colorspace_fragment>
+}`;
+function distRecursos() {
+  if (DIST_R) return DIST_R;
+  const rt = new THREE.WebGLRenderTarget(4, 4, { type: THREE.HalfFloatType, samples: 4 }); // sin tonemapping y en lineal: lo aplica el fragmento
+  const mat = new THREE.ShaderMaterial({ uniforms: { tDiffuse: { value: rt.texture }, uK: { value: new THREE.Vector3() }, uP: { value: new THREE.Vector2() }, uOut: { value: new THREE.Vector2() }, uIn: { value: new THREE.Vector2() } }, vertexShader: 'varying vec2 vUv; void main() { vUv = uv; gl_Position = vec4(position.xy, 0.0, 1.0); }', fragmentShader: DIST_FS, depthTest: false, depthWrite: false });
+  const quad = new THREE.Mesh(new THREE.PlaneGeometry(2, 2), mat); quad.frustumCulled = false;
+  const escena = new THREE.Scene(); escena.add(quad);
+  return DIST_R = { rt, mat, escena, cam: new THREE.PerspectiveCamera(), camQuad: new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1) };
+}
+// El campo del render de la cámara k con su distorsión, o null si no hay distorsión que aplicar (apagada, sin camera_info o con un
+// camera_info cuyo tamaño ya no casa con el modo de la cámara). En caché mientras no cambien D, el campo de la cámara ni el máximo
+function distPlan(k) {
+  const st = DIST_CAMS[k]; if (!st || !st.activa || !st.info) return null;
+  const M = MODOS[L.cams[k].modo]; if (st.info.w !== M.w || st.info.h !== M.h) return null;
+  const c = CAMS[k].cam, tanY = Math.tan(c.fov * D2R / 2), tanX = tanY * c.aspect, firma = `${st.info.D.join()}|${tanX}|${tanY}|${DIST_CFG.margen.max}`;
+  if (!st.plan || st.plan.firma !== firma) st.plan = { firma, D: st.info.D, tanOutX: tanX, tanOutY: tanY, ...DISTORSION.campoNecesario(st.info.D, tanX, tanY, DIST_CFG.margen.max) };
+  return st.plan;
+}
+// Pinta la vista de la cámara c (de ancho w y alto h en px de CSS) con la distorsión del plan: la escena, con el campo ancho del plan, a una textura
+// y de ella al destino (la pantalla, con su viewport y su tijera, o la textura `destino`)
+function distDibujar(c, dp, w, h, destino) {
+  const R = distRecursos(), pr = destino ? 1 : renderer.getPixelRatio(), max = renderer.capabilities.maxTextureSize, A = R.cam, D = dp.D;
+  const tw = clamp(Math.ceil(w * pr * dp.razonX), 2, max), th = clamp(Math.ceil(h * pr * dp.razonY), 2, max);
+  if (R.rt.width !== tw || R.rt.height !== th) R.rt.setSize(tw, th);
+  A.fov = Math.atan(dp.tanY) * 2 * R2D; A.aspect = dp.tanX / dp.tanY; A.near = c.near; A.far = c.far; A.layers.mask = c.layers.mask; A.updateProjectionMatrix();
+  c.updateMatrixWorld(true); c.matrixWorld.decompose(A.position, A.quaternion, A.scale); A.updateMatrixWorld(true);
+  renderer.setRenderTarget(R.rt); renderer.clear(); renderer.render(scene, A);
+  const u = R.mat.uniforms; u.uK.value.set(D[0], D[1], D[4]); u.uP.value.set(D[2], D[3]); u.uOut.value.set(dp.tanOutX, dp.tanOutY); u.uIn.value.set(dp.tanX, dp.tanY);
+  renderer.setRenderTarget(destino || null); if (destino) renderer.clear();
+  renderer.render(R.escena, R.camQuad); renderer.setRenderTarget(null);
+}
+// Para las pruebas: la imagen distorsionada de la cámara k de `ancho` px de ancho, en RGBA y con la fila 0 arriba
+function distImagen(k, ancho) {
+  const dp = distPlan(k); if (!dp) throw new Error(`la distorsión no está activa en la cámara ${k}`);
+  const c = CAMS[k].cam, w = Math.round(ancho), h = Math.round(ancho / c.aspect), out = new THREE.WebGLRenderTarget(w, h, { depthBuffer: false });
+  distDibujar(c, dp, w, h, out); const buf = new Uint8Array(w * h * 4), arriba = new Uint8Array(w * h * 4); renderer.readRenderTargetPixels(out, 0, 0, w, h, buf); out.dispose();
+  for (let y = 0; y < h; y++) arriba.set(buf.subarray((h - 1 - y) * w * 4, (h - y) * w * 4), y * w * 4);
+  return { w, h, dato: arriba };
+}
+const distNum = x => String(+x.toPrecision(6)).replace('.', ','), distRazon = x => String(+x.toFixed(2)).replace('.', ',');
+const distSufijo = k => distPlan(k) ? ' · con la distorsión del camera_info' : '';
+const distFirma = () => JSON.stringify(Object.keys(L.cams).map(k => [k, L.cams[k].nombre, L.cams[k].modo]));
+// La línea de estado de cada cámara: camera_info cargado, D, campo del render y avisos; con data-* para las pruebas
+function distTexto(k) {
+  const st = distEst(k), c = L.cams[k], M = MODOS[c.modo], nom = usbEsc(c.nombre.toLowerCase());
+  if (!st.info) return `<div class="usbcam distcam" data-cam="${k}" data-cargada="false" data-activa="false"><div><strong>Cámara ${nom}</strong><span class="pill">sin camera_info</span></div></div>`;
+  const i = st.info, casa = i.w === M.w && i.h === M.h, dp = distPlan(k), D = i.D;
+  const rotulo = !casa ? `<span class="pill bad">no casa con el modo</span>` : st.activa ? `<span class="pill ok">activada</span>` : `<span class="pill">apagada</span>`;
+  const avisos = [!casa ? `El camera_info es de ${i.w} × ${i.h} y la cámara está en ${M.w} × ${M.h}: no se aplica hasta que coincidan.` : '', dp && !dp.cubre ? `Aviso: ${dp.motivo}.` : ''].filter(Boolean);
+  return `<div class="usbcam distcam" data-cam="${k}" data-cargada="true" data-activa="${st.activa && casa}" data-d="${D.join(',')}" data-razon="${dp ? dp.razonX + ',' + dp.razonY : ''}" data-cubre="${dp ? dp.cubre : ''}"><div><strong>Cámara ${nom}</strong>${rotulo}</div>`
+    + `<span class="hint">camera_info${i.nombre ? ' «' + usbEsc(i.nombre) + '»' : ''} de ${i.w} × ${i.h}: k1 = ${distNum(D[0])} · k2 = ${distNum(D[1])} · p1 = ${distNum(D[2])} · p2 = ${distNum(D[3])} · k3 = ${distNum(D[4])}${DISTORSION.esNula(D) ? ' (D = 0: lente ideal)' : ''} ${usbTag('del fichero cargado', 'f')}</span>`
+    + (dp ? `<span class="hint">Render con ×${distRazon(dp.razonX)} de ancho y ×${distRazon(dp.razonY)} de alto de campo (máximo ×${distRazon(DIST_CFG.margen.max)}) ${usbSupuesto()}</span>` : '') + avisos.map(a => `<span class="hint" role="alert">${usbEsc(a)}</span>`).join('') + '</div>';
+}
+function distActualizar() {
+  const k = $('#distCam').value, st = k && L.cams[k] ? distEst(k) : null, on = $('#distOn');
+  on.disabled = !st || !st.info; on.checked = !!(st && st.activa);
+  $('#distEstado').innerHTML = Object.keys(L.cams).map(distTexto).join('');
+  if (verCam) $('#camModeTxt').textContent = `Viendo por la cámara ${L.cams[verCam].nombre.toLowerCase()}${distSufijo(verCam)}`;
+}
+// Rehace la lista de cámaras si cambian sus nombres o modos (pintarCamaras lo llama); si no, solo el estado
+function distRefrescar() {
+  if (distFirma() === DIST_FIRMA && $('#distCam').options.length) { distActualizar(); return; }
+  DIST_FIRMA = distFirma(); const sel = $('#distCam'), antes = sel.value;
+  sel.innerHTML = Object.keys(L.cams).map(k => `<option value="${k}">Cámara ${usbEsc(L.cams[k].nombre.toLowerCase())} · ${MODOS[L.cams[k].modo].w} × ${MODOS[L.cams[k].modo].h}</option>`).join('');
+  if (L.cams[antes]) sel.value = antes; distActualizar();
+}
+// Carga un camera_info para la cámara elegida; si el texto no vale se dice por qué y no cambia nada
+function distCargar(texto) {
+  const k = $('#distCam').value, msg = $('#distMsg'), txt = $('#distTxt'); if (!k || !L.cams[k]) return;
+  try {
+    const info = DISTORSION.leerCameraInfo(texto, MODOS[L.cams[k].modo]), st = distEst(k); st.info = info; st.plan = null;
+    txt.removeAttribute('aria-invalid'); msg.setAttribute('role', 'status');
+    msg.textContent = `Cargado el camera_info${info.nombre ? ' «' + info.nombre + '»' : ''} para la cámara ${L.cams[k].nombre.toLowerCase()}: ${info.w} × ${info.h}, plumb_bob. ${DISTORSION.esNula(info.D) ? 'D = 0: la imagen sale sin distorsión. ' : ''}Marca «Distorsión activada» para verla.`;
+  } catch (e) { txt.setAttribute('aria-invalid', 'true'); msg.setAttribute('role', 'alert'); msg.textContent = `No se ha aplicado nada: ${e.message}`; }
+  distActualizar();
+}
+$('#distCam').addEventListener('change', distActualizar);
+$('#distOn').addEventListener('change', e => { const k = $('#distCam').value; if (!k || !distEst(k).info) { e.target.checked = false; return; } distEst(k).activa = e.target.checked; distActualizar(); });
+$('#btnDistAplicar').addEventListener('click', () => distCargar($('#distTxt').value));
+$('#distFichero').addEventListener('change', async e => {
+  const f = e.target.files[0]; if (!f) return;
+  if (f.size > 200000) { $('#distTxt').setAttribute('aria-invalid', 'true'); $('#distMsg').setAttribute('role', 'alert'); $('#distMsg').textContent = `No se ha aplicado nada: «${f.name}» pasa de 200000 bytes: no es un camera_info`; e.target.value = ''; return; }
+  const t = await f.text(); $('#distTxt').value = t; e.target.value = ''; distCargar(t);
+});
+$('#btnDistRestaurar').addEventListener('click', () => {
+  for (const k of Object.keys(DIST_CAMS)) delete DIST_CAMS[k];
+  DIST_CFG = DISTORSION.cfgDefecto(); $('#distTxt').value = ''; $('#distTxt').removeAttribute('aria-invalid'); $('#distMsg').textContent = ''; $('#distMsg').setAttribute('role', 'status'); pintarDistCfg(); distActualizar();
+});
+function pintarDistCfg() {
+  $('#distCfgCuerpo').innerHTML = DISTORSION.PARAMS.map(p => {
+    const [g, n] = p.id.split('.');
+    return `<div class="field"><label for="dc_${p.id}" title="${usbEsc(p.fuente)}">${usbEsc(p.nombre)} <span class="tag s">SUPUESTO · SIN VALIDAR</span></label><output>${usbEsc(p.unidad)}</output><input type="number" id="dc_${p.id}" min="1" max="${DISTORSION.MARGEN_TOPE}" step="any" value="${DIST_CFG[g][n]}"></div>`;
+  }).join('');
+}
+$('#distCfgCuerpo').addEventListener('input', e => {
+  const id = e.target.id.startsWith('dc_') ? e.target.id.slice(3) : null; if (!id) return;
+  try { DIST_CFG = DISTORSION.fijar(DIST_CFG, id, e.target.valueAsNumber); e.target.removeAttribute('aria-invalid'); e.target.removeAttribute('title'); } catch (err) { e.target.setAttribute('aria-invalid', 'true'); e.target.title = err.message; return; }
+  distActualizar();
+});
+pintarDistCfg(); distRefrescar();
+// pintarCamaras lo llama: rehace los campos si cambia la lista de cámaras o algún modo; si no, solo recalcula
+function usbRefrescar() { if (usbFirma() !== USB_FIRMA || !$('#usbCuerpo').firstElementChild) usbPintar(); else usbActualizar(); }
 function pintarCamaras() {
   $('#camCards').innerHTML = Object.keys(L.cams).map(k => {
     const c = L.cams[k], m = metricasCam(k); const gp = c.grupo === 'V1' ? 'v1' : 'v2';
@@ -1772,14 +2253,14 @@ function pintarCamaras() {
     ${slidersOrient(k, 'co')}
     <div class="row"><label class="hint" for="m_${k}" style="flex:none">Modo</label><select id="m_${k}" style="flex:1;width:auto">${Object.keys(MODOS).map(x => `<option ${x === c.modo ? 'selected' : ''} value="${x}">${x.replace('x', '×')} · ${MODOS[x].fps} fps${MODOS[x].w / MODOS[x].h < 1.5 ? ' · 4:3' : ''}</option>`).join('')}</select></div>
     <dl class="kv"><dt>Campo de visión <span class="tag s">SIN VALIDAR</span></dt><dd>${fmt(m.hf * R2D, 0)}° × ${fmt(m.vf * R2D, 0)}°</dd><dt>Altura sobre la mesa</dt><dd>${mm(m.alt)} mm</dd><dt>Resolución en el punto de mira <span class="tag s">SIN VALIDAR</span></dt><dd>${fmt(m.mmpx, 2)} mm/px</dd>
-    <dt>ArUco de 50 mm</dt><dd><span class="pill ${m.aruco >= 30 ? 'ok' : m.aruco >= 18 ? 'warn' : 'bad'}">${Math.round(m.aruco)} px de lado</span></dd>
+    </dl>${htmlTareas(k)}${htmlOclusion(k)}<dl class="kv">
     <dt>Ve sus objetivos</dt><dd><span class="pill ${visCls}">${m.dentro}/${m.total}</span>${m.fuera.length ? ' fuera: ' + [...new Set(m.fuera)].join(', ') : ''}${m.tapados.length ? ' · tapados por el brazo: ' + [...new Set(m.tapados)].join(', ') : ''}</dd>
     <dt>Brazo Manfrotto 244</dt><dd><span class="pill ${m.brazoOK ? 'ok' : 'bad'}">${mm(m.brazoD)} de 530 mm</span></dd>
     <dt>Holgura con el UR3e</dt><dd><span class="pill ${libre > 0.08 ? 'ok' : libre > 0.02 ? 'warn' : 'bad'}">${libre === Infinity ? '—' : mm(Math.max(0, libre)) + ' mm'}</span>${minC !== undefined ? ' mínima en la demo' : ' ahora'}</dd></dl>
     ${m.nota ? `<p class="hint">Modo ${c.modo.replace('x', '×')}: ${m.nota}.</p>` : ''}
-    <div class="btns"><button class="btn" data-act="sel">Mover</button><button class="btn" data-act="ver">Ver por esta cámara</button></div></div>`;
-  }).join('') + `<p class="hint">Orientativo: el lado del marcador en píxeles sale de la resolución en el punto de mira; por debajo de unos 20 px la detección y la pose de ArUco se degradan. El campo de visión y los mm/px son de lente ideal con el sensor «${SENSOR.de(sensorEscena()).nombre}» [SIN VALIDAR]: el real se mide en la calibración intrínseca (camera_info, F4).</p>`;
-  pintarSensor();
+    <div class="btns"><button class="btn" data-act="sel">Mover</button><button class="btn" data-act="ver">Ver por esta cámara</button><button class="btn" data-act="captura">Captura sintética</button></div></div>`;
+  }).join('') + `<p class="hint">Píxeles por tarea: proyección estenopeica en el peor punto visible de cada objetivo, con el escorzo del plano o del segmento. Los umbrales del ArUco son los del plan (14 px de mínimo en OpenCV 4.6, zona fiable de 32 a 50 px; la cita no se ha podido comprobar aquí); el resto de umbrales, tamaños y supuestos no tienen fuente comprobable: SIN VALIDAR y editables en «Umbrales y supuestos de las tareas» (solo de esta sesión). El campo de visión y los mm/px son de lente ideal con el sensor «${SENSOR.de(sensorEscena()).nombre}» [SIN VALIDAR]: el real se mide en la calibración intrínseca (camera_info, F4).</p>`;
+  pintarSensor(); usbRefrescar(); distRefrescar();
 }
 // Selector del modelo de sensor (T1.7): cambia el campo de visión, el frustum, las miniaturas y las métricas; no mueve nada
 function pintarSensor() {
@@ -1797,7 +2278,68 @@ $('#camCards').addEventListener('input', e => {
   if (t === 'f') L.cams[k].f = +e.target.value; if (t === 'm') L.cams[k].modo = e.target.value;
   actualizarCam(k); guardarLocal(); clearTimeout(pintarCamaras._t); pintarCamaras._t = setTimeout(pintarCamaras, 120);
 });
-$('#camCards').addEventListener('click', e => { const b = e.target.closest('button[data-act]'); if (!b) return; const k = b.closest('[data-cam]').dataset.cam; if (b.dataset.act === 'sel') { $$('.tabs button')[0].click(); seleccionar('cam:' + k); } else { verCam = k; $('#camMode').hidden = false; $('#camModeTxt').textContent = `Viendo por la cámara ${L.cams[k].nombre.toLowerCase()}`; pintarPip(); } });
+$('#camCards').addEventListener('click', e => { const b = e.target.closest('button[data-act]'); if (!b) return; const k = b.closest('[data-cam]').dataset.cam; if (b.dataset.act === 'sel') { $$('.tabs button')[0].click(); seleccionar('cam:' + k); } else if (b.dataset.act === 'captura') { try { capturar(k); } catch (err) { toast(`No se ha podido hacer la captura: ${err.message}`); } } else { verCam = k; $('#camMode').hidden = false; $('#camModeTxt').textContent = `Viendo por la cámara ${L.cams[k].nombre.toLowerCase()}${distSufijo(k)}`; pintarPip(); } });
+
+// ======================= Captura sintética (T4.6, src/captura.js) =======================
+// Un botón por cámara: pinta la escena a 640 × 480 con la focal de la cámara, lee los píxeles de golpe y anota lo que se ve (ArUco, platos y
+// fruta) con la proyección de CAPTURA. Se pinta en el lienzo del gemelo (el único sitio donde three r160 aplica el tonemapping y el sRGB: un
+// WebGLRenderTarget sale lineal y sin tonemapping) cambiando su tamaño un momento y se copia en el mismo turno a un lienzo 2D (drawImage y
+// getImageData, síncronos: readPixels avisa en la consola de Chromium, «GPU stall due to ReadPixels»); el tamaño de antes vuelve al terminar.
+// En SwiftShader la primera lectura espera a los fotogramas que el bucle ya tiene en cola (segundos), no a la captura: con la cola vacía, 0,1–0,3 s.
+// La figura de la persona no se dibuja. Todo es de la sesión: ni la escena (I1, I2) ni nada se guarda o se envía (I4)
+let CAP = null; // la última captura: { k, texto, dato (RGBA, fila 0 arriba), doc }
+const CAP_CAM = new THREE.PerspectiveCamera();
+// Los objetos anotables con su geometría en el mundo: marcadores (esquinas y normal), platos (su perfil) y fruta (su caja 3D)
+function objetosCaptura() {
+  scene.updateMatrixWorld(true);
+  const v = p => [p.x, p.y, p.z], O = [];
+  const visible = o => { for (let p = o; p; p = p.parent) if (!p.visible) return false; return true; };
+  const marcador = (a, etq) => {
+    if (!visible(a)) return;
+    O.push({ clase: 'aruco', id: a.userData.id, nombre: `marcador ${a.userData.id} (${etq})`, esquinas: CAPTURA.esquinasAruco(a.userData.lado).map(q => v(new THREE.Vector3(q[0], q[1], q[2]).applyMatrix4(a.matrixWorld))), normal: v(new THREE.Vector3(0, 0, 1).transformDirection(a.matrixWorld)) });
+  };
+  zonaMarc.forEach(a => marcador(a, 'zona')); OBJ.arucoE.forEach(a => marcador(a, 'entrega')); bandMarc.forEach(a => marcador(a, 'bandeja'));
+  for (const [k, nombre] of [['plato1', 'plato 1º'], ['plato2', 'plato 2º']]) {
+    const g = OBJ[k]; if (!visible(g)) continue;
+    const puntos = []; for (const [r, z] of platoPts) if (r > 0) for (let i = 0; i < 32; i++) { const a = i / 32 * 2 * PI; puntos.push(v(new THREE.Vector3(r * Math.cos(a), r * Math.sin(a), z).applyMatrix4(g.matrixWorld))); }
+    O.push({ clase: 'plato', id: null, nombre, puntos });
+  }
+  for (const pz of piezas) {
+    if (!visible(pz.obj)) continue;
+    const b = new THREE.Box3().setFromObject(pz.obj), puntos = [];
+    for (const x of [b.min.x, b.max.x]) for (const y of [b.min.y, b.max.y]) for (const z of [b.min.z, b.max.z]) puntos.push([x, y, z]);
+    O.push({ clase: 'fruta', id: null, nombre: `${pz.F.nombre.toLowerCase()} (pieza ${pz.id})`, puntos });
+  }
+  return O;
+}
+// Hace la captura de la cámara k; devuelve { k, texto, dato, doc } y la deja como la última
+function capturar(k) {
+  const c = L.cams[k], R = CAMS[k]; if (!c || !R) throw new Error(`no hay cámara ${JSON.stringify(k)}`);
+  const sen = sensorEscena(), V = CAPTURA.vista(areaDe(c).w, c.f), W = V.ancho, H = V.alto;
+  R.cam.updateMatrixWorld(true);
+  const e = R.cam.matrixWorld.elements, cam = { o: [e[12], e[13], e[14]], x: [e[0], e[1], e[2]], y: [-e[4], -e[5], -e[6]], z: [-e[8], -e[9], -e[10]], near: R.cam.near, far: R.cam.far }; // marco de OpenCV: x a la derecha, y hacia abajo, z al frente
+  const A = CAP_CAM; A.fov = V.vfov * R2D; A.aspect = W / H; A.near = R.cam.near; A.far = R.cam.far; A.layers.mask = R.cam.layers.mask; A.updateProjectionMatrix();
+  R.cam.matrixWorld.decompose(A.position, A.quaternion, A.scale); A.updateMatrixWorld(true);
+  const objs = objetosCaptura(), pr = renderer.getPixelRatio(), tam = renderer.getSize(new THREE.Vector2());
+  const sinPersona = [persona, ...brazos], vis = sinPersona.map(o => o.visible), tv = tctl.visible, cv = $('#capImg'); let dato;
+  sinPersona.forEach(o => { o.visible = false; }); tctl.visible = false;
+  try {
+    renderer.setPixelRatio(1); renderer.setSize(W, H, false); renderer.setRenderTarget(null); renderer.setScissorTest(false); renderer.setViewport(0, 0, W, H); renderer.clear(); renderer.render(scene, A);
+    cv.width = W; cv.height = H; const x2 = cv.getContext('2d', { willReadFrequently: true }); x2.drawImage(renderer.domElement, 0, 0); dato = x2.getImageData(0, 0, W, H).data; // copia del lienzo en el mismo turno; la fila 0 arriba
+  } finally { sinPersona.forEach((o, i) => { o.visible = vis[i]; }); tctl.visible = tv; renderer.setPixelRatio(pr); renderer.setSize(tam.x, tam.y, false); }
+  const doc = CAPTURA.documento({ clave: k, nombre: c.nombre, grupo: c.grupo, modo: c.modo, focal: c.f }, { id: sen, w: areaDe(c).w }, V, ctxOrigen(), CAPTURA.anotar(V, cam, objs));
+  CAP = { k, texto: CAPTURA.texto(doc), dato, doc }; pintarCaptura();
+  return CAP;
+}
+function pintarCaptura() {
+  const cv = $('#capImg'); if (!CAP) { cv.hidden = true; $('#capJson').value = ''; $('#capVista').hidden = true; return; } // el lienzo ya lleva la imagen (capturar)
+  cv.hidden = false; $('#capVista').hidden = false; $('#capJson').value = CAP.texto; $('#capVista').dataset.cam = CAP.k;
+  const n = CAP.doc.objetos.length, o = CAP.doc.omitidos.length;
+  $('#capMsg').textContent = `Captura de la cámara ${L.cams[CAP.k].nombre.toLowerCase()}: ${CAPTURA.ANCHO} × ${CAPTURA.ALTO} px, ${n} ${n === 1 ? 'objeto anotado' : 'objetos anotados'}${o ? ` y ${o} sin anotar (fuera del campo o de espaldas)` : ''}.`;
+}
+$('#btnCapPng').addEventListener('click', () => { if (CAP) { const k = CAP.k; $('#capImg').toBlob(b => b && descargar(`captura_${k}.png`, b), 'image/png'); } });
+$('#btnCapJson').addEventListener('click', () => { if (CAP) descargar(`captura_${CAP.k}.json`, new Blob([CAP.texto], { type: 'application/json' })); });
+$('#btnCapQuitar').addEventListener('click', () => { CAP = null; $('#capMsg').textContent = ''; pintarCaptura(); });
 
 // ======================= Alcance: tabla y gráfica =======================
 function actualizarTablaAlcance() {
@@ -2060,7 +2602,7 @@ function render() {
   renderer.setScissorTest(false); renderer.setViewport(0, 0, W, H); renderer.clear();
   if (verCam) {
     const c = CAMS[verCam].cam; const ar = c.aspect; let w = W, h = W / ar; if (h > H) { h = H; w = H * ar; }
-    renderer.setScissorTest(true); renderer.setViewport((W - w) / 2, (H - h) / 2, w, h); renderer.setScissor((W - w) / 2, (H - h) / 2, w, h); renderer.clear(); const tv = tctl.visible; tctl.visible = false; renderer.render(scene, c); tctl.visible = tv; renderer.setScissorTest(false);
+    renderer.setScissorTest(true); renderer.setViewport((W - w) / 2, (H - h) / 2, w, h); renderer.setScissor((W - w) / 2, (H - h) / 2, w, h); renderer.clear(); const tv = tctl.visible; tctl.visible = false; const dp = distPlan(verCam); if (dp) distDibujar(c, dp, w, h, null); else renderer.render(scene, c); tctl.visible = tv; renderer.setScissorTest(false); // con la distorsión de T4.5 activada, a través de su post-proceso
     labels.domElement.style.visibility = 'hidden'; return;
   }
   labels.domElement.style.visibility = ''; renderer.render(scene, cam); labels.render(scene, cam);
@@ -2114,7 +2656,7 @@ $('#segModoB').addEventListener('click', e => { const b = e.target.closest('butt
 $('#dVel').addEventListener('input', e => { D.vel = e.target.value / 100; $('#dVelOut').textContent = `${e.target.value} %`; });
 $('#dAmp').addEventListener('input', e => { D.amp = e.target.value / 100; $('#dAmpOut').textContent = `${fmt(+e.target.value, 1)} cm`; actualizarCheck(); });
 requestAnimationFrame(bucle);
-if (location.search.includes('prueba')) window.__g = { aplicarPedido, actualizarZona, esferasObjeto, cargaDe, BAND, bandeja, aplicarBandeja: t => aplicarBandeja(t), ladoZonas: () => ladoZonas(), comprobarPlan, llegaVertical, puntosSoltar, FRUTAS, CACHE_PLAN, poseHoriz, ejeHoriz, mundoABase, enLimites, qValida, rutaNivelada: (...a) => rutaNivelada(...a), colocacionConTransporte: (...a) => colocacionConTransporte(...a), planColocar: (...a) => planColocar(...a), zonasB, ikTCP, planAgarrePlato, planColocar, planPlatoCache, KIN_: KIN, BASES, consts: { R_AGARRE, H_BORDE }, COL: () => COL, choqueEn: (q, c) => choqueEn(q, c), obstaculos: () => obstaculos(), textoChoque: c => textoChoque(c), D, L: () => L, cam, orbit, scene, renderer, OBJ, piezas: () => piezas, simT: () => simT, CAMS, actualizarCam, actualizarAruco, actualizarPlatos, metricasCam, estadoObjeto, alcance, comprobarPlan, ensayo, planAgarrePlato, holguraActual, get robot() { return robot; }, KIN, pinza, tcpMundo, zPlato, setL: l => { L = l; }, ESC, ALM, abrirEscena, codigoEscena, abrirCodigo, guardarEscena, escCam: cam, orbit, vista, CALC, calcularPlanes, planesAlDia, recalcular, orientDe, fijarOrient, orientarDesdeQuat, CAMS, seleccionar, tctl, generarYaml, ficherosRos: () => ficherosRos(), modeloExportacion: () => modeloExportacion(), cadenaPlato, cargaPlan, rutaCartesiana: (...a) => rutaCartesiana(...a), zonasB_: () => zonasB, zonaDe, qReposo, aplicarLayout, buscarAlternativa, candidatos, explicar, mostrarFalloInfo, diagnosticarPunto, LAYOUT, ESQ_L, migrarLayout, soloLectura, RNG, planificar: (...a) => planificar(...a), get CIN() { return CIN; }, get ROB() { return ROB; }, CALIBRACION, marco: () => marco(), baseAMundo: (x, y, z) => baseAMundo(x, y, z), tcpDeQ: (q, w) => tcpDeQ(q, w), pedirRobotId: id => pedirRobotId(id), ikNoConverge: (p, y, o) => ikNoConverge(p, y, o), posesTCP, volCol, calcularPerfil, radioA, PERFIL, prepararMoveJ: (...a) => prepararMoveJ(...a), semillaDe: (...a) => semillaDe(...a), otroVisible: () => otroVisible(), apartarEscena: () => apartarEscena(), perfilEscena: () => perfilEscena(), planesAlDiaDe: pf => planesAlDia(pf), validar: () => validar(), VAL, SENSOR, areaDe: c => areaDe(c), hfovDe: c => hfovDe(c), vfovDe: c => vfovDe(c), firmaVal: () => firmaVal(), valAlDia: () => valAlDia(), perfilesDe: e => perfilesDe(e), estadoParaGuardar: () => estadoParaGuardar(), bandejaBalanceo: () => bandejaBalanceo(), tocaBandejaEnBalanceo: (q, w) => tocaBandejaEnBalanceo(q, w) }; // T1.4: robot activo, su cinemática y el marco de base_link (una sola línea: build_web.sh la quita entera)
+if (location.search.includes('prueba')) window.__g = { dibujar: () => render(), CAPTURA, capturar: k => capturar(k), capturaUltima: () => CAP,DISTORSION, distCams: () => DIST_CAMS, distCfg: () => DIST_CFG, distImagen: (k, ancho) => distImagen(k, ancho), aplicarPedido,actualizarZona, esferasObjeto, cargaDe, BAND, bandeja, aplicarBandeja: t => aplicarBandeja(t), ladoZonas: () => ladoZonas(), comprobarPlan, llegaVertical, puntosSoltar, FRUTAS, CACHE_PLAN, poseHoriz, ejeHoriz, mundoABase, enLimites, qValida, rutaNivelada: (...a) => rutaNivelada(...a), colocacionConTransporte: (...a) => colocacionConTransporte(...a), planColocar: (...a) => planColocar(...a), zonasB, ikTCP, planAgarrePlato, planColocar, planPlatoCache, KIN_: KIN, BASES, consts: { R_AGARRE, H_BORDE }, COL: () => COL, choqueEn: (q, c) => choqueEn(q, c), obstaculos: () => obstaculos(), textoChoque: c => textoChoque(c), D, L: () => L, cam, orbit, scene, renderer, OBJ, piezas: () => piezas, simT: () => simT, CAMS, actualizarCam, actualizarAruco, actualizarPlatos, metricasCam, tareasCam, TAREAS, tareasCfg: () => TAREAS_CFG, OCLUSION, ocluCfg: () => OCLU_CFG, ocluEstado: () => OCLU, oclusionPlan: () => oclusionPlan(), tramosOclusion: () => tramosOclusion(), colocar: (q, w, c) => colocar(q, w, c), USB, usbCfg: () => USB_CFG, usbCams: () => USB_CAMS, usbLsusb: () => USB_LSUSB, estadoObjeto, alcance, comprobarPlan, ensayo, planAgarrePlato, holguraActual, get robot() { return robot; }, KIN, pinza, tcpMundo, zPlato, setL: l => { L = l; }, ESC, ALM, abrirEscena, codigoEscena, abrirCodigo, guardarEscena, escCam: cam, orbit, vista, CALC, calcularPlanes, planesAlDia, recalcular, orientDe, fijarOrient, orientarDesdeQuat, CAMS, seleccionar, tctl, generarYaml, ficherosRos: () => ficherosRos(), modeloExportacion: () => modeloExportacion(), cadenaPlato, cargaPlan, rutaCartesiana: (...a) => rutaCartesiana(...a), zonasB_: () => zonasB, zonaDe, qReposo, aplicarLayout, buscarAlternativa, candidatos, explicar, mostrarFalloInfo, diagnosticarPunto, LAYOUT, ESQ_L, migrarLayout, soloLectura, RNG, planificar: (...a) => planificar(...a), get CIN() { return CIN; }, get ROB() { return ROB; }, CALIBRACION, marco: () => marco(), baseAMundo: (x, y, z) => baseAMundo(x, y, z), tcpDeQ: (q, w) => tcpDeQ(q, w), pedirRobotId: id => pedirRobotId(id), ikNoConverge: (p, y, o) => ikNoConverge(p, y, o), posesTCP, volCol, calcularPerfil, radioA, PERFIL, prepararMoveJ: (...a) => prepararMoveJ(...a), semillaDe: (...a) => semillaDe(...a), otroVisible: () => otroVisible(), apartarEscena: () => apartarEscena(), perfilEscena: () => perfilEscena(), planesAlDiaDe: pf => planesAlDia(pf), validar: () => validar(), VAL, SENSOR, areaDe: c => areaDe(c), hfovDe: c => hfovDe(c), vfovDe: c => vfovDe(c), firmaVal: () => firmaVal(), valAlDia: () => valAlDia(), perfilesDe: e => perfilesDe(e), estadoParaGuardar: () => estadoParaGuardar(), bandejaBalanceo: () => bandejaBalanceo(), tocaBandejaEnBalanceo: (q, w) => tocaBandejaEnBalanceo(q, w) }; // T1.4: robot activo, su cinemática y el marco de base_link (una sola línea: build_web.sh la quita entera)
 fetch('ur3e-malla.json').then(r => { if (!r.ok) throw new Error(r.status); return r.json(); }).then(j => { const bin = atob(j.glb); const u8 = new Uint8Array(bin.length); for (let i = 0; i < bin.length; i++) u8[i] = bin.charCodeAt(i); new GLTFLoader().parse(u8.buffer, '', cargado, fallo); }).catch(fallo);
 function fallo(err) { $('#loading').textContent = 'No se ha podido cargar el modelo del UR3e.'; console.error(err); }
 function cargado(g) {
