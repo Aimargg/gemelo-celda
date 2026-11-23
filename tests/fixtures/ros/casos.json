@@ -1,6 +1,6 @@
 {
   "descripcion": "Referencias de los ficheros de ROS (T2.2 y T2.4; T2.3 y T2.5 desde su entrega, Común-C3): window.__g.ficherosRos() de cada caso de CASOS_YAML (tests/medir.mjs), en este orden y en una página recién cargada (tras el primer calcularPlanes: el giro de las cajas de la escena es el del plan con nominal y el provisional con el 203), en tests/fixtures/ros/<caso>/<nombre>. El test (tests/e2e/ros-referencias.test.mjs) compara cada fichero byte a byte y la lista de ficheros de cada carpeta. Son la red de T2.6.",
-  "fuente_src": "ebb6a8c",
+  "fuente_src": "2d78ca3",
   "comando": "npm run caracterizar -- --ros",
   "casos": [
     {

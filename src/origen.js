@@ -53,7 +53,7 @@ const ORIGEN = (() => {
       fuente: c => `${c.sensor.origen}; medir en la calibración intrínseca (F4)`,
       yaml: (t, c) => con(t, `lente ideal, sensor ${c.sensor.id}`),
     },
-    { clave: 'marcadores', nombre: 'Marcadores', tipo: S, valor: 'ArUco DICT_4X4_50: zona 0–3, entrega 4–5, bandeja 6–9 (dibujados con su patrón real)', fuente: 'Ids propuestos', yaml: t => con(t, 'ids propuestos') },
+    { clave: 'marcadores', nombre: 'Marcadores', tipo: S, valor: 'ArUco DICT_4X4_50: zona 0–3, entrega 4–5, bandeja 6–9 (dibujados con su patrón real); el lado es el del cuadrado negro, el markerLength de OpenCV, con el margen blanco por fuera', fuente: 'Ids propuestos', yaml: t => con(t, 'ids propuestos') },
     { clave: 'soportes_camara', nombre: 'Soportes de cámara', tipo: M, valor: 'Manfrotto 035 + brazo 244 de 53 cm', fuente: 'Foto + ficha', yaml: t => t },
     { clave: 'fruta', nombre: 'Fruta', tipo: S, valor: 'piezas de plástico de 4,5–7 cm', fuente: 'Foto de referencia del grupo', yaml: t => t },
     { clave: 'plato_bandeja_persona', nombre: 'Plato, bandeja y persona', tipo: S, valor: 'plato Ø160 mm · bandeja 450 × 330 mm a 1,00 m del suelo · persona en el lateral derecho, de frente, con la bandeja a la derecha del robot y fuera de la mesa', fuente: 'Sin medir; posición elegida porque es donde el robot puede dejar los platos nivelados', yaml: t => con(t, 'sin medir') },

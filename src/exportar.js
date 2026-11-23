@@ -180,6 +180,7 @@ const EXPORTAR = (() => {
       'Nombres en celda: robot (posicion, id, frame, prefijo_frames, world_a_base_link, pose_en_world_doble), pinza, mesa, pedido, platos (caja_tamano_m, plato_1, plato_2),',
       `  zona_fruta, marcadores (ids, marcador_<id>), bandeja (${b.zonas.map(zb => limpio(zb.clave)).join(', ')}), persona (xy, yaw) y camaras (nombres, <nombre>: frame_id del marco óptico,`,
       '  xyz y rpy del marco camara_<nombre>, mira, orientacion_rad como en posiciones.yaml y pinza_mesa).',
+      'marcadores.marcador_<id>.lado_m: el lado del cuadrado negro del marcador, el markerLength de OpenCV; el margen blanco va por fuera.',
       ...lineaCentro(m),
     ], undefined, true) + raiz([mapa('celda', ...nodos)]);
   }
@@ -468,6 +469,7 @@ const EXPORTAR = (() => {
         ...T.orden.map((o, i) => hoja(o, lista(k.esquinas[i].map(d3)), `${sup}; esquina del patrón con z saliendo de la cara impresa`)))))];
     return [`# tablero_bandeja.yaml · gemelo de la celda UR3e · generado por el gemelo (IA), BORRADOR\n`,
       `# Tablero de marcadores ArUco (${limpio(T.diccionario)}) de la bandeja: ids, lado y esquinas de cada marcador, para cv2.aruco.estimatePoseBoard.\n`,
+      '# lado_m: el lado del cuadrado negro de cada marcador, el markerLength de OpenCV; el margen blanco va por fuera y las esquinas son las del cuadrado negro, a ±lado_m/2 del centro.\n',
       '# Marco: bandeja (el de la TF bandeja, tf/bandeja.yaml). Metros y radianes (REP-103), redondeo a 1 mm y 0,001 rad (I7): con un lado que no es múltiplo de 2 mm el cuadrado escrito se desvía hasta 1 mm del ideal.\n',
       '# El tablero es plano, en z = 0 (la cara de arriba de la bandeja; el dibujo del gemelo lo levanta 0,6 mm). Cada marcador sigue el convenio de ArUco de OpenCV: x a la derecha, y hacia arriba y z saliendo de la cara impresa; con yaw_rad = 0 sus ejes son los de la bandeja.\n',
       '# Esquinas de cada marcador_<id>: arriba_izquierda, arriba_derecha, abajo_derecha, abajo_izquierda, en ese orden (orden_esquinas), como las que OpenCV devuelve al detectar.\n',

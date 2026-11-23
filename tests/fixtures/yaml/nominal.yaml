@@ -5,7 +5,7 @@
 # base_link está girado 0.000 rad (0,0°) respecto a ese world: mount_yaw − π del xacro del curso [SIN VALIDAR en ROS; docs/estado/frames.md].
 # Origen de cada valor, al final de su línea: MEDIDO, FABRICANTE o SUPUESTO; lo que ha decidido el grupo, «decisión del grupo». Las cámaras dan el giro desde +y de base_link hacia +x.
 # zona_centro (centro de la bandeja): el destino del plato con un pedido de un plato; con dos, como en esta disposición, no se usa.
-fecha: 2026-11-16
+fecha: 2026-11-23
 robot: B  # elegido en el gemelo
 robot_id: 'nominal'  # elegido en el gemelo
 frame: 'base_link'

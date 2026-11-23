@@ -282,16 +282,19 @@ class Pinza {
 }
 
 // ======================= Geometría de objetos =======================
+// El patrón ArUco (DT45, TD.1): el cuadrado negro ocupa toda la textura, 6 × 6 celdas de 16 px (el borde negro y los 4 × 4 bits
+// del diccionario), así que en el plano de lado `lado` el negro mide `lado`: el markerLength de OpenCV. El margen blanco va por fuera.
+const ARUCO_PAPEL = 1.25; // papel de lado·1,25 detrás del patrón: margen blanco de lado/8 por cada lado (al menos lado/10)
 function arucoTex(id) {
-  const c = document.createElement('canvas'); c.width = c.height = 96; const x = c.getContext('2d');
-  x.fillStyle = '#fff'; x.fillRect(0, 0, 96, 96); x.fillStyle = '#000'; x.fillRect(8, 8, 80, 80);
+  const c = document.createElement('canvas'); c.width = c.height = 96; const x = c.getContext('2d'), celda = 96 / 6;
+  x.fillStyle = '#000'; x.fillRect(0, 0, 96, 96);
   const bits = ARUCO[id % ARUCO.length];
-  for (let r = 0; r < 4; r++) for (let k = 0; k < 4; k++) if (bits[r * 4 + k] === '1') { x.fillStyle = '#fff'; x.fillRect(8 + 13.33 * (k + 1), 8 + 13.33 * (r + 1), 13.4, 13.4); }
+  for (let r = 0; r < 4; r++) for (let k = 0; k < 4; k++) if (bits[r * 4 + k] === '1') { x.fillStyle = '#fff'; x.fillRect(celda * (k + 1), celda * (r + 1), celda, celda); }
   const t = new THREE.CanvasTexture(c); t.magFilter = THREE.NearestFilter; t.colorSpace = THREE.SRGBColorSpace; return t;
 }
 function aruco(id, lado = 0.05) {
   const g = new THREE.Group();
-  const papel = new THREE.Mesh(new THREE.PlaneGeometry(lado * 1.25, lado * 1.25), new THREE.MeshStandardMaterial({ color: '#f4f2ee', roughness: 0.9 })); papel.receiveShadow = true; g.add(papel);
+  const papel = new THREE.Mesh(new THREE.PlaneGeometry(lado * ARUCO_PAPEL, lado * ARUCO_PAPEL), new THREE.MeshStandardMaterial({ color: '#f4f2ee', roughness: 0.9 })); papel.receiveShadow = true; g.add(papel);
   const m = new THREE.Mesh(new THREE.PlaneGeometry(lado, lado), new THREE.MeshStandardMaterial({ map: arucoTex(id), roughness: 0.85 })); m.position.z = 0.0002; m.receiveShadow = true; g.add(m);
   g.userData.id = id; g.userData.lado = lado; return g;
 }

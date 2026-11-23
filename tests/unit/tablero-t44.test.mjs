@@ -148,6 +148,7 @@ test('C3: tablero_bandeja.yaml de los cuatro marcadores de la escena, con su tex
   assert.ok(cab.slice(0, -1).every(l => l.startsWith('# ')), 'toda la cabecera son comentarios'); assert.equal(cab.at(-1), '');
   assert.match(t, /^# Marco: bandeja /m); assert.match(t, /^# Esquinas de cada marcador_<id>: arriba_izquierda, arriba_derecha, abajo_derecha, abajo_izquierda, en ese orden /m);
   assert.match(t, /^# Origen de cada valor, al final de su línea \(D8\): SUPUESTO; /m);
+  assert.ok(cab.includes('# lado_m: el lado del cuadrado negro de cada marcador, el markerLength de OpenCV; el margen blanco va por fuera y las esquinas son las del cuadrado negro, a ±lado_m/2 del centro.'), 'qué es lado_m (TD.1, DT45)');
   assert.doesNotMatch(t, /AVISO/, 'sin alineación no hay aviso'); assert.doesNotMatch(t, /\d{4}-\d{2}-\d{2}/, 'sin fecha: mismos bytes siempre');
   assert.equal(yamlDe(ESCENA), t, 'determinista');
 });

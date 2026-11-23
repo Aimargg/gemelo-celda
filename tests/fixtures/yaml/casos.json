@@ -1,6 +1,6 @@
 {
   "descripcion": "Caracterización del panel «Datos» (T2.1, decisión 7): posiciones.yaml (<caso>.yaml) y las filas de la tabla de fuentes de cada caso de CASOS_YAML (tests/medir.mjs), en este orden y en una página recién cargada. El test (tests/e2e/datos.test.mjs) compara el YAML byte a byte salvo la línea «fecha:» y cada fila de la tabla (texto, fuente, etiqueta, clase y HTML).",
-  "fuente_src": "ebb6a8c",
+  "fuente_src": "2d78ca3",
   "comando": "npm run caracterizar -- --yaml",
   "casos": [
     {
@@ -109,10 +109,10 @@
         {
           "dato": "Marcadores",
           "fuente": "Ids propuestos",
-          "valor": "ArUco DICT_4X4_50: zona 0–3, entrega 4–5, bandeja 6–9 (dibujados con su patrón real)",
+          "valor": "ArUco DICT_4X4_50: zona 0–3, entrega 4–5, bandeja 6–9 (dibujados con su patrón real); el lado es el del cuadrado negro, el markerLength de OpenCV, con el margen blanco por fuera",
           "etiqueta": "SUPUESTO",
           "clase": "tag s",
-          "html": "<td>Marcadores<br><span class=\"hint\">Ids propuestos</span></td><td>ArUco DICT_4X4_50: zona 0–3, entrega 4–5, bandeja 6–9 (dibujados con su patrón real)</td><td><span class=\"tag s\">SUPUESTO</span></td>"
+          "html": "<td>Marcadores<br><span class=\"hint\">Ids propuestos</span></td><td>ArUco DICT_4X4_50: zona 0–3, entrega 4–5, bandeja 6–9 (dibujados con su patrón real); el lado es el del cuadrado negro, el markerLength de OpenCV, con el margen blanco por fuera</td><td><span class=\"tag s\">SUPUESTO</span></td>"
         },
         {
           "dato": "Soportes de cámara",
@@ -318,10 +318,10 @@
         {
           "dato": "Marcadores",
           "fuente": "Ids propuestos",
-          "valor": "ArUco DICT_4X4_50: zona 0–3, entrega 4–5, bandeja 6–9 (dibujados con su patrón real)",
+          "valor": "ArUco DICT_4X4_50: zona 0–3, entrega 4–5, bandeja 6–9 (dibujados con su patrón real); el lado es el del cuadrado negro, el markerLength de OpenCV, con el margen blanco por fuera",
           "etiqueta": "SUPUESTO",
           "clase": "tag s",
-          "html": "<td>Marcadores<br><span class=\"hint\">Ids propuestos</span></td><td>ArUco DICT_4X4_50: zona 0–3, entrega 4–5, bandeja 6–9 (dibujados con su patrón real)</td><td><span class=\"tag s\">SUPUESTO</span></td>"
+          "html": "<td>Marcadores<br><span class=\"hint\">Ids propuestos</span></td><td>ArUco DICT_4X4_50: zona 0–3, entrega 4–5, bandeja 6–9 (dibujados con su patrón real); el lado es el del cuadrado negro, el markerLength de OpenCV, con el margen blanco por fuera</td><td><span class=\"tag s\">SUPUESTO</span></td>"
         },
         {
           "dato": "Soportes de cámara",
@@ -527,10 +527,10 @@
         {
           "dato": "Marcadores",
           "fuente": "Ids propuestos",
-          "valor": "ArUco DICT_4X4_50: zona 0–3, entrega 4–5, bandeja 6–9 (dibujados con su patrón real)",
+          "valor": "ArUco DICT_4X4_50: zona 0–3, entrega 4–5, bandeja 6–9 (dibujados con su patrón real); el lado es el del cuadrado negro, el markerLength de OpenCV, con el margen blanco por fuera",
           "etiqueta": "SUPUESTO",
           "clase": "tag s",
-          "html": "<td>Marcadores<br><span class=\"hint\">Ids propuestos</span></td><td>ArUco DICT_4X4_50: zona 0–3, entrega 4–5, bandeja 6–9 (dibujados con su patrón real)</td><td><span class=\"tag s\">SUPUESTO</span></td>"
+          "html": "<td>Marcadores<br><span class=\"hint\">Ids propuestos</span></td><td>ArUco DICT_4X4_50: zona 0–3, entrega 4–5, bandeja 6–9 (dibujados con su patrón real); el lado es el del cuadrado negro, el markerLength de OpenCV, con el margen blanco por fuera</td><td><span class=\"tag s\">SUPUESTO</span></td>"
         },
         {
           "dato": "Soportes de cámara",

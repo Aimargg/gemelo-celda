@@ -9,9 +9,12 @@
 // (2) Qué se anota en cada cámara (cenital, entrega y persona) con la disposición por defecto, fijado al ejecutar el gemelo: nombres, cortados
 //     por el borde (parcial) y omitidos; cajas dentro de la imagen; la focal y el modo de la cámara cambian la captura y no su tamaño.
 // (3) La web: el mismo panel y la misma descarga (PNG válido y JSON igual al de la vista previa), sin gancho de pruebas.
+// (4) TD.1 (DT45): `lado` es el cuadrado negro (markerLength de OpenCV): textura y geometría de los marcadores (negro en todo el plano,
+//     margen blanco ≥ lado/10 por fuera) y las esquinas de la captura frente a las de tablero_bandeja.yaml (< 1 px), con la cámara de entrega.
 import { test, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import zlib from 'node:zlib';
+import YAML from 'yaml';
 import { arrancarServidor } from '../servidor.mjs';
 import { abrir, comprobar, CLAVE_BUENA } from '../navegador.mjs';
 
@@ -174,6 +177,74 @@ test('T4.6: lo que se anota en cada cámara (fijado en el gemelo), cajas dentro 
     const modo = await captura('cenital'); assert.equal(modo.camara.modo_de_la_camara, '1280x960'); assert.deepEqual([modo.imagen.ancho, modo.imagen.alto, modo.proyeccion.fx], [640, 480, 645.1613]);
     // Quitar la captura: la vista previa desaparece
     await p.click('#btnCapQuitar'); assert.equal(await p.isHidden('#capVista'), true); assert.equal(await p.textContent('#capMsg'), '');
+    comprobar(s.reg);
+  } finally { await s.cerrar(); }
+});
+
+// TD.1 (DT45): `lado` es el cuadrado negro (markerLength de OpenCV). En la página: la textura y la geometría de cada marcador de la escena
+// (zona, entrega y bandeja): el plano del patrón mide `lado` y su textura es negra hasta el borde (las 6 × 6 celdas de 16 px; las celdas del
+// borde, negras enteras), con el papel claro detrás que deja un margen de al menos lado/10 por cada lado. Y, con la cámara de entrega, las
+// esquinas que anota la captura para los marcadores de la bandeja frente a las de tablero_bandeja.yaml (panel «Ver»), llevadas al mundo con la
+// pose de la bandeja (el YAML está en su marco, z = 0) y proyectadas aquí aparte con la estenopeica del JSON (fx, cx, cy) y la pose de la cámara
+// de render. Para que el test pueda fallar: con la convención de antes (el negro en 80 de los 96 px, esquinas a ±lado·5/12) la diferencia
+// pasa de 1 px, y eso también se comprueba.
+const MARGEN_MIN = 0.1; // margen blanco mínimo por cada lado, en lados (brief de TD.1)
+test('TD.1 (DT45): el negro del ArUco dibujado mide `lado` con el margen blanco por fuera; las esquinas de la captura = las de tablero_bandeja.yaml (< 1 px)', { timeout: 300000 }, async () => {
+  const s = await abrir(srv.url); const p = s.page;
+  try {
+    await abrirCamaras(p);
+    // ---- C1: geometría y textura de los 10 marcadores de la escena
+    const M = await p.evaluate(() => {
+      const g = window.__g, todos = [...g.OBJ.zona.children, ...g.OBJ.arucoE, ...g.bandeja.children].filter(o => o.userData && o.userData.lado !== undefined && o.userData.id !== undefined);
+      return todos.map(a => {
+        const patron = a.children.find(c => c.material && c.material.map), papel = a.children.find(c => c.material && !c.material.map);
+        const img = patron.material.map.image, W = img.width, H = img.height, d = img.getContext('2d').getImageData(0, 0, W, H).data, celda = W / 6;
+        let borde = 0, bordeNegro = 0, filasExtremo = 0; // celdas del borde (anillo de 16 px): todas negras; y las filas y columnas 0 y W − 1, negras
+        for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
+          const enBorde = x < celda || y < celda || x >= W - celda || y >= H - celda; if (!enBorde) continue;
+          const i = (y * W + x) * 4, negro = d[i] < 20 && d[i + 1] < 20 && d[i + 2] < 20; borde++; if (negro) bordeNegro++;
+          if ((x === 0 || y === 0 || x === W - 1 || y === H - 1) && negro) filasExtremo++;
+        }
+        const c = papel.material.color;
+        return { id: a.userData.id, lado: a.userData.lado, plano: [patron.geometry.parameters.width, patron.geometry.parameters.height], papel: [papel.geometry.parameters.width, papel.geometry.parameters.height], papelZ: papel.position.z, patronZ: patron.position.z, W, H, borde, bordeNegro, filasExtremo, luzPapel: 0.2126 * c.r + 0.7152 * c.g + 0.0722 * c.b };
+      });
+    });
+    assert.deepEqual(M.map(m => m.id), [0, 1, 2, 3, 4, 5, 6, 7, 8, 9], 'los 10 marcadores de la escena');
+    for (const m of M) {
+      assert.deepEqual(m.plano, [m.lado, m.lado], `marcador ${m.id}: el plano del patrón mide lado × lado`);
+      assert.deepEqual([m.W, m.H], [96, 96]); assert.equal(m.bordeNegro, m.borde, `marcador ${m.id}: las celdas del borde son negras enteras (${m.bordeNegro} de ${m.borde} px)`);
+      assert.equal(m.filasExtremo, 4 * 96 - 4, `marcador ${m.id}: el negro llega al borde del plano (filas y columnas 0 y 95)`);
+      const margen = (m.papel[0] - m.lado) / 2 / m.lado;
+      assert.equal(m.papel[0], m.papel[1]); assert.ok(margen >= MARGEN_MIN - 1e-12, `marcador ${m.id}: margen blanco de ${margen} lados por cada lado (mínimo ${MARGEN_MIN})`);
+      assert.ok(m.luzPapel > 0.8 && m.papelZ < m.patronZ, `marcador ${m.id}: el papel es claro (${m.luzPapel}) y queda detrás del patrón`);
+    }
+    console.log(`TD.1: margen blanco por cada lado = ${((M[0].papel[0] - M[0].lado) / 2 / M[0].lado).toFixed(3)} lados (papel de ${M[0].papel[0] / M[0].lado} × lado)`);
+    // ---- C2: esquinas de la captura frente a las de tablero_bandeja.yaml, marcadores 6–9 vistos por la cámara de entrega
+    await p.evaluate(() => document.getElementById('btnTabVer').click());
+    const tab = YAML.parse(await p.inputValue('#tabVer'), { version: '1.2' })['/**'].ros__parameters.tablero;
+    const R = await p.evaluate(tab => {
+      const g = window.__g, k = 'entrega', cap = g.capturar(k), doc = cap.doc, P = doc.proyeccion; // en el mismo turno que la captura: la bandeja no se ha movido
+      const e = g.CAMS[k].cam.matrixWorld.elements, o = [e[12], e[13], e[14]], X = [e[0], e[1], e[2]], Y = [-e[4], -e[5], -e[6]], Z = [-e[8], -e[9], -e[10]];
+      const dot = (a, b) => a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
+      const pix = w => { const d = [w[0] - o[0], w[1] - o[1], w[2] - o[2]], z = dot(d, Z); return [P.cx + P.fx * dot(d, X) / z, P.cy + P.fy * dot(d, Y) / z]; };
+      g.bandeja.updateMatrixWorld(true); const B = g.bandeja.matrixWorld, V3 = g.bandeja.position.constructor;
+      const mundo = q => { const v = new V3(q[0], q[1], q[2]).applyMatrix4(B); return [v.x, v.y, v.z]; };
+      return tab.ids.map(id => {
+        const t = tab[`marcador_${id}`], a = doc.objetos.find(x => x.clase === 'aruco' && x.id === id);
+        const yaml = tab.orden_esquinas.map(n => pix(mundo(t[n])));
+        const c = t.centro_m, antes = tab.orden_esquinas.map(n => pix(mundo([c[0] + (t[n][0] - c[0]) * 5 / 6, c[1] + (t[n][1] - c[1]) * 5 / 6, 0]))); // la convención de antes de TD.1
+        return { id, nombre: a ? a.nombre : null, cap: a ? a.esquinas : null, yaml, antes };
+      });
+    }, tab);
+    assert.deepEqual(R.map(r => r.nombre), ['marcador 6 (bandeja)', 'marcador 7 (bandeja)', 'marcador 8 (bandeja)', 'marcador 9 (bandeja)'], 'la cámara de entrega ve los cuatro marcadores de la bandeja');
+    const dist = (a, b) => Math.hypot(a[0] - b[0], a[1] - b[1]);
+    let peor = 0, peorAntes = 0;
+    for (const r of R) r.cap.forEach((q, i) => {
+      const d = dist(q, r.yaml[i]); peor = Math.max(peor, d); peorAntes = Math.max(peorAntes, dist(q, r.antes[i]));
+      assert.ok(d < 1, `marcador ${r.id}, esquina ${tab.orden_esquinas[i]}: la captura (${q}) y tablero_bandeja.yaml (${r.yaml[i].map(v => v.toFixed(2))}) a ${d.toFixed(3)} px (máximo 1)`);
+    });
+    console.log(`TD.1: esquinas de la captura frente a tablero_bandeja.yaml: ${peor.toFixed(3)} px como mucho; con la convención de antes serían ${peorAntes.toFixed(3)} px`);
+    assert.ok(peorAntes > 1, `con las esquinas a ±lado·5/12 (antes de TD.1) el test falla: ${peorAntes.toFixed(3)} px`);
     comprobar(s.reg);
   } finally { await s.cerrar(); }
 });
