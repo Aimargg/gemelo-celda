@@ -1908,7 +1908,7 @@ function oclusionPlan() {
 // El bloque de la tarjeta de la cámara k: una fila por objetivo con el porcentaje del ciclo con todo tapado y con algún punto
 // tapado, la racha más larga y la nota de qué tramos entran. Sin umbral de cumple/no cumple: no hay fuente
 function htmlOclusion(k) {
-  const res = oclusionPlan(), cab = `<div class="oclu" data-oclu="${k}"><h4>Oclusión por el brazo durante el ciclo <span class="tag s">SIN VALIDAR</span></h4>`;
+  const res = oclusionPlan(), cab = `<div class="oclu" data-oclu="${k}"><h4>Oclusión por el brazo durante el transporte de los platos <span class="tag s">SIN VALIDAR</span></h4>`;
   if (res.sin) return `${cab}<p class="hint" data-estado="sin-plan">${res.sin}</p></div>`;
   if (res.error) return `${cab}<p class="hint" data-estado="error">No se calcula: ${res.error}</p></div>`;
   const cam = res.r.camaras.find(c => c.id === k), c = OCLU_CFG;

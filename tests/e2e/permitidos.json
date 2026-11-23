@@ -4,7 +4,7 @@
     {
       "tipo": "warning",
       "texto": "GPU stall due to ReadPixels",
-      "motivo": "Aviso de rendimiento que escribe el driver ANGLE/SwiftShader de Chromium en el contenedor de la nube, no el gemelo (no hay ningún readPixels en src/). Desde el 2026-11-23 sale en la carga de los dos destinos, también con v9-dev de antes de F4 (dc8bcf6). En el portátil del usuario no sale. No indica ningún fallo."
+      "motivo": "Aviso de rendimiento que escribe el driver ANGLE/SwiftShader de Chromium cuando se leen píxeles del lienzo WebGL (preserveDrawingBuffer, y en F4 readRenderTargetPixels de la distorsión y getImageData de la captura). No es un error. Desde el 2026-11-23, en el contenedor de la nube sale ya en la carga de los dos destinos, también con v9-dev de antes de F4 (dc8bcf6); en el portátil del usuario no sale. Como el permiso es por texto, taparía también un camino de lectura nuevo: si se cambia de contenedor, se quita y se comprueba que la carga queda limpia."
     }
   ]
 }

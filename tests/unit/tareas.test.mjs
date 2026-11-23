@@ -23,7 +23,7 @@ test('catálogo: los umbrales del plan citan el plan; todos los demás son SUPUE
   const ids = TAREAS.PARAMS.map(p => p.id); assert.equal(new Set(ids).size, ids.length, 'ids únicos');
   for (const p of TAREAS.PARAMS) {
     if (p.origen === 'PLAN') { assert.equal(p.editable, false, `${p.id}: el plan no se edita`); assert.match(p.fuente, /ficha de T4\.1 del plan/); }
-    else { assert.equal(p.origen, 'SUPUESTO', p.id); assert.equal(p.editable, true, p.id); assert.match(p.fuente, /SIN VALIDAR|supuesta|sin medir/, `${p.id}: ${p.fuente}`); }
+    else { assert.equal(p.origen, 'SUPUESTO', p.id); assert.equal(p.editable, true, p.id); assert.match(p.fuente, /SIN VALIDAR/, `${p.id}: ${p.fuente}`); }
     assert.ok(typeof p.valor === 'number' && p.valor > 0, p.id);
     assert.doesNotMatch(JSON.stringify(p), /et al\.|doi\.org|arXiv|\bISO \d|\bIEEE\b|\((19|20)\d\d\)/, `${p.id}: una cita que no se ha podido comprobar`);
   }

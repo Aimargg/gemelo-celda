@@ -98,7 +98,7 @@ test('T4.2-C3 y C1: una fila por objetivo en cada cámara con lo que dio el geme
     // el brazo tapa a propósito: la cámara de la persona lo tiene delante de la mano durante la mitad del ciclo; una cámara lejos del brazo no ve nada tapado
     assert.ok(F.persona.mano.todo > 49 && F.persona.mano.racha > 18, 'la mano, tapada casi la mitad del ciclo y 18 s seguidos'); assert.equal(F.persona.pupilas.alguno, 0); assert.equal(F.entrega['aruco-entrega'].todo, 0);
     // texto: etiqueta SIN VALIDAR, nota de qué tramos entran, sin umbral (la etiqueta es neutra) y ninguna cita inventada
-    assert.equal(await p.locator('#camCards .oclu h4').count(), 3); for (const h of await p.locator('#camCards .oclu h4').allTextContents()) assert.match(h, /Oclusión por el brazo durante el ciclo\s*SIN VALIDAR/);
+    assert.equal(await p.locator('#camCards .oclu h4').count(), 3); for (const h of await p.locator('#camCards .oclu h4').allTextContents()) assert.match(h, /Oclusión por el brazo durante el transporte de los platos\s*SIN VALIDAR/);
     for (const k of Object.keys(OBJETIVOS)) for (const [o, f] of Object.entries(F[k])) {
       assert.match(f.texto, /todo tapado \d+,\d % · algún punto \d+,\d %/, `${k}/${o}`); assert.match(f.texto, /racha más larga con todo tapado: \d+,\d s/); assert.equal(f.pill, 'pill', 'sin umbral de cumple o no cumple: etiqueta neutra');
     }
@@ -221,7 +221,7 @@ test('T4.2-C3 en la web: el mismo bloque con las mismas cifras, sin el gancho de
     await p.click(TAB); await esperarFilas(p); const F = await filas(p);
     assert.deepEqual(Object.keys(F), Object.keys(OBJETIVOS));
     for (const k of Object.keys(OBJETIVOS)) { assert.deepEqual(Object.keys(F[k]), OBJETIVOS[k]); for (const o of OBJETIVOS[k]) assert.deepEqual(F[k][o], ref[k][o], `web ${k}/${o}`); }
-    assert.equal(await p.locator('#camCards .oclu h4').count(), 3); assert.match(await p.locator('#camCards .oclu h4').first().textContent(), /Oclusión por el brazo durante el ciclo\s*SIN VALIDAR/);
+    assert.equal(await p.locator('#camCards .oclu h4').count(), 3); assert.match(await p.locator('#camCards .oclu h4').first().textContent(), /Oclusión por el brazo durante el transporte de los platos\s*SIN VALIDAR/);
     assert.match(await p.locator('#camCards .oclu .hint[data-estado="calculado"]').first().textContent(), /694 muestras en 68,9 s de ciclo \(paso de 0,10 s, margen de 20 mm\)/);
     // los supuestos, también en la web: plegados, con su etiqueta y editables
     await p.click('#ocluCfg summary'); assert.equal(await p.inputValue('#oc_muestreo\\.paso'), '0.1'); assert.equal(await p.inputValue('#oc_rayo\\.margenMm'), '20');
