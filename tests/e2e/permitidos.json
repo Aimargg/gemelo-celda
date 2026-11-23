@@ -1,4 +1,10 @@
 {
-  "_formato": "Avisos de consola que no hacen fallar un test. Cada entrada: tipo ('error' o 'warning'), texto (subcadena exacta del mensaje) y motivo. Los pageerror y las peticiones externas no interceptadas no se pueden permitir. Hoy (v8) no hace falta ninguno: los dos destinos cargan sin errores ni avisos.",
-  "avisos": []
+  "_formato": "Avisos de consola que no hacen fallar un test. Cada entrada: tipo ('error' o 'warning'), texto (subcadena exacta del mensaje) y motivo. Los pageerror y las peticiones externas no interceptadas no se pueden permitir.",
+  "avisos": [
+    {
+      "tipo": "warning",
+      "texto": "GPU stall due to ReadPixels",
+      "motivo": "Aviso de rendimiento que escribe el driver ANGLE/SwiftShader de Chromium en el contenedor de la nube, no el gemelo (no hay ningún readPixels en src/). Desde el 2026-11-23 sale en la carga de los dos destinos, también con v9-dev de antes de F4 (dc8bcf6). En el portátil del usuario no sale. No indica ningún fallo."
+    }
+  ]
 }

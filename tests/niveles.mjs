@@ -17,9 +17,11 @@ export const NIVELES = {
   tarea: [
     'tests/e2e/carga.test.mjs',             // los dos destinos y la red cerrada (D2, I2): primero, para fallar pronto
     'tests/e2e/balanceo-salida.test.mjs',   // T2.8 (DT30): la salida de la bandeja no la toca en ninguna fase de su balanceo
+    'tests/e2e/captura.test.mjs',           // T4.6: captura sintética de 640 × 480 con anotaciones 2D (PNG y JSON), esquinas de ArUco en su sitio (C3), tiempos (C4), panel en los dos destinos (C5)
     'tests/e2e/datos.test.mjs',             // I7: posiciones.yaml y la tabla de fuentes byte a byte (T2.1), red de T2.2–T2.5
     'tests/e2e/deuda-f2.test.mjs',          // T2.7: zonas de plan en la demo y textos raros en posiciones.yaml (DT35), capa del otro robot (DT31) y #btnCalc (DT41)
     'tests/e2e/determinismo.test.mjs',      // I6 con «gemelo» (A, B, A'), sin reintento de semilla (D5) y el banco de ensayo
+    'tests/e2e/distorsion.test.mjs',        // T4.5: distorsión Brown–Conrady opcional: apagada = igual (C3), píxel de un punto conocido = la fórmula (C4), panel en los dos destinos (C5)
     'tests/e2e/escenas-claude.test.mjs',    // escenas en el almacén de claude.ai (D2)
     'tests/e2e/escenas-firestore.test.mjs', // I2: escenas con el simulacro de Firestore y sus reglas
     'tests/e2e/escenas-v8.test.mjs',        // I1: las tres escenas v8 de referencia
@@ -27,12 +29,16 @@ export const NIVELES = {
     'tests/e2e/ilegibles.test.mjs',         // DT11 e I2: escenas ilegibles con las reglas de los dos almacenes
     'tests/e2e/layout.test.mjs',            // I1 e I2: campos v9, solo lectura y el límite de 50.000 caracteres
     'tests/e2e/matriz.test.mjs',            // I8: matriz «gemelo» de 8 casos en orden directo
+    'tests/e2e/oclusion.test.mjs',          // T4.2: oclusión por el brazo a lo largo del plan: cifras del gemelo = cálculo aparte (C3), solo lee (C2), tapa y no tapa, converge y es editable (C4, C5), web
     'tests/e2e/perfil.test.mjs',            // I6 con «curso» (A, B, A') y el perfil de movimiento (T1.6)
     'tests/e2e/robot.test.mjs',             // I6 con el 203 y dibujo = colisión = TCP (T1.4)
     'tests/e2e/ros.test.mjs',               // I7: ficheros de ROS de T2.2–T2.5 con nominal, 203 y prefijo, en una página
     'tests/e2e/ros-referencias.test.mjs',   // I7: ficheros de ROS byte a byte (Común-C3), red de T2.3, T2.5 y T2.6
     'tests/e2e/ros-panel.test.mjs',         // T2.6: sección «Exportar a ROS», descargas y .tar byte a byte en los dos destinos (I7)
     'tests/e2e/sensor.test.mjs',            // modelo de sensor de la ELP (T1.7, D10)
+    'tests/e2e/tablero.test.mjs',           // T4.4: diseñador del tablero de la bandeja, aviso de alineación y tablero_bandeja.yaml
+    'tests/e2e/tareas.test.mjs',            // T4.1: panel por cámara con píxeles por tarea y umbrales con fuente
+    'tests/e2e/usb.test.mjs',               // T4.3: estimador de ancho de banda USB y analizador de lsusb -v
   ],
   puerta: [
     'tests/e2e/cambio-robot.test.mjs',      // pregunta al cambiar de robot, campo del prefijo y correcciones 1 y 2 (> 60 s)

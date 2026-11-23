@@ -136,6 +136,14 @@ details.escSec summary{cursor:pointer;font-weight:600;font-size:13px}
 .field label{font-size:12.5px;color:var(--muted)}
 .field output{font:500 12px var(--f-mono);font-variant-numeric:tabular-nums}
 .field input[type=range]{grid-column:1 / -1;width:100%;accent-color:var(--accent)}
+.tareas{display:grid;gap:7px;margin:8px 0}.tareas h4{margin:0;font-size:12.5px;font-weight:600}.tarea{display:grid;gap:2px;font-size:12.5px}
+.tarea>div{display:flex;justify-content:space-between;align-items:center;gap:8px}.tarea .hint{font-size:11.5px;overflow-wrap:anywhere}
+.oclu{display:grid;gap:7px;margin:8px 0}.oclu h4{margin:0;font-size:12.5px;font-weight:600}.ocl-fila{display:grid;gap:2px;font-size:12.5px}
+.ocl-fila>div{display:flex;justify-content:space-between;align-items:center;gap:8px}.ocl-fila .hint,.oclu>.hint{font-size:11.5px;overflow-wrap:anywhere}
+.usbcam,.usbbus,.usbdev{display:grid;gap:4px;font-size:12.5px;padding:8px 0;border-bottom:1px solid var(--line2)}.usbcam>div:first-child,.usbbus>div:first-child,.usbdev>span:first-child{display:flex;justify-content:space-between;align-items:center;gap:8px}
+.usbcam .hint,.usbbus .hint,.usbdev .hint{font-size:11.5px;overflow-wrap:anywhere}.usbcam input[type=number]{width:100%}.usbcam input[aria-invalid=true],#usbLsusbTxt[aria-invalid=true],#distTxt[aria-invalid=true],#distCfgCuerpo input[aria-invalid=true]{border-color:var(--bad)}
+#tabTbl input{width:100%;min-width:0;box-sizing:border-box;padding:3px 4px}#tabTbl input[aria-invalid=true]{border-color:var(--bad)}#tabTbl td{vertical-align:middle}#tabAviso[data-alineado=true]{color:var(--bad)}
+.field input[type=number]{grid-column:1 / -1;width:100%}.field input[aria-invalid=true]{border-color:var(--bad)}
 select{border:1px solid var(--line);background:var(--panel2);border-radius:6px;padding:6px 8px;width:100%}
 .chk{display:flex;align-items:center;gap:8px;font-size:13px;cursor:pointer}
 .chk input{accent-color:var(--accent);width:15px;height:15px}
@@ -384,6 +392,75 @@ textarea{width:100%;min-height:120px;border:1px solid var(--line);border-radius:
           <p class="hint" id="sensorNota"></p>
         </div>
         <div id="camCards" class="sec"></div>
+        <div class="sec" id="usbSec">
+          <h2>Ancho de banda USB <span class="tag s">SIN VALIDAR</span></h2>
+          <p class="hint">Estimación por cámara y por bus con el modo de cada tarjeta. La reserva (por defecto, la máxima de USB 2.0) y el bus son de esta sesión: no se guardan en la escena.</p>
+          <p class="hint" id="usbAviso" role="status"></p>
+          <div id="usbCuerpo"></div>
+          <div id="usbBuses"></div>
+          <div class="btns"><button class="btn" id="btnUsbRestaurar">Restaurar el USB (cámaras y supuestos)</button></div>
+          <details class="escSec" id="usbLsusb"><summary>Pegar la salida de lsusb -v</summary>
+            <p class="hint">Solo se lee el texto que pegues aquí: no se guarda, no se envía a ninguna parte y no hay nada que se ejecute. Ejecuta <code>sudo lsusb -v</code> en el PC de las cámaras y pega el resultado. Se leen el bus, el dispositivo y, de los endpoints isócronos de vídeo, <code>wMaxPacketSize</code> y <code>bInterval</code> (solo USB 2.0 de alta velocidad). Si el texto está mal formado se dice la línea y no se cambia nada.</p>
+            <textarea id="usbLsusbTxt" spellcheck="false" placeholder="Pega aquí la salida de «sudo lsusb -v»"></textarea>
+            <div class="btns"><button class="btn" id="btnUsbAnalizar">Analizar</button><button class="btn" id="btnUsbQuitar">Quitar el análisis</button></div>
+            <p class="hint" id="usbLsusbMsg" role="status"></p>
+            <div id="usbLsusbRes"></div>
+          </details>
+          <details class="escSec" id="usbCfg"><summary>Supuestos del estimador de USB</summary>
+            <p class="hint">Editables y solo de esta sesión. La reserva máxima es la del plan y no se edita; todo lo demás son supuestos sin fuente comprobable, SIN VALIDAR.</p>
+            <div id="usbCfgCuerpo"></div>
+          </details>
+        </div>
+        <div class="sec" id="tabSec">
+          <h2>Tablero de la bandeja <span class="tag s">SIN VALIDAR</span></h2>
+          <p class="hint">Marcadores ArUco (DICT_4X4_50) de la bandeja para <code>estimatePoseBoard</code> de OpenCV: id, lado y posición de cada uno en el marco de la bandeja (origen en su centro, x e y sobre su cara de arriba, giro del patrón sobre z hacia +y; el tablero es plano, en z = 0). Parte de los 4 marcadores de la escena (ids 6–9, de 32 mm). Lo que cambies es de esta sesión: no se guarda en la escena y no cambia el dibujo ni la disposición.</p>
+          <p class="hint" id="tabAviso" role="status"></p>
+          <table class="tbl" id="tabTbl"><thead><tr><th>Id</th><th>Lado (mm)</th><th>x (mm)</th><th>y (mm)</th><th>Giro (°)</th><th></th></tr></thead><tbody></tbody></table>
+          <div class="btns"><button class="btn" id="btnTabAnadir">Añadir marcador</button><button class="btn" id="btnTabRestaurar">Restaurar el tablero (marcadores y supuestos)</button></div>
+          <h4 style="margin:6px 0 0;font-size:12.5px;font-weight:600">tablero_bandeja.yaml</h4>
+          <p class="hint">Las esquinas de cada marcador en el marco de la bandeja, en metros y en el orden de OpenCV (arriba-izquierda, arriba-derecha, abajo-derecha, abajo-izquierda), con el origen de cada valor. Solo genera texto: no se envía a ROS ni a ninguna parte. Aparte de los ficheros de «Exportar a ROS».</p>
+          <div class="btns"><button class="btn" id="btnTabVer">Ver</button><button class="btn" id="btnTabCopiar">Copiar</button><button class="btn" id="btnTabDescargar">Descargar</button></div>
+          <div class="field2" id="tabVerCaja" hidden><label for="tabVer" id="tabVerNombre">tablero_bandeja.yaml · solo lectura</label><textarea id="tabVer" readonly spellcheck="false"></textarea></div>
+          <details class="escSec" id="tabCfg"><summary>Supuestos del tablero</summary>
+            <p class="hint">Editables y solo de esta sesión. No tienen fuente comprobable: SIN VALIDAR.</p>
+            <div id="tabCfgCuerpo"></div>
+          </details>
+        </div>
+        <div class="sec" id="distSec">
+          <h2>Distorsión de la lente <span class="tag s">SIN VALIDAR</span></h2>
+          <p class="hint">Opcional y apagada. En «Ver por esta cámara» simula la distorsión de una lente real (modelo Brown–Conrady, <code>plumb_bob</code>: D = k1, k2, p1, p2, k3) con el <code>D</code> de un <code>camera_info</code> de ROS que pegues o elijas como fichero local: el texto solo se lee aquí, no se guarda ni se envía a ninguna parte. Solo cambia la vista de esta sesión: ni la escena, ni los números del gemelo, ni lo que se exporta (el <code>camera_info</code> exportado sigue con D = 0). Se aplica el D del fichero sobre la lente ideal del gemelo: fx, fy, cx y cy del fichero se leen pero no cambian la vista. El tamaño del fichero tiene que casar con el modo de la cámara.</p>
+          <div class="row"><label class="hint" for="distCam" style="flex:none">Cámara</label><select id="distCam" style="flex:1;width:auto"></select></div>
+          <label class="chk"><input type="checkbox" id="distOn" disabled> Distorsión activada en esta cámara (necesita un camera_info cargado)</label>
+          <textarea id="distTxt" spellcheck="false" placeholder="Pega aquí el camera_info (YAML de ROS, con distortion_model: plumb_bob)"></textarea>
+          <div class="btns"><button class="btn" id="btnDistAplicar">Cargar el texto pegado</button><label class="btn" for="distFichero">Elegir un fichero…</label><input type="file" id="distFichero" accept=".yaml,.yml,.txt" hidden><button class="btn" id="btnDistRestaurar">Restaurar (apagar y quitar)</button></div>
+          <p class="hint" id="distMsg" role="status"></p>
+          <div id="distEstado"></div>
+          <details class="escSec" id="distCfg"><summary>Supuestos de la distorsión</summary>
+            <p class="hint">Editable y solo de esta sesión. El render lleva más campo que la cámara para que las esquinas distorsionadas sigan cubiertas; este es el máximo que se permite y no tiene fuente comprobable: SIN VALIDAR.</p>
+            <div id="distCfgCuerpo"></div>
+          </details>
+        </div>
+        <div class="sec" id="capSec">
+          <h2>Captura sintética <span class="tag s">SIN VALIDAR</span></h2>
+          <p class="hint" id="capAviso"><strong>Aviso:</strong> sirve para probar pipelines, no para sustituir datos reales.</p>
+          <p class="hint">El botón «Captura sintética» de cada tarjeta de cámara pinta lo que ve esa cámara en 640 × 480 px (la focal y el ancho del sensor de la cámara; sin distorsión) y escribe un JSON con las anotaciones 2D de lo que se ve: fruta, platos y marcadores ArUco (id y las cuatro esquinas en el orden de OpenCV), cada uno con su caja, si es visible y si está cortado por el borde, y el origen de cada valor. Solo cuenta el campo y los bordes: un objeto tapado por otro o por el brazo dentro del campo sigue anotado como visible. No se dibuja ni se anota ninguna persona. La captura es de esta sesión: no se guarda en la escena y no se envía a ninguna parte.</p>
+          <p class="hint" id="capMsg" role="status"></p>
+          <div id="capVista" hidden>
+            <canvas id="capImg" width="640" height="480" hidden style="max-width:100%;height:auto;border:1px solid var(--line)" aria-label="Captura sintética de la cámara"></canvas>
+            <div class="btns"><button class="btn" id="btnCapPng">Descargar el PNG</button><button class="btn" id="btnCapJson">Descargar el JSON</button><button class="btn" id="btnCapQuitar">Quitar la captura</button></div>
+            <div class="field2"><label for="capJson">anotaciones.json · solo lectura</label><textarea id="capJson" readonly spellcheck="false"></textarea></div>
+          </div>
+        </div>
+        <div class="sec">
+          <details class="escSec" id="tareasCfg"><summary>Umbrales y supuestos de las tareas</summary>
+            <p class="hint">Editables y solo de esta sesión: no se guardan en la escena. Los del plan (ArUco) no se editan; todos los demás son supuestos sin fuente comprobable, SIN VALIDAR. La velocidad de la bandeja y la exposición fijan el desenfoque; la profundidad de campo usa el F supuesto.</p>
+            <div id="tareasCfgCuerpo"></div>
+          </details>
+          <details class="escSec" id="ocluCfg"><summary>Supuestos de la oclusión</summary>
+            <p class="hint">Editables y solo de esta sesión: no se guardan en la escena. El paso de muestreo del ciclo (entre 0,01 y 2 s) y el margen del rayo junto al objetivo (hasta 500 mm) son supuestos sin fuente comprobable, SIN VALIDAR. Un valor que no sea un número positivo se marca y no se aplica.</p>
+            <div id="ocluCfgCuerpo"></div>
+          </details>
+        </div>
       </div>
 
       <div class="tab" data-panel="demo" hidden>
