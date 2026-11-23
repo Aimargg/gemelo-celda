@@ -1023,7 +1023,7 @@ function marcoTF(nombre, padre) {
 
 // ======================= Demo: motor de tiempo =======================
 const D = { carga: null, planes: 0, sustituidos: 0, autocol: 0, run: 0, playing: false, rate: 1, vel: 0.25, modo: 'M0', amp: 0.02, motion: 0, estado: 'REPOSO', personaOff: 0, errores: [], minCam: {}, activo: false, fase: 0, fin: null, choques: 0, roces: 0, pausas: 0, rozando: new Map(), platoEnPinza: null, piezaObjetivo: null };
-const CICLO = { html: '', ult: null, platos: null, pd: {} }; // la cinta del ciclo (TU.1): lo último pintado y lo que lee
+const CICLO = { html: '', ult: null, platos: null, pd: {}, camFirma: '', n: 0 }; // la cinta del ciclo (TU.1): lo último pintado y lo que lee
 let simT = 0; const ANIMS = [], LOOPS = [];
 function anim(T, fn) { const run = D.run; return new Promise((res, rej) => ANIMS.push({ t0: simT, T: Math.max(T, 1e-3), fn, res, rej, run })); }
 function until(fn) { const run = D.run; return new Promise((res, rej) => LOOPS.push({ fn, res, rej, run })); }
@@ -1201,7 +1201,7 @@ function comprobarPlan0(opts, pf) {
   robot.setQ(q0);
   return out;
 }
-function pintarCheck(lista) { $('#dCheck').innerHTML = lista.map(c => `<li class="${c.cls}">${c.txt}</li>`).join(''); CICLO.ult = { clave: claveCiclo(), lista }; }
+function pintarCheck(lista, pf = null) { $('#dCheck').innerHTML = lista.map(c => `<li class="${c.cls}">${c.txt}</li>`).join(''); if (pf) CICLO.ult = { clave: claveCiclo(pf), lista }; } // pf: la lista es una comprobación previa de verdad (la cinta del ciclo la usa)
 function verPosturaImposible() {
   const P = D.posturaImposible; if (!P) return; D.activo = false; robot.setQ(P.q); pinza.setApertura(P.w); sincronizarSliders(); actualizarHUD(); // modo manual: el HUD dice con qué choca
   if (P.c) { marcaChoque.position.copy(baseAMundo(P.c.p[0], P.c.p[1], P.c.p[2])); marcaChoque.visible = true; D.marcaHasta = simT + 1e9; }
@@ -1217,7 +1217,7 @@ async function demo(pf) {
   // desde la misma (DT10). D.falloDemo: el fallo de esta demo, con su causa (la validación lo lee, T1.8).
   PERFIL.de(pf); const run = D.run; D.t0 = simT; D.faseInicio = simT + D.fase; D.fin = null; D.ctx = {}; D.perfilDemo = pf; D.falloDemo = null;
   try {
-    const chk = comprobarPlan({ perfil: pf }); pintarCheck(chk); orientarCajas(pf);
+    const chk = comprobarPlan({ perfil: pf }); pintarCheck(chk, pf); orientarCajas(pf);
     const graves = chk.filter(c => c.grave); if (graves.length) throw new FalloDemo(graves.map(g => g.txt).join(' '), 'previo', { causa: 'previo', items: graves });
     paso(0); estado('REPOSO'); publicar('/v1/dialog_state', ['ident'], { paso: 'reposo', mensaje: 'Haz el gesto de inicio' }); await esperar(1.2);
     paso(1); estado('IDENTIFICANDO');
@@ -1536,13 +1536,13 @@ function pintarCaja() {
   $('#cajaH').value = Math.round(L.caja.h * 100); $('#cajaHOut').textContent = `${Math.round(L.caja.h * 100)} cm`; $('#cajaH').disabled = !L.caja.on;
   if (!robot) return; if (sinPlan()) { CICLO.platos = null; $('#cajaInfo').innerHTML = '<dt>Agarre de los platos</dt><dd><span class="pill warn">sin calcular</span> pulsa «Calcular trayectorias»</dd>'; return; }
   const platos = []; // también para la cinta del ciclo (CICLO.platos): qué plato no se puede coger y por qué
-  $('#cajaInfo').innerHTML = platosActivos().map(([k]) => { const pl = planPlatoCache(k, PERFIL_EXPLORA); const n = k === 'plato1' ? '1º' : '2º'; if (!pl) { const f = planForzado(k, PERFIL_EXPLORA); const txt = f && f.choque ? `imposible: ${textoChoque(f.choque)}${f.hol.min < 0 ? `, ${mm(-f.hol.min)} mm` : ''}` : 'sin dirección posible'; platos.push({ ok: false, txt: `Coger el plato ${n}: ${txt}` }); return `<dt>Coger el plato ${n}</dt><dd><span class="pill bad">${txt}</span></dd>`; } platos.push({ ok: true }); const h = pl.hol.min; return `<dt>Holgura al coger el plato ${n}</dt><dd><span class="pill ${h < -0.002 ? 'bad' : h < 0.01 ? 'warn' : 'ok'}">${h < -0.002 ? `choca con la ${pl.hol.contra}: ${mm(h)} mm` : `${mm(h)} mm`}</span></dd>`; }).join('');
+  $('#cajaInfo').innerHTML = platosActivos().map(([k]) => { const pl = planPlatoCache(k, PERFIL_EXPLORA); const n = k === 'plato1' ? '1º' : '2º'; if (!pl) { const f = planForzado(k, PERFIL_EXPLORA); const txt = f && f.choque ? `imposible: ${textoChoque(f.choque)}${f.hol.min < 0 ? `, ${mm(-f.hol.min)} mm` : ''}` : 'sin dirección posible'; platos.push({ ok: false, n, txt: `Coger el plato ${n}: ${txt}` }); return `<dt>Coger el plato ${n}</dt><dd><span class="pill bad">${txt}</span></dd>`; } platos.push({ ok: true, n }); const h = pl.hol.min; return `<dt>Holgura al coger el plato ${n}</dt><dd><span class="pill ${h < -0.002 ? 'bad' : h < 0.01 ? 'warn' : 'ok'}">${h < -0.002 ? `choca con la ${pl.hol.contra}: ${mm(h)} mm` : `${mm(h)} mm`}</span></dd>`; }).join('');
   CICLO.platos = platos;
 }
 // ======================= Cinta del ciclo y estado de los pasos (remodelado de la interfaz, TU.1) =======================
 // Solo lee lo que ya existe (el cálculo, la demo, la última comprobación previa y los agarres de los platos) y lo pinta en
 // #ciclo y en los puntos de los pasos: nunca calcula, ni planifica, ni mueve nada (I6). Se repinta con el HUD y solo si cambia.
-function claveCiclo() { return JSON.stringify(L) + '|' + D.amp; } // la comprobación previa vale para esta disposición y este balanceo
+function claveCiclo(pf) { return `${pf}|${planesAlDia(pf)}|${D.amp}|` + JSON.stringify(L, (k, v) => k === 'f' || k === 'modo' || k === 'roll' ? undefined : v); } // la comprobación previa vale para esta disposición (la óptica de las cámaras no cuenta), este balanceo y estos planes
 function textoCorto(t, n = 110) { const s = String(t || '').replace(/<[^>]*>/g, '').replace(/\s+/g, ' ').trim(); return s.length > n ? s.slice(0, n - 1) + '…' : s; }
 function estadoCiclo() {
   const pl = n => `${n} plato${n > 1 ? 's' : ''}`;
@@ -1553,12 +1553,16 @@ function estadoCiclo() {
   if (D.fin === 'abort') return { cls: 'warn', sello: 'Abortada', dato: `Paso ${D.paso + 1} de ${PASOS.length}`, sub: textoCorto(D.falloDemo && D.falloDemo.msg) || 'la bandeja no volvió: brazo retirado', pd: 'warn' };
   if (D.fin) return { cls: 'bad', sello: 'Parada', dato: `Paso ${D.paso + 1} de ${PASOS.length}`, sub: textoCorto(D.falloDemo && D.falloDemo.msg) || 'mira el detalle en el paso 4', pd: 'bad' };
   if (sinPlan()) return { cls: '', sello: 'Sin calcular', dato: 'Hay cambios sin calcular', sub: 'pulsa «Calcular trayectorias»', pd: '' };
-  const ck = CICLO.ult && CICLO.ult.clave === claveCiclo() ? CICLO.ult.lista : null;
-  const graves = ck ? ck.filter(c => c.grave) : (CICLO.platos || []).filter(p => !p.ok);
+  const pf = planesAlDia(perfilEscena()) ? perfilEscena() : PERFIL_EXPLORA, ck = CICLO.ult && CICLO.ult.clave === claveCiclo(pf) ? CICLO.ult.lista : null;
+  // los graves de la comprobación previa y, de los agarres de explorar, los platos que la comprobación no nombre ya
+  const gCk = (ck || []).filter(c => c.grave), nombrado = n => gCk.some(c => textoCorto(c.txt).startsWith(`Plato ${n}`));
+  const graves = [...gCk, ...(CICLO.platos || []).filter(p => !p.ok && !nombrado(p.n))];
   if (graves.length) return { cls: 'bad', sello: 'No empieza', dato: graves.length > 1 ? `${graves.length} pasos imposibles` : 'Un paso imposible', sub: textoCorto(graves[0].txt), pd: 'bad' };
-  return { cls: 'lista', sello: 'Lista', dato: `${pl(L.pedido)} · perfil ${perfilEscena()}`, sub: ck ? 'comprobación previa sin problemas' : 'los platos se pueden coger', pd: '' };
+  if (!ck) return { cls: '', sello: 'Sin comprobar', dato: `${pl(L.pedido)} · perfil ${perfilEscena()}`, sub: 'los platos se cogen; el paso 4 comprueba el resto', pd: '' };
+  return { cls: 'lista', sello: 'Lista', dato: `${pl(L.pedido)} · perfil ${perfilEscena()}`, sub: 'comprobación previa sin problemas', pd: 'ok' };
 }
-function ponerPd(id, cls) { if (CICLO.pd[id] === cls) return; CICLO.pd[id] = cls; const el = document.getElementById(id); if (el) el.className = 'pd' + (cls ? ' ' + cls : ''); }
+const PD_TXT = { ok: 'todo bien', warn: 'algo en el límite', bad: 'hay un problema' };
+function ponerPd(id, cls) { if (CICLO.pd[id] === cls) return; CICLO.pd[id] = cls; const el = document.getElementById(id); if (el) { el.className = 'pd' + (cls ? ' ' + cls : ''); el.innerHTML = cls ? `<span class="sr">: ${PD_TXT[cls]}</span>` : ''; } }
 function pintarCiclo() {
   const e = estadoCiclo(), enDemo = D.activo || (D.fin && D.fin !== 'previo'), i = D.paso;
   const tramos = PASOS.map((_, k) => `<i class="${!enDemo ? '' : D.fin === 'ok' || k < i ? 'hecho' : k === i ? (D.fin ? 'fail' : 'on') : ''}"></i>`).join('');
@@ -1571,7 +1575,10 @@ function pintarCiclo() {
     const b = $('#cicloPlay'); b.textContent = pausa ? '❚❚' : '▶'; b.setAttribute('aria-label', pausa ? 'Pausar la demo' : 'Reproducir la demo'); b.disabled = dp.disabled;
   }
   ponerPd('pdDemo', e.pd); ponerPd('pdEscena', (CICLO.platos || []).some(p => !p.ok) ? 'bad' : '');
+  if (CICLO.camFirma !== firmaCams()) ponerPd('pdCamaras', ''); // la matriz se pintó con otras cámaras: el punto ya no vale
+  CICLO.n++;
 }
+function firmaCams() { return JSON.stringify([L.cams, L.sensor, L.persona, L.bandeja, L.zona]); }
 $('#cicloPlay').addEventListener('click', () => $('#dPlay').click());
 // Matriz cámara × tarea de la pestaña Cámaras: lo mismo que las tarjetas (tareasCam), resumido; el punto del paso 2 es el peor
 function pintarMatrizCams() {
@@ -1579,7 +1586,8 @@ function pintarMatrizCams() {
   let peor = -1;
   $('#camMatriz tbody').innerHTML = Object.keys(L.cams).map(k => {
     const c = L.cams[k], { tareas, campo } = tareasCam(k);
-    const celda = (t, cls, txt, titulo, valor) => `<td class="${cls}"><button data-mcam="${k}" data-mtarea="${t}" title="${esc(titulo)}">${valor}</button></td>`;
+    const MARCA = { ok: '✓', warn: '!', bad: '✗' };
+    const celda = (t, cls, txt, titulo, valor) => `<td class="${cls}"><button data-mcam="${k}" data-mtarea="${t}" title="${esc(titulo)}"><span class="v">${valor}</span> <span class="m" aria-hidden="true">${MARCA[cls]}</span><span class="sr">: ${txt}</span></button></td>`;
     const celdas = COLS.map(claves => {
       const ts = tareas.filter(t => claves.includes(t.clave)); if (!ts.length) return '<td class="na" aria-label="no aplica">—</td>';
       const t = ts.reduce((a, b) => RANGO[b.res.estado] > RANGO[a.res.estado] ? b : a), r = t.res, e = TAREAS.ESTADOS[r.estado]; peor = Math.max(peor, RANGO[r.estado]);
@@ -1589,7 +1597,7 @@ function pintarMatrizCams() {
     celdas.push(celda('campo', ec.cls, ec.txt, `Profundidad de campo: ${ec.txt}`, campo.total ? `${campo.dentro}/${campo.total}` : ec.txt));
     return `<tr><td class="f">${esc(c.nombre)}<small>${c.grupo === 'V1' ? 'Visión 1' : 'Visión 2'}</small></td>${celdas.join('')}</tr>`;
   }).join('');
-  ponerPd('pdCamaras', peor < 0 ? '' : ['ok', 'warn', 'bad', 'bad'][peor]);
+  CICLO.camFirma = firmaCams(); CICLO.pd.pdCamaras = null; ponerPd('pdCamaras', peor < 0 ? '' : ['ok', 'warn', 'bad', 'bad'][peor]);
 }
 $('#camMatriz').addEventListener('click', e => {
   const b = e.target.closest('button[data-mcam]'); if (!b) return;
@@ -1600,7 +1608,7 @@ $('#camMatriz').addEventListener('click', e => {
 function actualizarCheck() {
   if ($('[data-panel="demo"]').hidden || D.activo || !robot) return; pintarPerfilDemo();
   if (sinPlan()) { pintarCheck([{ cls: 'warn', txt: 'Hay cambios sin calcular. Pulsa «Calcular trayectorias» o reproduce la demo, que calcula antes de mover el brazo.' }]); return; }
-  const pf = planesAlDia(perfilEscena()) ? perfilEscena() : PERFIL_EXPLORA; pintarCheck(comprobarPlan({ perfil: pf }));
+  const pf = planesAlDia(perfilEscena()) ? perfilEscena() : PERFIL_EXPLORA; pintarCheck(comprobarPlan({ perfil: pf }), pf);
   $('#dCheckPerfil').textContent = pf === perfilEscena() ? `Con el perfil de la escena («${pf}»).` : `Con el perfil de explorar («${pf}»): las trayectorias del perfil de la escena («${perfilEscena()}») se calculan al reproducir la demo, al validar o al guardar.`;
 }
 function toast(t) { if (AVISO_ROBOT) { t = t ? `${t} · ${AVISO_ROBOT}` : AVISO_ROBOT; AVISO_ROBOT = null; } const el = $('#toast'); el.textContent = t; el.classList.add('on'); clearTimeout(el._t); el._t = setTimeout(() => el.classList.remove('on'), 2800); }
@@ -2717,7 +2725,7 @@ $('#segModoB').addEventListener('click', e => { const b = e.target.closest('butt
 $('#dVel').addEventListener('input', e => { D.vel = e.target.value / 100; $('#dVelOut').textContent = `${e.target.value} %`; });
 $('#dAmp').addEventListener('input', e => { D.amp = e.target.value / 100; $('#dAmpOut').textContent = `${fmt(+e.target.value, 1)} cm`; actualizarCheck(); });
 requestAnimationFrame(bucle);
-if (location.search.includes('prueba')) window.__g = { dibujar: () => render(), CAPTURA, capturar: k => capturar(k), capturaUltima: () => CAP,DISTORSION, distCams: () => DIST_CAMS, distCfg: () => DIST_CFG, distImagen: (k, ancho) => distImagen(k, ancho), aplicarPedido,actualizarZona, esferasObjeto, cargaDe, BAND, bandeja, aplicarBandeja: t => aplicarBandeja(t), ladoZonas: () => ladoZonas(), comprobarPlan, llegaVertical, puntosSoltar, FRUTAS, CACHE_PLAN, poseHoriz, ejeHoriz, mundoABase, enLimites, qValida, rutaNivelada: (...a) => rutaNivelada(...a), colocacionConTransporte: (...a) => colocacionConTransporte(...a), planColocar: (...a) => planColocar(...a), zonasB, ikTCP, planAgarrePlato, planColocar, planPlatoCache, KIN_: KIN, BASES, consts: { R_AGARRE, H_BORDE }, COL: () => COL, choqueEn: (q, c) => choqueEn(q, c), obstaculos: () => obstaculos(), textoChoque: c => textoChoque(c), D, L: () => L, cam, orbit, scene, renderer, OBJ, piezas: () => piezas, simT: () => simT, CAMS, actualizarCam, actualizarAruco, actualizarPlatos, metricasCam, tareasCam, TAREAS, tareasCfg: () => TAREAS_CFG, OCLUSION, ocluCfg: () => OCLU_CFG, ocluEstado: () => OCLU, oclusionPlan: () => oclusionPlan(), tramosOclusion: () => tramosOclusion(), colocar: (q, w, c) => colocar(q, w, c), USB, usbCfg: () => USB_CFG, usbCams: () => USB_CAMS, usbLsusb: () => USB_LSUSB, estadoObjeto, alcance, comprobarPlan, ensayo, planAgarrePlato, holguraActual, get robot() { return robot; }, KIN, pinza, tcpMundo, zPlato, setL: l => { L = l; }, ESC, ALM, abrirEscena, codigoEscena, abrirCodigo, guardarEscena, escCam: cam, orbit, vista, CALC, calcularPlanes, planesAlDia, recalcular, orientDe, fijarOrient, orientarDesdeQuat, CAMS, seleccionar, tctl, generarYaml, ficherosRos: () => ficherosRos(), modeloExportacion: () => modeloExportacion(), cadenaPlato, cargaPlan, rutaCartesiana: (...a) => rutaCartesiana(...a), zonasB_: () => zonasB, zonaDe, qReposo, aplicarLayout, buscarAlternativa, candidatos, explicar, mostrarFalloInfo, diagnosticarPunto, LAYOUT, ESQ_L, migrarLayout, soloLectura, RNG, planificar: (...a) => planificar(...a), get CIN() { return CIN; }, get ROB() { return ROB; }, CALIBRACION, marco: () => marco(), baseAMundo: (x, y, z) => baseAMundo(x, y, z), tcpDeQ: (q, w) => tcpDeQ(q, w), pedirRobotId: id => pedirRobotId(id), ikNoConverge: (p, y, o) => ikNoConverge(p, y, o), posesTCP, volCol, calcularPerfil, radioA, PERFIL, prepararMoveJ: (...a) => prepararMoveJ(...a), semillaDe: (...a) => semillaDe(...a), otroVisible: () => otroVisible(), apartarEscena: () => apartarEscena(), perfilEscena: () => perfilEscena(), planesAlDiaDe: pf => planesAlDia(pf), validar: () => validar(), VAL, SENSOR, areaDe: c => areaDe(c), hfovDe: c => hfovDe(c), vfovDe: c => vfovDe(c), firmaVal: () => firmaVal(), valAlDia: () => valAlDia(), perfilesDe: e => perfilesDe(e), estadoParaGuardar: () => estadoParaGuardar(), bandejaBalanceo: () => bandejaBalanceo(), tocaBandejaEnBalanceo: (q, w) => tocaBandejaEnBalanceo(q, w) }; // T1.4: robot activo, su cinemática y el marco de base_link (una sola línea: build_web.sh la quita entera)
+if (location.search.includes('prueba')) window.__g = { dibujar: () => render(), ciclo: () => CICLO, CAPTURA, capturar: k => capturar(k), capturaUltima: () => CAP,DISTORSION, distCams: () => DIST_CAMS, distCfg: () => DIST_CFG, distImagen: (k, ancho) => distImagen(k, ancho), aplicarPedido,actualizarZona, esferasObjeto, cargaDe, BAND, bandeja, aplicarBandeja: t => aplicarBandeja(t), ladoZonas: () => ladoZonas(), comprobarPlan, llegaVertical, puntosSoltar, FRUTAS, CACHE_PLAN, poseHoriz, ejeHoriz, mundoABase, enLimites, qValida, rutaNivelada: (...a) => rutaNivelada(...a), colocacionConTransporte: (...a) => colocacionConTransporte(...a), planColocar: (...a) => planColocar(...a), zonasB, ikTCP, planAgarrePlato, planColocar, planPlatoCache, KIN_: KIN, BASES, consts: { R_AGARRE, H_BORDE }, COL: () => COL, choqueEn: (q, c) => choqueEn(q, c), obstaculos: () => obstaculos(), textoChoque: c => textoChoque(c), D, L: () => L, cam, orbit, scene, renderer, OBJ, piezas: () => piezas, simT: () => simT, CAMS, actualizarCam, actualizarAruco, actualizarPlatos, metricasCam, tareasCam, TAREAS, tareasCfg: () => TAREAS_CFG, OCLUSION, ocluCfg: () => OCLU_CFG, ocluEstado: () => OCLU, oclusionPlan: () => oclusionPlan(), tramosOclusion: () => tramosOclusion(), colocar: (q, w, c) => colocar(q, w, c), USB, usbCfg: () => USB_CFG, usbCams: () => USB_CAMS, usbLsusb: () => USB_LSUSB, estadoObjeto, alcance, comprobarPlan, ensayo, planAgarrePlato, holguraActual, get robot() { return robot; }, KIN, pinza, tcpMundo, zPlato, setL: l => { L = l; }, ESC, ALM, abrirEscena, codigoEscena, abrirCodigo, guardarEscena, escCam: cam, orbit, vista, CALC, calcularPlanes, planesAlDia, recalcular, orientDe, fijarOrient, orientarDesdeQuat, CAMS, seleccionar, tctl, generarYaml, ficherosRos: () => ficherosRos(), modeloExportacion: () => modeloExportacion(), cadenaPlato, cargaPlan, rutaCartesiana: (...a) => rutaCartesiana(...a), zonasB_: () => zonasB, zonaDe, qReposo, aplicarLayout, buscarAlternativa, candidatos, explicar, mostrarFalloInfo, diagnosticarPunto, LAYOUT, ESQ_L, migrarLayout, soloLectura, RNG, planificar: (...a) => planificar(...a), get CIN() { return CIN; }, get ROB() { return ROB; }, CALIBRACION, marco: () => marco(), baseAMundo: (x, y, z) => baseAMundo(x, y, z), tcpDeQ: (q, w) => tcpDeQ(q, w), pedirRobotId: id => pedirRobotId(id), ikNoConverge: (p, y, o) => ikNoConverge(p, y, o), posesTCP, volCol, calcularPerfil, radioA, PERFIL, prepararMoveJ: (...a) => prepararMoveJ(...a), semillaDe: (...a) => semillaDe(...a), otroVisible: () => otroVisible(), apartarEscena: () => apartarEscena(), perfilEscena: () => perfilEscena(), planesAlDiaDe: pf => planesAlDia(pf), validar: () => validar(), VAL, SENSOR, areaDe: c => areaDe(c), hfovDe: c => hfovDe(c), vfovDe: c => vfovDe(c), firmaVal: () => firmaVal(), valAlDia: () => valAlDia(), perfilesDe: e => perfilesDe(e), estadoParaGuardar: () => estadoParaGuardar(), bandejaBalanceo: () => bandejaBalanceo(), tocaBandejaEnBalanceo: (q, w) => tocaBandejaEnBalanceo(q, w) }; // T1.4: robot activo, su cinemática y el marco de base_link (una sola línea: build_web.sh la quita entera)
 fetch('ur3e-malla.json').then(r => { if (!r.ok) throw new Error(r.status); return r.json(); }).then(j => { const bin = atob(j.glb); const u8 = new Uint8Array(bin.length); for (let i = 0; i < bin.length; i++) u8[i] = bin.charCodeAt(i); new GLTFLoader().parse(u8.buffer, '', cargado, fallo); }).catch(fallo);
 function fallo(err) { $('#loading').textContent = 'No se ha podido cargar el modelo del UR3e.'; console.error(err); }
 function cargado(g) {

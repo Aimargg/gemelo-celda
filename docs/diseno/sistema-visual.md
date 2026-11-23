@@ -15,8 +15,9 @@ de la pantalla es decidir dónde va cada cosa de la celda, saber si la demo sale
 
 ## Principios
 
-- El veredicto no se busca: la cinta del ciclo lo dice siempre («Lista», «Sin calcular», «Calculando», «En curso»,
-  «Completa», «No empieza», «Parada», «Abortada»), con palabra además de color.
+- El veredicto no se busca: la cinta del ciclo lo dice siempre («Sin calcular», «Calculando», «Sin comprobar», «Lista»,
+  «En curso», «Completa», «No empieza», «Parada», «Abortada»), con palabra además de color. «Lista» solo con una
+  comprobación previa vigente para esa disposición (se hace al abrir el paso 4 o al reproducir); sin ella, «Sin comprobar».
 - La cinta y los puntos de los pasos solo leen: nunca calculan, planifican ni mueven nada (I6).
 - La rejilla no se toca sin medir: cabecera de 42 px y vista | panel de 384 px. El lienzo 3D mide 998 × 828 a 1440 × 900 y
   hay pruebas que lo fijan (las huellas de `distorsion.test.mjs`); cambiarlo obliga a volver a medirlas en el portátil.
@@ -37,7 +38,8 @@ de la pantalla es decidir dónde va cada cosa de la celda, saber si la demo sale
 
 Pares validados con `contraste.py` (2026-11-23): `--ink` y `--muted` sobre `--bg` y `--panel`, `--tape-ink` sobre `--tape`,
 `--ok`, `--bad` y `--warn` sobre blanco y sobre su `-soft`, `--v1` y `--v2` sobre blanco: todos ≥ 4,5:1; `--tape-edge` sobre
-blanco 3,8:1 (solo borde).
+blanco 3,8:1 (solo borde). El texto de los sellos rellenos es `--panel` sobre `--ok` o `--bad`: 5,34 y 6,19:1 en claro; en
+oscuro, la tinta oscura sobre el verde y el rojo claros supera también 4,5:1 (revisión de TU.1, H2).
 
 ## Tipografía
 
@@ -71,6 +73,8 @@ Se cargan de Google Fonts; en las pruebas responden vacías y la página cae a l
 
 ## Estados
 
+- **Sin comprobar:** sello discontinuo y «el paso 4 comprueba el resto»: las trayectorias están al día, pero no hay
+  comprobación previa para esta disposición.
 - **Sin calcular:** sello discontinuo y «pulsa «Calcular trayectorias»»; la barra de cálculo de la vista con el borde amarillo.
 - **Calculando / validando:** sello amarillo y el texto del cálculo en curso.
 - **Fallo:** sello rojo con el motivo en una línea; el detalle completo sigue en el paso 4 (`#dFallo`).
@@ -88,7 +92,9 @@ mantienen: son la evidencia que el grupo tiene que poder defender.
 ## Accesibilidad
 
 Objetivo WCAG 2.2 AA: contraste validado, foco visible (`--accent`), estado siempre con palabra, objetivos de al menos 24 px
-(pasos de 44 px de alto, segmentados de 34 px).
+(pasos de 44 px de alto, segmentados de 34 px). En la matriz, cada casilla lleva una marca visible (✓, !, ✗) y la palabra
+del estado para lectores de pantalla; los puntos de los pasos llevan su estado en texto oculto (`.sr`). En la cinta, solo el
+sello es región viva (`role="status"`): la cifra que cambia durante la demo no se anuncia.
 
 ## Elemento firma
 
