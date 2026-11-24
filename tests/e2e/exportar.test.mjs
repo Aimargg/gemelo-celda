@@ -71,8 +71,12 @@ test('T1.5-2 e I7: posiciones.yaml con el 203: cabecera (robot, frame con su pre
     // ida y vuelta (I7): exportar → leer → comparar con la posición de cada objeto pasada a base_link con world_base_link
     // del JSON: cada coordenada a ±0,5 mm (redondeo a 1 mm) y cada giro a ±0,0005 rad (redondeo a 0,001 rad)
     const T = REF('203').world_base_link.individual.T, yaw = REF('203').world_base_link.individual.rpy[2];
-    const obj = leerYaml(y), L = await p.evaluate(() => { const g = window.__g, l = g.L(); return { b: g.BASES[l.robot], zona: l.zona, plato1: l.plato1, persona: l.persona, m: l.arucoE[0] }; });
-    for (const [k, ref] of [['zona_fruta', L.zona], ['plato_1', L.plato1], ['persona', L.persona], ['marcador_entrega_1', L.m]]) {
+    // TD.4: marcador_zona_1 (id 0), contra el centro de su dibujo en la zona de fruta
+    const obj = leerYaml(y), L = await p.evaluate(() => {
+      const g = window.__g, l = g.L(), mz = g.OBJ.zona.children.find(a => a.userData.id === 0 && a.userData.lado > 0).getWorldPosition(new (g.robot.root.position.constructor)());
+      return { b: g.BASES[l.robot], zona: l.zona, plato1: l.plato1, persona: l.persona, m: l.arucoE[0], mz: { x: mz.x, y: mz.y } };
+    });
+    for (const [k, ref] of [['zona_fruta', L.zona], ['plato_1', L.plato1], ['persona', L.persona], ['marcador_entrega_1', L.m], ['marcador_zona_1', L.mz]]) {
       const j = porJSON(T, L.b, 0.76, { x: ref.x, y: ref.y, z: 0.76 });
       assert.ok(Math.abs(obj[k].x - j[0]) <= 0.5e-3 + 1e-9 && Math.abs(obj[k].y - j[1]) <= 0.5e-3 + 1e-9, `${k}: (${obj[k].x}, ${obj[k].y}) frente a (${j[0]}, ${j[1]})`);
     }

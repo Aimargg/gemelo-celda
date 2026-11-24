@@ -328,6 +328,10 @@ const zonaBorde = new THREE.LineLoop(new THREE.BufferGeometry(), new THREE.LineB
 OBJ.zona.add(zonaBorde);
 const zonaFondo = new THREE.Mesh(new THREE.PlaneGeometry(1, 1), new THREE.MeshBasicMaterial({ color: '#e6b422', transparent: true, opacity: 0.08, depthWrite: false })); zonaFondo.position.z = 0.0009; OBJ.zona.add(zonaFondo);
 const zonaMarc = []; for (let i = 0; i < 4; i++) { const a = aruco(i, 0.04); a.position.z = 0.0012; OBJ.zona.add(a); zonaMarc.push(a); }
+// Centro del marcador i de la zona (ids 0–3) en el marco de la zona z: por fuera de cada esquina, a 26 mm de sus bordes. Lo usan
+// el dibujo (actualizarZona) y lo exportado (modeloExportacion, TD.4)
+const MARC_ZONA = [[-1, -1], [1, -1], [1, 1], [-1, 1]], MARC_ZONA_FUERA = 0.026;
+const marcZonaLocal = (z, i) => ({ u: MARC_ZONA[i][0] * (z.w / 2 + MARC_ZONA_FUERA), v: MARC_ZONA[i][1] * (z.d / 2 + MARC_ZONA_FUERA) });
 LBL.zona = etiqueta('Zona de fruta · V2'); OBJ.zona.add(LBL.zona);
 let piezas = [];
 function crearPiezas() { VERSION_ESCENA++;
@@ -340,7 +344,7 @@ function actualizarZona() {
   const hw = z.w / 2, hd = z.d / 2;
   zonaBorde.geometry.setFromPoints([new THREE.Vector3(-hw, -hd, 0.001), new THREE.Vector3(hw, -hd, 0.001), new THREE.Vector3(hw, hd, 0.001), new THREE.Vector3(-hw, hd, 0.001)]);
   zonaFondo.scale.set(z.w, z.d, 1);
-  [[-1, -1], [1, -1], [1, 1], [-1, 1]].forEach(([sx, sy], i) => zonaMarc[i].position.set(sx * (hw + 0.026), sy * (hd + 0.026), 0.0012));
+  zonaMarc.forEach((a, i) => { const q = marcZonaLocal(z, i); a.position.set(q.u, q.v, 0.0012); });
   LBL.zona.position.set(0, hd + 0.05, 0.02);
 }
 pickables.push({ key: 'zona', obj: OBJ.zona, nombre: 'Zona de fruta', grupo: 'V2' });
@@ -2454,6 +2458,7 @@ function modeloExportacion() {
   const v = p => ({ x: p.x, y: p.y, z: p.z }), B = o => v(enBase({ x: o.x, y: o.y, z: o.z ?? MESA.h }));
   // La bandeja en su pose de plan (poseBandejaPlan) y sus zonas llevadas a ella con su posición en la bandeja, la de su TF
   // (DT35): durante la demo, la bandeja dibujada se balancea y lo exportado no la sigue
+  const zl = L.zona, enZona = q => ({ x: zl.x + Math.cos(zl.yaw) * q.u - Math.sin(zl.yaw) * q.v, y: zl.y + Math.sin(zl.yaw) * q.u + Math.cos(zl.yaw) * q.v }); // del marco de la zona a world
   const tp = poseBandejaPlan(), enPlan = l => ({ x: tp.x + Math.cos(tp.yaw) * l.x - Math.sin(tp.yaw) * l.y, y: tp.y + Math.sin(tp.yaw) * l.x + Math.cos(tp.yaw) * l.y, z: tp.z + l.z });
   const id = ROB.id, d = ROB.datos, pf = L.prefijoFrames || '';
   // Una disposición de solo lectura puede traer un robot que esta versión no conoce: se dice y se usa el nominal (corrección 5)
@@ -2477,8 +2482,14 @@ function modeloExportacion() {
     pedido: L.pedido,
     platos: { sobreCaja: L.caja.on, cajaAlto: L.caja.h, cajaLado: CAJA_LADO, agarre: 'horizontal_por_el_borde', radioAgarre: R_AGARRE, lista: ['plato1', 'plato2'].map(pk => ({ clave: pk.replace('plato', 'plato_'), ...B({ x: L[pk].x, y: L[pk].y, z: zPlato() }) })) },
     zona: { ...zf, yaw: yawABase(L.zona.yaw), ancho: L.zona.w, fondo: L.zona.d },
-    // marcadores de entrega: planos sobre la mesa y con sus ejes (OBJ.arucoE no gira), de 6 cm (aruco(4 + i, 0.06))
-    marcadores: L.arucoE.map((a, i) => ({ id: 4 + i, diccionario: 'DICT_4X4_50', lado: 0.06, ...B(a), yaw: yawABase(0) })),
+    // marcadores: primero los de la zona de fruta (TD.4, DT36), planos sobre la mesa, por fuera de las esquinas de la zona y con
+    // sus ejes (cuelgan de OBJ.zona), con el lado de su dibujo (aruco(i, 0.04)); luego los de entrega, planos sobre la mesa y con
+    // sus ejes (OBJ.arucoE no gira), de 6 cm (aruco(4 + i, 0.06)). En la cara de la mesa: la elevación de 1,2 y 1,3 mm del
+    // dibujo (para que no parpadee) no se exporta
+    marcadores: [
+      ...zonaMarc.map((a, i) => { const q = marcZonaLocal(L.zona, i); return { id: a.userData.id, uso: 'zona', diccionario: 'DICT_4X4_50', lado: a.userData.lado, ...B(enZona(q)), yaw: yawABase(L.zona.yaw) }; }),
+      ...L.arucoE.map((a, i) => ({ id: 4 + i, uso: 'entrega', diccionario: 'DICT_4X4_50', lado: 0.06, ...B(a), yaw: yawABase(0) })),
+    ],
     bandeja: { ...bt, yaw: yawABase(tp.yaw), zonas: ['zona_primero', 'zona_segundo', 'zona_centro'].map(k => ({ clave: k, base: B(enPlan(zonasB[k].position)), local: v(zonasB[k].position) })) }, // zona_centro siempre (DT36)
     persona: { ...pe, yaw: yawABase(L.persona.yaw) },
     camaras,

@@ -29,7 +29,7 @@ const MODELO = {
   pedido: 2,
   platos: { sobreCaja: true, cajaAlto: 0.1, cajaLado: 0.1, agarre: 'horizontal_por_el_borde', radioAgarre: 0.082, lista: [{ clave: 'plato_1', x: 0.1, y: -0.2, z: 0.1 }, { clave: 'plato_2', x: -0.1, y: -0.2, z: 0.1 }] },
   zona: { x: -0.3, y: 0.0004, z: 0, yaw: PI / 2, ancho: 0.22, fondo: 0.16 },
-  marcadores: [{ id: 4, diccionario: 'DICT_4X4_50', lado: 0.06, x: 0.05, y: -0.17, z: 0, yaw: 0 }, { id: 5, diccionario: 'DICT_4X4_50', lado: 0.06, x: 0.12, y: -0.32, z: 0, yaw: 0 }],
+  marcadores: [{ id: 4, uso: 'entrega', diccionario: 'DICT_4X4_50', lado: 0.06, x: 0.05, y: -0.17, z: 0, yaw: 0 }, { id: 5, uso: 'entrega', diccionario: 'DICT_4X4_50', lado: 0.06, x: 0.12, y: -0.32, z: 0, yaw: 0 }],
   bandeja: { x: 0.45, y: 0.05, z: 0.24, yaw: PI, zonas: [{ clave: 'zona_primero', base: { x: 0.47, y: -0.05, z: 0.2404 }, local: { x: -0.02, y: 0.1, z: 0.0004 } }, { clave: 'zona_segundo', base: { x: 0.47, y: 0.15, z: 0.2404 }, local: { x: -0.02, y: -0.1, z: 0.0004 } }] },
   persona: { x: 0.85, y: 0.05, z: 0, yaw: PI },
   camaras: [{ clave: 'cenital', grupo: 'V2', modelo: 'ELP-USB12MP01-UFV', focal: 3.6, modo: '1920x1080', hfov: 1.3822, pos: { x: 0, y: 0, z: 0.5 }, mira: { x: 0.5, y: 0, z: 0 }, clamp: { x: 0, y: -0.6, z: 0 }, orient: { pan: PI / 2, tilt: PI / 4, roll: 0.1 }, rpy: [-0.1, PI / 4, 0] }],
@@ -278,6 +278,49 @@ test('DT36: zona_centro, con un plato y con dos: su TF hija de bandeja, sus par�
   }
   // sin zona_centro en el modelo (como el modelo a mano de los otros tests) no hay línea ni TF: nada se inventa
   assert.ok(!EXPORTAR.ficherosRos(MODELO, ORIGEN).some(x => x.nombre === 'tf/zona_centro.yaml' || x.texto.includes('# zona_centro (')));
+});
+
+// TD.4 (DT36): los marcadores de la zona de fruta (ids 0–3) delante de los de entrega, con el giro de la zona (π/2 en el modelo)
+const conZona = () => {
+  const m = plano(MODELO), Z = [[-0.1, -0.2], [0.1, -0.2], [0.1, 0.2], [-0.1, 0.2]];
+  m.marcadores.unshift(...Z.map(([x, y], i) => ({ id: i, uso: 'zona', diccionario: 'DICT_4X4_50', lado: 0.04, x: -0.3 + x, y: 0.0004 + y, z: 0, yaw: PI / 2 })));
+  return m;
+};
+test('TD.4 (DT36): los marcadores de la zona (0–3) en parametros_celda.yaml, en tf/marcador_<id>.yaml, en tf_estaticas.sh y en posiciones.yaml, como los de entrega', () => {
+  const m = conZona(), f = EXPORTAR.ficherosRos(m, ORIGEN), nombres = plano(f.map(x => x.nombre)), texto = n => f.find(x => x.nombre === n).texto;
+  assert.deepEqual(nombres.slice(nombres.indexOf('tf/plato_2_inicio.yaml') + 1, nombres.indexOf('tf/bandeja.yaml')), ['tf/marcador_0.yaml', 'tf/marcador_1.yaml', 'tf/marcador_2.yaml', 'tf/marcador_3.yaml', 'tf/marcador_4.yaml', 'tf/marcador_5.yaml']);
+  const p = texto('parametros_celda.yaml');
+  assert.deepEqual(problemasParams(p, ENTEROS), []);
+  assert.equal(bloque(p, '      marcadores:', 9), [
+    '      marcadores:',
+    '        ids: [0, 1, 2, 3, 4, 5]  # SUPUESTO (ids propuestos)',
+    '        marcador_0:',
+    "          frame_id: 'marcador_0'  # SUPUESTO (nombre propuesto)",
+    '          xyz: [-0.400, -0.200, 0.000]  # SUPUESTO (disposición propuesta, sin medir)',
+    '          yaw: 1.571  # SUPUESTO (disposición propuesta, sin medir)',
+    '          lado_m: 0.040  # SUPUESTO (lado del dibujo del gemelo, sin medir)',
+    "          diccionario: 'DICT_4X4_50'  # SUPUESTO (ids propuestos)",
+    '        marcador_1:',
+  ].join('\n'));
+  assert.equal(bloque(p, '        marcador_4:', 2).split('\n')[1], "          frame_id: 'marcador_4'  # SUPUESTO (nombre propuesto)", 'los de entrega, detrás y como antes');
+  assert.ok(p.split('\n').includes('# marcadores 0, 1, 2 y 3: los de las esquinas de la zona de fruta (por fuera de la zona, con sus ejes); 4 y 5: los de entrega (con los ejes de la mesa). Ids propuestos, sin aceptar por el grupo.'));
+  const t = texto('tf/marcador_2.yaml');
+  assert.deepEqual(problemasParams(t), []);
+  assert.match(t, /^# TF estática base_link → marcador_2: marcador 2 de la zona de fruta \(DICT_4X4_50\), plano sobre la mesa, por fuera de una esquina de la zona y con sus ejes \(id propuesto, sin aceptar por el grupo\); convenio de ArUco de OpenCV: /m);
+  assert.match(t, /^ {4}frame_id: 'base_link' {2}# elegido en el gemelo .*\n {4}child_frame_id: 'marcador_2' {2}# SUPUESTO \(nombre propuesto\)\n {4}translation:\n {6}'x': -0\.200 {2}# SUPUESTO \(disposición propuesta, sin medir\)\n {6}'y': 0\.200 {2}# SUPUESTO \(disposición propuesta, sin medir\)\n {6}'z': 0\.000 {2}# SUPUESTO/m);
+  const rot = t.slice(t.indexOf('    rotation:\n')), q = ['x', 'y', 'z', 'w'].map(k => +rot.match(new RegExp(`^ {6}'${k}': (-?[\\d.]+) `, 'm'))[1]);
+  assert.ok(angulo(deQ(q), Rz(1.571)) < 1e-8, 'el giro de la zona, 1,571 rad en z');
+  assert.match(texto('tf/marcador_4.yaml'), /^# TF estática base_link → marcador_4: marcador de entrega 4 \(DICT_4X4_50\), plano sobre la mesa y con sus ejes; convenio/m);
+  const s = texto('tf_estaticas.sh').split('\n'), c = 'ros2 run tf2_ros static_transform_publisher --x -0.200 --y 0.200 --z 0.000 --roll 0.000 --pitch 0.000 --yaw 1.571 --frame-id base_link --child-frame-id marcador_2 --ros-args -r __node:=tf_marcador_2 &';
+  assert.ok(s.includes(c)); assert.equal(s[s.indexOf(c) - 1], '# base_link → marcador_2: SUPUESTO (disposición propuesta, sin medir)');
+  const y = EXPORTAR.posiciones(m, ORIGEN, '2026-01-01').split('\n'), i = y.indexOf('  marcador_zona_1: {id: 0, diccionario: DICT_4X4_50, x: -0.400, y: -0.200, z: 0.000}  # SUPUESTO (disposición propuesta, sin medir)');
+  assert.ok(i > 0, 'marcador_zona_1 en posiciones.yaml');
+  assert.deepEqual(y.slice(i, i + 6).map(l => l.split(':')[0]), ['  marcador_zona_1', '  marcador_zona_2', '  marcador_zona_3', '  marcador_zona_4', '  marcador_entrega_1', '  marcador_entrega_2'], 'en el orden de los ids, y los de entrega con su nombre de antes');
+  // sin marcadores de la zona (el modelo a mano), ni la línea de la cabecera ni sus TF: nada se inventa
+  assert.ok(!fichero(MODELO, 'parametros_celda.yaml').includes('# marcadores 0') && !EXPORTAR.ficherosRos(MODELO, ORIGEN).some(x => x.nombre === 'tf/marcador_0.yaml'));
+  // un marcador sin uso válido no se escribe
+  const mal = conZona(); delete mal.marcadores[1].uso;
+  assert.throws(() => EXPORTAR.ficherosRos(mal, ORIGEN), /marcador 1 sin uso válido/); assert.throws(() => EXPORTAR.posiciones(mal, ORIGEN, '2026-01-01'), /marcador 1 sin uso válido/);
 });
 
 test('Común-C2 y T2.4: con el prefijo «203_» y el giro de −135°, la raíz lleva el prefijo y los frames de la celda no', () => {

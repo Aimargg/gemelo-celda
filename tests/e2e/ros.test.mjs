@@ -2,7 +2,8 @@
 // nominal, el 203 y el 203 con prefijo (CASOS_YAML), en una sola página. Se comprueban con analizadores ajenos al gemelo:
 // yaml@2.9.1 (YAML 1.1 y 1.2), el validador de rcl de tests/rcl-params.mjs y bash -n; las posiciones, contra posiciones.yaml
 // (el mismo texto) y contra la disposición en world con world_base_link de tests/fixtures/cinematica/<id>.json (ida y
-// vuelta); las cámaras, contra la cámara con la que el gemelo pinta lo que ve cada una, y los marcadores, contra su dibujo.
+// vuelta); las cámaras, contra la cámara con la que el gemelo pinta lo que ve cada una, y los marcadores (los de entrega y,
+// desde TD.4, los de la zona de fruta), contra su dibujo.
 import { test, before, after } from 'node:test';
 import { spawnSync } from 'node:child_process';
 import assert from 'node:assert/strict';
@@ -38,13 +39,16 @@ function leerPagina() {
     const o = g.CAMS[k].optical; o.updateMatrixWorld(true);
     return [k, { m: [...o.matrixWorld.elements], etiquetas: o.children.filter(h => h.userData.lbl).map(h => h.userData.lbl.element.textContent) }];
   }));
-  const marcadores = g.OBJ.arucoE.map(a => {
+  const dibujo = a => {
     a.updateMatrixWorld(true); const pl = a.children[1], uv = pl.geometry.attributes.uv.array, pos = pl.geometry.attributes.position.array, nor = pl.geometry.attributes.normal.array;
-    return { id: a.userData.id, m: [...a.matrixWorld.elements], local: [...pl.matrix.elements], flipY: pl.material.map.flipY, uv: [...uv], pos: [...pos], nor: [...nor] };
-  });
+    return { id: a.userData.id, lado: a.userData.lado, m: [...a.matrixWorld.elements], local: [...pl.matrix.elements], flipY: pl.material.map.flipY, uv: [...uv], pos: [...pos], nor: [...nor] };
+  };
+  const marcadores = g.OBJ.arucoE.map(dibujo);
+  // TD.4: los marcadores de la zona de fruta, tal como se dibujan (los ArUco hijos del grupo de la zona: aruco() les pone id y lado)
+  const marcadoresZona = g.OBJ.zona.children.filter(a => Number.isInteger(a.userData.id) && a.userData.lado > 0).map(dibujo);
   return {
     ficheros: g.ficherosRos(), otra: g.ficherosRos(), yaml: g.generarYaml(), L: JSON.parse(JSON.stringify(L)), base: g.BASES[L.robot], robotId: g.ROB.id,
-    bandeja: { x: g.bandeja.position.x, y: g.bandeja.position.y, z: g.bandeja.position.z, yaw: g.bandeja.rotation.z }, zonas, opticos, marcadores,
+    bandeja: { x: g.bandeja.position.x, y: g.bandeja.position.y, z: g.bandeja.position.z, yaw: g.bandeja.rotation.z }, zonas, opticos, marcadores, marcadoresZona,
   };
 }
 const texto = (r, nombre) => { const f = r.ficheros.find(x => x.nombre === nombre); assert.ok(f, `falta ${nombre}`); return f.texto; };
@@ -108,9 +112,10 @@ const CORRESPONDENCIAS = [
   [/^objetos\.zona_fruta\.yaw_rad$/, () => ['zona_fruta.yaw']],
   [/^objetos\.zona_fruta\.ancho_m$/, () => ['zona_fruta.tamano_m[0]']], [/^objetos\.zona_fruta\.fondo_m$/, () => ['zona_fruta.tamano_m[1]']],
   [/^objetos\.(plato_\d)\.([xyz])$/, m => [`platos.${m[1]}.xyz[${I(m[2])}]`]],
-  [/^objetos\.marcador_entrega_(\d)\.id$/, m => [`marcadores.ids[${m[1] - 1}]`]],
-  [/^objetos\.marcador_entrega_(\d)\.diccionario$/, (m, pos) => [`marcadores.marcador_${pos.get(`objetos.marcador_entrega_${m[1]}.id`).fuente}.diccionario`]],
-  [/^objetos\.marcador_entrega_(\d)\.([xyz])$/, (m, pos) => [`marcadores.marcador_${pos.get(`objetos.marcador_entrega_${m[1]}.id`).fuente}.xyz[${I(m[2])}]`]],
+  // los marcadores (de la zona desde TD.4, y de entrega): el n.º k de posiciones.yaml es ids[k] (los dos, en el orden de los ids)
+  [/^objetos\.marcador_(zona|entrega)_\d\.id$/, (m, pos) => [`marcadores.ids[${[...pos.keys()].filter(k => /^objetos\.marcador_(zona|entrega)_\d\.id$/.test(k)).indexOf(m[0])}]`]],
+  [/^objetos\.marcador_(zona|entrega)_(\d)\.diccionario$/, (m, pos) => [`marcadores.marcador_${pos.get(`objetos.marcador_${m[1]}_${m[2]}.id`).fuente}.diccionario`]],
+  [/^objetos\.marcador_(zona|entrega)_(\d)\.([xyz])$/, (m, pos) => [`marcadores.marcador_${pos.get(`objetos.marcador_${m[1]}_${m[2]}.id`).fuente}.xyz[${I(m[3])}]`]],
   [/^objetos\.bandeja_recepcion\.([xyz])$/, m => [`bandeja.xyz[${I(m[1])}]`]],
   [/^objetos\.bandeja_recepcion\.yaw_rad$/, () => ['bandeja.yaw']],
   [/^objetos\.(zona_primero|zona_segundo|zona_centro)\.([xyz])$/, m => [`bandeja.${m[1]}.xyz[${I(m[2])}]`]], // zona_centro: DT36
@@ -148,7 +153,9 @@ const mismoGiro = (a, b, que) => assert.ok(giro(a, b) <= 0.001 + 1e-9, `${que}: 
 // ---------- T2.4: TF estáticas ----------
 // Aristas de la decisión 6 del brief, escritas aquí (no las da el código que exporta): [padre, hijo]
 const aristasEsperadas = (raizTF, cams) => [
-  [raizTF, 'mesa'], [raizTF, 'zona_fruta'], [raizTF, 'plato_1_inicio'], [raizTF, 'plato_2_inicio'], [raizTF, 'marcador_4'], [raizTF, 'marcador_5'],
+  [raizTF, 'mesa'], [raizTF, 'zona_fruta'], [raizTF, 'plato_1_inicio'], [raizTF, 'plato_2_inicio'],
+  ...[0, 1, 2, 3].map(id => [raizTF, `marcador_${id}`]), // los de la zona de fruta: TD.4 (DT36)
+  [raizTF, 'marcador_4'], [raizTF, 'marcador_5'],
   [raizTF, 'bandeja'], ['bandeja', 'zona_primero'], ['bandeja', 'zona_segundo'], ['bandeja', 'zona_centro'], // zona_centro: DT36
   ...cams.flatMap(k => [[raizTF, `camara_${k}`], [`camara_${k}`, `camara_${k}_optical`]]),
 ];
@@ -244,6 +251,45 @@ function comprobarCentro(r) {
   return { pedido, cadena: Math.max(...pc.map((v, i) => Math.abs(v - ref[i]))), param: Math.max(...c.bandeja.zona_centro.xyz.map((v, i) => Math.abs(v - ref[i]))) };
 }
 
+// ---------- TD.4: los marcadores de la zona de fruta (ids 0–3, DT36) ----------
+// C1 y C2: tf/marcador_<id>.yaml de cada marcador que dibuja la zona, hijo de <prefijo>base_link: su traslación, llevada a world
+// con world_base_link del JSON del robot (no con el código que exporta), es el centro del dibujo en la cara de la mesa (±0,5 mm
+// por eje de base_link) y su giro, el del dibujo (±0,002 rad); el patrón, con los ejes de OpenCV; el comando de tf_estaticas.sh
+// y parametros_celda.yaml, los mismos números (texto), con el lado del dibujo y el diccionario. Devuelve el peor error en el plano.
+function comprobarZona(r) {
+  const T = REF(r.robotId).T, J = R3(T), raizTF = `${r.c.prefijo}base_link`; RT = T;
+  const p = texto(r, 'parametros_celda.yaml'), sh = texto(r, 'tf_estaticas.sh'), c = YAML.parse(p)['/**'].ros__parameters.celda, par = celdaDe(p);
+  assert.deepEqual(r.marcadoresZona.map(d => d.id), [0, 1, 2, 3], 'la zona dibuja cuatro marcadores, ids 0–3');
+  assert.deepEqual(c.marcadores.ids, [...r.marcadoresZona, ...r.marcadores].map(d => d.id), 'ids: los de la zona y los de entrega');
+  const cmds = Object.fromEntries(sh.split('\n').filter(l => l.startsWith('ros2 run ')).map(l => { const k = leerComando(l); return [k.flags['child-frame-id'], k.flags]; }));
+  const I3 = [[1, 0, 0], [0, 1, 0], [0, 0, 1]];
+  let peor = 0;
+  for (const d of r.marcadoresZona) {
+    const h = `marcador_${d.id}`, src = texto(r, `tf/${h}.yaml`), e = leerTF(src), w = de3(d.m), l = de3(d.local);
+    assert.deepEqual(problemasParams(src), [], h);
+    assert.deepEqual([e.padre, e.hijo], [raizTF, h], `${h}: cuelga de ${raizTF}`);
+    // el dibujo va 1,2 mm sobre la mesa para que no parpadee; lo exportado, en la cara de la mesa (como los de entrega)
+    assert.ok(w.p[2] - MESA_H > 0 && w.p[2] - MESA_H < 2e-3, `${h}: el dibujo, a ${((w.p[2] - MESA_H) * 1000).toFixed(2)} mm de la mesa`);
+    const pw = aMundo(T, r.base, e.t); cerca(pw, [w.p[0], w.p[1], MESA_H], `${h}: la TF frente al dibujo`);
+    peor = Math.max(peor, Math.hypot(pw[0] - w.p[0], pw[1] - w.p[1]));
+    assert.ok(angulo(deQ(e.q), mul(tr(J), w.R)) <= 0.002, `${h}: giro de la TF y del dibujo`);
+    // el dibujo: sin giro propio dentro de la zona (gira con ella) y el patrón como el de entrega: la esquina de arriba a la
+    // izquierda del lienzo (uv 0,1 con flipY) en (−x, +y); la normal, +z
+    assert.ok(angulo(l.R, I3) < 1e-9 && angulo(w.R, Rz(r.L.zona.yaw)) < 1e-9, `${h}: con los ejes de la zona`);
+    assert.equal(d.flipY, true);
+    for (let j = 0; j < d.uv.length / 2; j++) { const uv = d.uv.slice(2 * j, 2 * j + 2), q = d.pos.slice(3 * j, 3 * j + 3); assert.deepEqual([Math.sign(q[0]), Math.sign(q[1])], [uv[0] ? 1 : -1, uv[1] ? 1 : -1], `${h}: vértice ${j}`); assert.deepEqual(d.nor.slice(3 * j, 3 * j + 3), [0, 0, 1]); }
+    // parámetros y comando: los mismos números (texto) que la TF; el lado y el diccionario, los del dibujo
+    const mk = c.marcadores[h], f = cmds[h]; assert.ok(f, `${h}: su comando`);
+    assert.equal(mk.frame_id, h);
+    for (const [i, k] of ['x', 'y', 'z'].entries()) { const v = e.texto.get(`translation.${k}`).fuente; assert.equal(par.get(`marcadores.${h}.xyz[${i}]`).fuente, v, `${h}: xyz[${i}]`); assert.equal(f[k], v, `${h}: --${k}`); }
+    assert.equal(par.get(`marcadores.${h}.yaw`).fuente, f.yaw, `${h}: yaw`); assert.deepEqual([f.roll, f.pitch, f['frame-id']], ['0.000', '0.000', raizTF]);
+    assert.deepEqual([mk.lado_m, mk.diccionario], [d.lado, 'DICT_4X4_50'], `${h}: lado (el cuadrado negro del dibujo) y diccionario`);
+    assert.equal(bloque(p, `        ${h}:`, 6).split('\n').slice(1).map(x => x.split('  # ')[1]).join(' | '), bloque(p, `        marcador_${r.marcadores[0].id}:`, 6).split('\n').slice(1).map(x => x.split('  # ')[1]).join(' | '), `${h}: el mismo origen que los de entrega, hoja a hoja`);
+  }
+  return peor;
+}
+const bloque = (t, desde, n) => { const ls = t.split('\n'), i = ls.indexOf(desde); assert.ok(i >= 0, `falta «${desde}»`); return ls.slice(i, i + n).join('\n'); };
+
 test('T2.2 y T2.4 con nominal, el 203 y el 203 con prefijo: parametros_celda.yaml (C1–C4), las TF estáticas (C1–C5) y Común-C1 en la misma página', { timeout: 300000 }, async t => {
   const s = await abrir(srv.url);
   try {
@@ -281,7 +327,9 @@ test('T2.2 y T2.4 con nominal, el 203 y el 203 con prefijo: parametros_celda.yam
         cerca(W(c.zona_fruta.xyz), [L.zona.x, L.zona.y, MESA_H], 'zona_fruta'); mismoGiro(c.zona_fruta.yaw + yb, L.zona.yaw, 'giro de la zona');
         const zp = MESA_H + (L.caja.on ? L.caja.h : 0);
         for (const k of ['plato1', 'plato2']) cerca(W(c.platos[k.replace('plato', 'plato_')].xyz), [L[k].x, L[k].y, zp], k);
-        L.arucoE.forEach((a, i) => { const mk = c.marcadores[`marcador_${c.marcadores.ids[i]}`]; cerca(W(mk.xyz), [a.x, a.y, MESA_H], `marcador ${i + 1}`); mismoGiro(mk.yaw + yb, 0, `giro del marcador ${i + 1} (ejes de la mesa)`); });
+        L.arucoE.forEach((a, i) => { const mk = c.marcadores[`marcador_${r.marcadores[i].id}`]; cerca(W(mk.xyz), [a.x, a.y, MESA_H], `marcador ${i + 1}`); mismoGiro(mk.yaw + yb, 0, `giro del marcador ${i + 1} (ejes de la mesa)`); });
+        // TD.4: los de la zona, en el centro de su dibujo y en la cara de la mesa, con el giro de la zona
+        for (const d of r.marcadoresZona) { const mk = c.marcadores[`marcador_${d.id}`]; cerca(W(mk.xyz), [d.m[12], d.m[13], MESA_H], `marcador ${d.id} (zona)`); mismoGiro(mk.yaw + yb, L.zona.yaw, `giro del marcador ${d.id} (ejes de la zona)`); }
         // la bandeja: la de la página y la de su fórmula (persona + adelante, a su altura, sin balanceo)
         const P = L.persona, bL = [P.x + Math.cos(P.yaw) * L.bandeja.ade, P.y + Math.sin(P.yaw) * L.bandeja.ade, L.bandeja.alt];
         cerca(W(c.bandeja.xyz), bL, 'bandeja (disposición)'); cerca(W(c.bandeja.xyz), xyz(r.bandeja), 'bandeja (página)');
@@ -397,6 +445,9 @@ test('T2.2 y T2.4 con nominal, el 203 y el 203 con prefijo: parametros_celda.yam
       await t.test(`${r.c.id} · Común-C1: exportar dos veces da los mismos bytes y ningún fichero lleva fecha`, () => {
         assert.deepEqual(r.otra, r.ficheros);
         for (const f of r.ficheros) assert.ok(!/\b\d{4}-\d{2}-\d{2}\b/.test(f.texto), `${f.nombre}: sin fecha`);
+      });
+      await t.test(`${r.c.id} · TD.4-C1 y C2 (DT36): los marcadores de la zona (0–3) en tf/, tf_estaticas.sh y parametros_celda.yaml, con la pose de su dibujo en ${raizTF}`, st => {
+        st.diagnostic(`peor error en el plano frente al dibujo: ${(comprobarZona(r) * 1000).toFixed(3)} mm`);
       });
       await t.test(`${r.c.id} · T2.7-C3 (DT36), con dos platos: zona_centro en tf/, parametros_celda.yaml, tf_estaticas.sh y posiciones.yaml con los mismos números`, st => {
         const e = comprobarCentro(r); assert.equal(e.pedido, 2);
@@ -563,5 +614,14 @@ test('T2.2 y T2.4 con nominal, el 203 y el 203 con prefijo: parametros_celda.yam
         st.diagnostic(`peor error: ${(e.cadena * 1000).toFixed(3)} mm por la cadena de TF y ${(e.param * 1000).toFixed(3)} mm en los parámetros`);
       });
     }
+    // TD.4 con la zona girada 0,6 rad y de 26 × 18 cm, en el último caso aplicado (los marcadores giran y se separan con ella)
+    const ultimo = [...CASOS_YAML].reverse().at(-1);
+    await s.page.evaluate(() => { const g = window.__g; Object.assign(g.L().zona, { yaw: 0.6, w: 0.26, d: 0.18 }); g.actualizarZona(); });
+    const girada = { c: ultimo, ...(await s.page.evaluate(leerPagina)) };
+    comprobar(s.reg);
+    await t.test(`${ultimo.id} · TD.4-C1 y C2 (DT36), con la zona girada 0,6 rad y de 26 × 18 cm: los marcadores de la zona siguen a su dibujo`, st => {
+      assert.equal(girada.robotId, ultimo.robot); assert.equal(girada.L.zona.yaw, 0.6);
+      st.diagnostic(`peor error en el plano frente al dibujo: ${(comprobarZona(girada) * 1000).toFixed(3)} mm`);
+    });
   } finally { await s.cerrar(); }
 });

@@ -17,6 +17,14 @@ ros2 run tf2_ros static_transform_publisher --x 0.221 --y -0.223 --z 0.000 --rol
 ros2 run tf2_ros static_transform_publisher --x 0.344 --y 0.105 --z 0.100 --roll 0.000 --pitch 0.000 --yaw 2.356 --frame-id base_link --child-frame-id plato_1_inicio --ros-args -r __node:=tf_plato_1_inicio &
 # base_link → plato_2_inicio: SUPUESTO (disposición propuesta, sin medir)
 ros2 run tf2_ros static_transform_publisher --x 0.348 --y -0.093 --z 0.100 --roll 0.000 --pitch 0.000 --yaw 2.356 --frame-id base_link --child-frame-id plato_2_inicio --ros-args -r __node:=tf_plato_2_inicio &
+# base_link → marcador_0: SUPUESTO (disposición propuesta, sin medir)
+ros2 run tf2_ros static_transform_publisher --x 0.392 --y -0.244 --z 0.000 --roll 0.000 --pitch 0.000 --yaw 2.356 --frame-id base_link --child-frame-id marcador_0 --ros-args -r __node:=tf_marcador_0 &
+# base_link → marcador_1: SUPUESTO (disposición propuesta, sin medir)
+ros2 run tf2_ros static_transform_publisher --x 0.200 --y -0.052 --z 0.000 --roll 0.000 --pitch 0.000 --yaw 2.356 --frame-id base_link --child-frame-id marcador_1 --ros-args -r __node:=tf_marcador_1 &
+# base_link → marcador_2: SUPUESTO (disposición propuesta, sin medir)
+ros2 run tf2_ros static_transform_publisher --x 0.050 --y -0.202 --z 0.000 --roll 0.000 --pitch 0.000 --yaw 2.356 --frame-id base_link --child-frame-id marcador_2 --ros-args -r __node:=tf_marcador_2 &
+# base_link → marcador_3: SUPUESTO (disposición propuesta, sin medir)
+ros2 run tf2_ros static_transform_publisher --x 0.243 --y -0.394 --z 0.000 --roll 0.000 --pitch 0.000 --yaw 2.356 --frame-id base_link --child-frame-id marcador_3 --ros-args -r __node:=tf_marcador_3 &
 # base_link → marcador_4: SUPUESTO (disposición propuesta, sin medir)
 ros2 run tf2_ros static_transform_publisher --x 0.087 --y 0.152 --z 0.000 --roll 0.000 --pitch 0.000 --yaw 2.356 --frame-id base_link --child-frame-id marcador_4 --ros-args -r __node:=tf_marcador_4 &
 # base_link → marcador_5: SUPUESTO (disposición propuesta, sin medir)

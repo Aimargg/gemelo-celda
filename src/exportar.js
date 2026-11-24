@@ -7,7 +7,7 @@
 //   ctx (contexto de origen) · layoutJson (JSON.stringify(L)) · robot { posicion, id, idLayout, desconocido, sospechoso,
 //   yaw, prefijo, frame, worldABase {x, y, z}, doble { nombre, x, y, z, yaw } | null } · pinza { modelo, tcpZ, carrera } ·
 //   mesa { ancho, fondo, alto, x, y, z, yaw } · pedido · platos { sobreCaja, cajaAlto, cajaLado, agarre, radioAgarre,
-//   lista [{ clave, x, y, z }] } · zona { x, y, z, yaw, ancho, fondo } · marcadores [{ id, diccionario, lado, x, y, z, yaw }]
+//   lista [{ clave, x, y, z }] } · zona { x, y, z, yaw, ancho, fondo } · marcadores [{ id, uso, diccionario, lado, x, y, z, yaw }]
 //   · bandeja { x, y, z, yaw, zonas [{ clave, base {x, y, z}, local {x, y, z} }] } · persona { x, y, z, yaw } ·
 //   camaras [{ clave, grupo, modelo, focal, modo, hfov, vfov, px { w, h, fps }, pos, mira, clamp, orient { pan, tilt, roll },
 //   rpy [r, p, y], usb { dispositivo, exposicion, balance } }] · escena { objetos [{ id, que, giro?, pose { x, y, z, rpy },
@@ -43,6 +43,12 @@ const EXPORTAR = (() => {
   const lineaCentro = m => !m.bandeja.zonas.some(z => z.clave === CENTRO) ? []
     : [`${CENTRO} (centro de la bandeja): el destino del plato con un pedido de un plato${m.pedido === 1 ? ', como el de esta disposición' : '; con dos, como en esta disposición, no se usa'}.`];
 
+  // Marcadores (TD.4, DT36): uso 'zona' (los de las esquinas de la zona de fruta, con sus ejes) o 'entrega' (con los de la mesa),
+  // en el orden del modelo, que es el de los ids. Un uso que no sea uno de los dos no se escribe.
+  const USOS = { zona: 'de la zona de fruta', entrega: 'de entrega' };
+  const usoDe = a => { if (!Object.hasOwn(USOS, a.uso)) throw new Error(`exportar: marcador ${a.id} sin uso válido (${a.uso})`); return a.uso; };
+  const yLista = vs => vs.length < 2 ? vs.join('') : `${vs.slice(0, -1).join(', ')} y ${vs.at(-1)}`;
+
   // ---------- posiciones.yaml (T1.5, T2.1): el mismo texto que escribía generarYaml ----------
   // fecha: 'AAAA-MM-DD' (la única línea que cambia de un día a otro). Lo que viene de la disposición sin validar (robot_id,
   // frame, prefijo_frames y su prefijo en las líneas de comentario) se escribe con el mismo escape que los ficheros de ROS
@@ -73,7 +79,8 @@ const EXPORTAR = (() => {
     const z = m.zona;
     y += `objetos:\n  zona_fruta: {x: ${r3(z.x)}, y: ${r3(z.y)}, z: ${r3(z.z)}, yaw_rad: ${rad3(z.yaw)}, ancho_m: ${r3(z.ancho)}, fondo_m: ${r3(z.fondo)}}  ${sup}\n`;
     for (const p of pl.lista) y += `  ${p.clave}: ${P(p)}  ${sup}\n`;
-    m.marcadores.forEach((a, i) => { y += `  marcador_entrega_${i + 1}: {id: ${a.id}, diccionario: ${a.diccionario}, x: ${r3(a.x)}, y: ${r3(a.y)}, z: ${r3(a.z)}}  ${sup}\n`; });
+    const nUso = {}; // marcador_zona_<n> y marcador_entrega_<n>: n cuenta dentro de cada uso
+    for (const a of m.marcadores) { const u = usoDe(a); nUso[u] = (nUso[u] || 0) + 1; y += `  marcador_${u}_${nUso[u]}: {id: ${a.id}, diccionario: ${a.diccionario}, x: ${r3(a.x)}, y: ${r3(a.y)}, z: ${r3(a.z)}}  ${sup}\n`; }
     const b = m.bandeja; y += `  bandeja_recepcion: {x: ${r3(b.x)}, y: ${r3(b.y)}, z: ${r3(b.z)}, yaw_rad: ${rad3(b.yaw)}}  ${sup}\n`;
     for (const zb of b.zonas) y += `  ${zb.clave}: ${P(zb.base)}  ${sup}\n`;
     const pe = m.persona; y += `  persona: {x: ${r3(pe.x)}, y: ${r3(pe.y)}, yaw_rad: ${rad3(pe.yaw)}}  ${sup}\ncamaras:\n`;
@@ -122,6 +129,13 @@ const EXPORTAR = (() => {
       `# Carga: ${carga} [SIN VALIDAR en ROS: U4].\n`, ...extra.map(l => `# ${l}\n`),
       `# Origen de cada valor, ${donde}: ${O.LEYENDA}; lo que se elige en el gemelo, «${O.ELEGIDO}»${grupo ? `; lo que ha decidido el grupo, «${O.GRUPO}»` : ''}.\n`].join('');
   }
+
+  // Qué ids son de cada uso, en una línea de la cabecera de parametros_celda.yaml (TD.4): los ids siguen siendo una propuesta
+  const lineaMarcadores = m => {
+    const de = u => m.marcadores.filter(a => usoDe(a) === u).map(a => ent(a.id)), z = de('zona'), e = de('entrega');
+    if (!z.length) return [];
+    return [`marcadores ${yLista(z)}: los de las esquinas de la zona de fruta (por fuera de la zona, con sus ejes)${e.length ? `; ${yLista(e)}: los de entrega (con los ejes de la mesa)` : ''}. Ids propuestos, sin aceptar por el grupo.`];
+  };
 
   // ---------- parametros_celda.yaml (T2.2): ros__parameters para --params-file ----------
   // Los mismos números que posiciones.yaml, escritos igual, más los frame_id de las TF, el rpy del marco de cada cámara y el
@@ -181,6 +195,7 @@ const EXPORTAR = (() => {
       `  zona_fruta, marcadores (ids, marcador_<id>), bandeja (${b.zonas.map(zb => limpio(zb.clave)).join(', ')}), persona (xy, yaw) y camaras (nombres, <nombre>: frame_id del marco óptico,`,
       '  xyz y rpy del marco camara_<nombre>, mira, orientacion_rad como en posiciones.yaml y pinza_mesa).',
       'marcadores.marcador_<id>.lado_m: el lado del cuadrado negro del marcador, el markerLength de OpenCV; el margen blanco va por fuera.',
+      ...lineaMarcadores(m),
       ...lineaCentro(m),
     ], undefined, true) + raiz([mapa('celda', ...nodos)]);
   }
@@ -222,7 +237,10 @@ const EXPORTAR = (() => {
     a(raizTF, 'mesa', m.mesa, [0, 0, m.mesa.yaw], giro, 'centro de la cara de arriba de la mesa, con su giro');
     a(raizTF, 'zona_fruta', m.zona, [0, 0, m.zona.yaw], sup, 'centro y giro de la zona de fruta');
     for (const p of m.platos.lista) a(raizTF, `${p.clave}_inicio`, p, [0, 0, m.mesa.yaw], sup, `dónde está el ${p.clave.replace('_', ' ')} antes de cogerlo, con los ejes de la mesa (el robot lo mueve y una TF estática no lo sigue)`);
-    for (const k of m.marcadores) a(raizTF, `marcador_${ent(k.id)}`, k, [0, 0, k.yaw], sup, `marcador de entrega ${ent(k.id)} (${limpio(k.diccionario)}), plano sobre la mesa y con sus ejes; convenio de ArUco de OpenCV: z sale de la cara impresa, x a la derecha e y hacia arriba del patrón`);
+    const ARUCO_CV = 'convenio de ArUco de OpenCV: z sale de la cara impresa, x a la derecha e y hacia arriba del patrón';
+    for (const k of m.marcadores) a(raizTF, `marcador_${ent(k.id)}`, k, [0, 0, k.yaw], sup, usoDe(k) === 'zona'
+      ? `marcador ${ent(k.id)} de la zona de fruta (${limpio(k.diccionario)}), plano sobre la mesa, por fuera de una esquina de la zona y con sus ejes (id propuesto, sin aceptar por el grupo); ${ARUCO_CV}`
+      : `marcador de entrega ${ent(k.id)} (${limpio(k.diccionario)}), plano sobre la mesa y con sus ejes; ${ARUCO_CV}`);
     a(raizTF, 'bandeja', m.bandeja, [0, 0, m.bandeja.yaw], sup, 'pose de plan de la bandeja (sin balanceo), en la cara de arriba', 'nominal: la sustituye la pose que publique Visión');
     for (const z of m.bandeja.zonas) a('bandeja', z.clave, z.local, [0, 0, 0], og('plato_bandeja_persona'), `${z.clave}, donde se deja un plato en la bandeja: cuelga de la bandeja para seguirla cuando Visión publique su pose`, null, z.clave === CENTRO ? lineaCentro(m) : []);
     for (const k of m.camaras) {

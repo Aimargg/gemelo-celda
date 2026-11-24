@@ -10,6 +10,7 @@
 #   zona_fruta, marcadores (ids, marcador_<id>), bandeja (zona_primero, zona_segundo, zona_centro), persona (xy, yaw) y camaras (nombres, <nombre>: frame_id del marco óptico,
 #   xyz y rpy del marco camara_<nombre>, mira, orientacion_rad como en posiciones.yaml y pinza_mesa).
 # marcadores.marcador_<id>.lado_m: el lado del cuadrado negro del marcador, el markerLength de OpenCV; el margen blanco va por fuera.
+# marcadores 0, 1, 2 y 3: los de las esquinas de la zona de fruta (por fuera de la zona, con sus ejes); 4 y 5: los de entrega (con los ejes de la mesa). Ids propuestos, sin aceptar por el grupo.
 # zona_centro (centro de la bandeja): el destino del plato con un pedido de un plato; con dos, como en esta disposición, no se usa.
 # Origen de cada valor, al final de su línea: MEDIDO, FABRICANTE o SUPUESTO; lo que se elige en el gemelo, «elegido en el gemelo»; lo que ha decidido el grupo, «decisión del grupo».
 /**:
@@ -53,7 +54,31 @@
         yaw: 2.356  # SUPUESTO (disposición propuesta, sin medir)
         tamano_m: [0.220, 0.160]  # SUPUESTO (disposición propuesta, sin medir)
       marcadores:
-        ids: [4, 5]  # SUPUESTO (ids propuestos)
+        ids: [0, 1, 2, 3, 4, 5]  # SUPUESTO (ids propuestos)
+        marcador_0:
+          frame_id: 'marcador_0'  # SUPUESTO (nombre propuesto)
+          xyz: [0.392, -0.244, 0.000]  # SUPUESTO (disposición propuesta, sin medir)
+          yaw: 2.356  # SUPUESTO (disposición propuesta, sin medir)
+          lado_m: 0.040  # SUPUESTO (lado del dibujo del gemelo, sin medir)
+          diccionario: 'DICT_4X4_50'  # SUPUESTO (ids propuestos)
+        marcador_1:
+          frame_id: 'marcador_1'  # SUPUESTO (nombre propuesto)
+          xyz: [0.200, -0.052, 0.000]  # SUPUESTO (disposición propuesta, sin medir)
+          yaw: 2.356  # SUPUESTO (disposición propuesta, sin medir)
+          lado_m: 0.040  # SUPUESTO (lado del dibujo del gemelo, sin medir)
+          diccionario: 'DICT_4X4_50'  # SUPUESTO (ids propuestos)
+        marcador_2:
+          frame_id: 'marcador_2'  # SUPUESTO (nombre propuesto)
+          xyz: [0.050, -0.202, 0.000]  # SUPUESTO (disposición propuesta, sin medir)
+          yaw: 2.356  # SUPUESTO (disposición propuesta, sin medir)
+          lado_m: 0.040  # SUPUESTO (lado del dibujo del gemelo, sin medir)
+          diccionario: 'DICT_4X4_50'  # SUPUESTO (ids propuestos)
+        marcador_3:
+          frame_id: 'marcador_3'  # SUPUESTO (nombre propuesto)
+          xyz: [0.243, -0.394, 0.000]  # SUPUESTO (disposición propuesta, sin medir)
+          yaw: 2.356  # SUPUESTO (disposición propuesta, sin medir)
+          lado_m: 0.040  # SUPUESTO (lado del dibujo del gemelo, sin medir)
+          diccionario: 'DICT_4X4_50'  # SUPUESTO (ids propuestos)
         marcador_4:
           frame_id: 'marcador_4'  # SUPUESTO (nombre propuesto)
           xyz: [0.087, 0.152, 0.000]  # SUPUESTO (disposición propuesta, sin medir)
