@@ -46,7 +46,7 @@ const MODELO = {
   pedido: 2,
   platos: { sobreCaja: true, cajaAlto: 0.1, cajaLado: 0.1, agarre: 'horizontal_por_el_borde', radioAgarre: 0.082, lista: [{ clave: 'plato_1', x: 0.1, y: -0.2, z: 0.1 }, { clave: 'plato_2', x: -0.1, y: -0.2, z: 0.1 }] },
   zona: { x: -0.3, y: 0.0004, z: 0, yaw: PI / 2, ancho: 0.22, fondo: 0.16 },
-  marcadores: [{ id: 4, diccionario: 'DICT_4X4_50', lado: 0.06, x: 0.05, y: -0.17, z: 0, yaw: 0 }],
+  marcadores: [{ id: 4, uso: 'entrega', diccionario: 'DICT_4X4_50', lado: 0.06, x: 0.05, y: -0.17, z: 0, yaw: 0 }],
   bandeja: { x: 0.45, y: 0.05, z: 0.24, yaw: PI, zonas: [{ clave: 'zona_primero', base: { x: 0.47, y: -0.05, z: 0.2404 }, local: { x: -0.02, y: 0.1, z: 0.0004 } }] },
   persona: { x: 0.85, y: 0.05, z: 0, yaw: PI },
 };
@@ -205,6 +205,31 @@ test('Común-C2 y T2.5: camera_info/camara_cenital.yaml del modelo a mano, enter
     '  data: [1161.290, 0.000, 959.500, 0.000, 0.000, 1161.290, 539.500, 0.000, 0.000, 0.000, 1.000, 0.000]  # SUPUESTO (lente ideal, sensor elp-ficha); focal y modo: elegido en el gemelo: P = [K | 0]',
     '',
   ].join('\n'));
+});
+
+// TD.5 (DT39): el modelo de la cámara como lo arma modeloExportacion() (app.js): área de SENSOR.area en el modo, hfov y vfov de
+// SENSOR.hfov/vfov. La cámara de render (crearCam/actualizarCam) es PerspectiveCamera(vfov, w/h): su campo horizontal es
+// 2·atan(tan(vfov/2)·w/h). Con «gemelo v8» en 4:3 el alto limita el área (4,712 < 6,287·3/4) y el hfov del sensor es mayor.
+test('TD.5 (DT39): camera_info con fx = fy (0,001 px) y el campo horizontal del render (0,01 %) en 1280×960 y 2048×1536, con los dos sensores', () => {
+  const MODOS = { '1280x960': { w: 1280, h: 960, fps: 120 }, '2048x1536': { w: 2048, h: 1536, fps: 30 } };
+  const visto = [];
+  for (const s of ['elp-ficha', 'gemelo-v8']) for (const [modo, M] of Object.entries(MODOS)) for (const f of [3.6, 6]) {
+    const a = SENSOR.area(s, M), hfov = SENSOR.hfov(a.w, f), vfov = SENSOR.vfov(a.h, f), m = plano(MODELO);
+    m.ctx.sensor = sensor(s); Object.assign(m.camaras[0], { focal: f, modo, hfov, vfov, px: { ...M } });
+    const t = fichero(m, 'camera_info/camara_cenital.yaml'), K = YAML.parse(t).camera_matrix.data, que = `${s}, ${modo}, f ${f} mm`;
+    assert.deepEqual(problemasCameraInfo(t), [], que);
+    assert.ok(Math.abs(K[0] - K[4]) <= 0.001, `${que}: fx ${K[0]} y fy ${K[4]}`);
+    const hRender = 2 * Math.atan(Math.tan(vfov / 2) * M.w / M.h), hCI = 2 * Math.atan(M.w / (2 * K[0]));
+    assert.ok(Math.abs(hCI - hRender) <= 1e-4 * hRender, `${que}: campo horizontal del camera_info ${hCI} rad y del render ${hRender} rad`);
+    // la línea de la K dice el hfov del render y, solo si difiere del del sensor, lo explica
+    assert.ok(t.includes(`con hfov ${EXPORTAR.r3(hRender)} rad y vfov ${EXPORTAR.r3(vfov)} rad;`), `${que}: hfov del render en la cabecera`);
+    const aviso = /^# {3}hfov es el campo horizontal de la cámara de render, .* su hfov \(hfov_rad de posiciones\.yaml\) es (\d\.\d{3}) rad\.$/m.exec(t);
+    assert.equal(!!aviso, s === 'gemelo-v8', `${que}: aviso del hfov del sensor`);
+    if (aviso) assert.equal(aviso[1], EXPORTAR.r3(hfov));
+    visto.push(`${que}: fx ${K[0]} fy ${K[4]}`);
+  }
+  // el caso del registro de deuda: «gemelo v8», 1280×960 a 3,6 mm daba fx 732,941 y fy 733,447
+  assert.ok(visto.includes('gemelo-v8, 1280x960, f 3.6 mm: fx 733.447 fy 733.447'), visto.join(' | '));
 });
 
 test('Común-C2 y T2.5: usb_cam/camara_cenital.yaml del modelo a mano: rcl, enteros de usb_cam y sin camera_frame_id', () => {

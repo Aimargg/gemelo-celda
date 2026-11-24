@@ -1499,7 +1499,8 @@ const USB = (() => {
 // escribe EXPORTAR.tablero (src/exportar.js), el único formateador. Se prueba con node:test (tests/unit/tablero-t44.test.mjs) y se
 // concatena en app.js con el marcador @@TABLERO@@.
 // Marcador: { id, lado, x, y, yaw } en metros y radianes, en el marco de la bandeja (x e y sobre su cara de arriba, yaw hacia
-// +y); el tablero es plano, en z = 0. El patrón de un marcador tiene el convenio de ArUco de OpenCV: x a la derecha, y hacia
+// +y); el tablero es plano, en z = 0. `lado` es el lado del cuadrado negro, el markerLength de OpenCV (DT45, TD.1): el margen
+// blanco va por fuera y no entra en las esquinas. El patrón de un marcador tiene el convenio de ArUco de OpenCV: x a la derecha, y hacia
 // arriba y z saliendo de la cara impresa; con yaw = 0 sus ejes son los de la bandeja.
 // Fuentes. El estudio «percepcion-bandeja-personas» no está en el repo: solo se cita lo que da la ficha de T4.4 del plan (el
 // aviso de marcadores alineados sobre un solo borde, «pose con varios marcadores») y la aritmética (el diccionario DICT_4X4_50
@@ -1799,7 +1800,7 @@ const ORIGEN = (() => {
       fuente: c => `${c.sensor.origen}; medir en la calibración intrínseca (F4)`,
       yaml: (t, c) => con(t, `lente ideal, sensor ${c.sensor.id}`),
     },
-    { clave: 'marcadores', nombre: 'Marcadores', tipo: S, valor: 'ArUco DICT_4X4_50: zona 0–3, entrega 4–5, bandeja 6–9 (dibujados con su patrón real)', fuente: 'Ids propuestos', yaml: t => con(t, 'ids propuestos') },
+    { clave: 'marcadores', nombre: 'Marcadores', tipo: S, valor: 'ArUco DICT_4X4_50: zona 0–3, entrega 4–5, bandeja 6–9 (dibujados con su patrón real); el lado es el del cuadrado negro, el markerLength de OpenCV, con el margen blanco por fuera', fuente: 'Ids propuestos', yaml: t => con(t, 'ids propuestos') },
     { clave: 'soportes_camara', nombre: 'Soportes de cámara', tipo: M, valor: 'Manfrotto 035 + brazo 244 de 53 cm', fuente: 'Foto + ficha', yaml: t => t },
     { clave: 'fruta', nombre: 'Fruta', tipo: S, valor: 'piezas de plástico de 4,5–7 cm', fuente: 'Foto de referencia del grupo', yaml: t => t },
     { clave: 'plato_bandeja_persona', nombre: 'Plato, bandeja y persona', tipo: S, valor: 'plato Ø160 mm · bandeja 450 × 330 mm a 1,00 m del suelo · persona en el lateral derecho, de frente, con la bandeja a la derecha del robot y fuera de la mesa', fuente: 'Sin medir; posición elegida porque es donde el robot puede dejar los platos nivelados', yaml: t => con(t, 'sin medir') },
@@ -1817,7 +1818,7 @@ const ORIGEN = (() => {
     { clave: 'pose_doble', nombre: null, tipo: S, valor: 'pose de <id>_base_link en el world del URDF doble', fuente: 'xacro del URDF doble del curso (doble_ur3e_<a>_<b>)', yaml: t => con(t, 'sin validar en ROS') },
     // Valores nuevos de parametros_celda.yaml y de las TF estáticas (T2.2, T2.4), también solo en los ficheros
     { clave: 'nombre_frame', nombre: null, tipo: S, valor: 'nombres de los frames de la celda: mesa, zona_fruta, plato_<n>_inicio, marcador_<id>, bandeja, zona_primero, zona_segundo, zona_centro, camara_<k> y camara_<k>_optical', fuente: 'propuestos por el gemelo (T2.4); los fija el grupo con la arquitectura (D3)', yaml: t => con(t, 'nombre propuesto') },
-    { clave: 'lado_marcador', nombre: null, tipo: S, valor: 'lado de 6 cm de los marcadores de entrega (ids 4 y 5)', fuente: 'el dibujo del gemelo, sin medir: el impreso puede ser otro', yaml: t => con(t, 'lado del dibujo del gemelo, sin medir') },
+    { clave: 'lado_marcador', nombre: null, tipo: S, valor: 'lado de 4 cm de los marcadores de la zona de fruta (ids 0–3) y de 6 cm de los de entrega (ids 4 y 5)', fuente: 'el dibujo del gemelo, sin medir: el impreso puede ser otro', yaml: t => con(t, 'lado del dibujo del gemelo, sin medir') },
     { clave: 'marco_optico', nombre: null, tipo: F, valor: 'camara_<k> → camara_<k>_optical: rpy (−π/2, 0, −π/2), sin traslación', fuente: 'convenio de REP-103 (marco del cuerpo y marco óptico de una cámara)', yaml: t => con(t, 'convenio de REP-103') },
     // Valores nuevos de la escena de colisión (T2.3), también solo en los ficheros
     { clave: 'id_escena', nombre: null, tipo: S, valor: 'ids de los objetos de la escena de colisión: mesa, caja_plato_<n>, plato_<n>, bandeja y camara_<k>', fuente: 'propuestos por el gemelo (T2.3); el id suelo es el del ejemplo del profesor y no se usa', yaml: t => con(t, 'id propuesto') },
@@ -1877,9 +1878,9 @@ const CAPTURA = (() => {
   // Las esquinas de un ArUco, en el orden de OpenCV (las devuelve detectMarkers): arriba-izquierda, arriba-derecha, abajo-derecha y
   // abajo-izquierda del marcador tal como está impreso
   const ORDEN_ESQUINAS = ['arriba_izquierda', 'arriba_derecha', 'abajo_derecha', 'abajo_izquierda'];
-  // El plano de un marcador del gemelo mide `lado` y arucoTex dibuja el cuadrado negro (las 6 × 6 celdas del patrón) en 80 de sus 96 px:
-  // las esquinas que da un detector son las del cuadrado negro, no las del plano
-  const ARUCO_NEGRO = 80 / 96;
+  // `lado` es el lado del cuadrado negro de un marcador (el markerLength de OpenCV; DT45, TD.1): arucoTex dibuja el negro (las 6 × 6 celdas
+  // del patrón) en todo el plano de lado `lado` y el margen blanco va por fuera, en el papel. Las esquinas que da un detector son las del
+  // cuadrado negro, a ±lado/2 del centro: las mismas que tablero_bandeja.yaml
   const OCLUSION = 'solo la del campo y los bordes: un objeto tapado por otro o por el brazo dentro del campo se anota como visible; la oclusión por el brazo (T4.2) se mide sobre el plan de Calcular y no se aplica a la captura';
   const PERSONAS = 'sin personas: la figura de la persona del gemelo no se dibuja en la captura ni se anota; no hay ninguna clase de persona';
   const DISTORSION = 'ninguna: proyección estenopeica de lente ideal; la distorsión de T4.5 no se aplica a la captura';
@@ -1897,10 +1898,10 @@ const CAPTURA = (() => {
     const d = [p[0] - cam.o[0], p[1] - cam.o[1], p[2] - cam.o[2]], prof = T_.profundidad(p, cam.o, cam.z);
     return { u: v.cx + v.fx * T_.dot(d, cam.x) / prof, v: v.cy + v.fy * T_.dot(d, cam.y) / prof, prof };
   }
-  // Las cuatro esquinas del cuadrado negro de un marcador de lado `lado` (m), en su marco local (x a la derecha, y hacia arriba, z = 0 y
-  // la normal hacia quien lo mira) y en el orden de ORDEN_ESQUINAS
+  // Las cuatro esquinas del cuadrado negro de un marcador de lado `lado` (m, el del cuadrado negro), en su marco local (x a la derecha, y
+  // hacia arriba, z = 0 y la normal hacia quien lo mira) y en el orden de ORDEN_ESQUINAS: a ±lado/2 del centro
   function esquinasAruco(lado) {
-    const h = lado * ARUCO_NEGRO / 2; return [[-h, h, 0], [h, h, 0], [h, -h, 0], [-h, -h, 0]];
+    const h = lado / 2; return [[-h, h, 0], [h, h, 0], [h, -h, 0], [-h, -h, 0]];
   }
   const media = P => [0, 1, 2].map(i => P.reduce((s, p) => s + p[i], 0) / P.length);
 
@@ -1955,7 +1956,7 @@ const CAPTURA = (() => {
     .replace(new RegExp(`\\[\\s+(${NUM}),\\s+(${NUM})\\s+\\]`, 'g'), '[$1, $2]')
     .replace(new RegExp(`\\{\\s+"x": (${NUM}),\\s+"y": (${NUM}),\\s+"ancho": (${NUM}),\\s+"alto": (${NUM})\\s+\\}`, 'g'), '{ "x": $1, "y": $2, "ancho": $3, "alto": $4 }') + '\n';
 
-  return { ANCHO, ALTO, AVISO, ESQUEMA, CLASES, ORDEN_ESQUINAS, ARUCO_NEGRO, OCLUSION, PERSONAS, vista, proyectar, esquinasAruco, anotar, documento, texto };
+  return { ANCHO, ALTO, AVISO, ESQUEMA, CLASES, ORDEN_ESQUINAS, OCLUSION, PERSONAS, vista, proyectar, esquinasAruco, anotar, documento, texto };
 })();
 // Oclusión por el brazo a lo largo de las trayectorias calculadas (T4.2, D4, D6, I6): en qué porcentaje del ciclo tapa el brazo
 // cada objetivo de cada cámara. Se muestrea por TIEMPO el plan que ya dejó «Calcular» (nunca se planifica nada nuevo), en cada
@@ -2087,7 +2088,7 @@ const OCLUSION = (() => {
 //   ctx (contexto de origen) · layoutJson (JSON.stringify(L)) · robot { posicion, id, idLayout, desconocido, sospechoso,
 //   yaw, prefijo, frame, worldABase {x, y, z}, doble { nombre, x, y, z, yaw } | null } · pinza { modelo, tcpZ, carrera } ·
 //   mesa { ancho, fondo, alto, x, y, z, yaw } · pedido · platos { sobreCaja, cajaAlto, cajaLado, agarre, radioAgarre,
-//   lista [{ clave, x, y, z }] } · zona { x, y, z, yaw, ancho, fondo } · marcadores [{ id, diccionario, lado, x, y, z, yaw }]
+//   lista [{ clave, x, y, z }] } · zona { x, y, z, yaw, ancho, fondo } · marcadores [{ id, uso, diccionario, lado, x, y, z, yaw }]
 //   · bandeja { x, y, z, yaw, zonas [{ clave, base {x, y, z}, local {x, y, z} }] } · persona { x, y, z, yaw } ·
 //   camaras [{ clave, grupo, modelo, focal, modo, hfov, vfov, px { w, h, fps }, pos, mira, clamp, orient { pan, tilt, roll },
 //   rpy [r, p, y], usb { dispositivo, exposicion, balance } }] · escena { objetos [{ id, que, giro?, pose { x, y, z, rpy },
@@ -2101,7 +2102,9 @@ const EXPORTAR = (() => {
   const rad3 = a => r3(envolver(a));
   const fmt = (v, d = 1) => v.toFixed(d).replace('.', ',');
   const grados = a => `${fmt(a * R2D, 1).replace('-', '−')}°`; // gradosTxt de app.js
-  const P = p => `{x: ${r3(p.x)}, y: ${r3(p.y)}, z: ${r3(p.z)}}`;
+  // La clave «y» de los mapas en línea de posiciones.yaml, entre comillas: YAML 1.1 (PyYAML, el de los scripts del grupo) lee la
+  // y sin comillas como el booleano true (TD.3, DT42)
+  const P = p => `{x: ${r3(p.x)}, 'y': ${r3(p.y)}, z: ${r3(p.z)}}`;
 
   // ---------- Cabecera común: robot y calibración, frame y prefijo (las mismas líneas que posiciones.yaml) ----------
   function lineaRobot(m) {
@@ -2123,10 +2126,19 @@ const EXPORTAR = (() => {
   const lineaCentro = m => !m.bandeja.zonas.some(z => z.clave === CENTRO) ? []
     : [`${CENTRO} (centro de la bandeja): el destino del plato con un pedido de un plato${m.pedido === 1 ? ', como el de esta disposición' : '; con dos, como en esta disposición, no se usa'}.`];
 
+  // Marcadores (TD.4, DT36): uso 'zona' (los de las esquinas de la zona de fruta, con sus ejes) o 'entrega' (con los de la mesa),
+  // en el orden del modelo, que es el de los ids. Un uso que no sea uno de los dos no se escribe.
+  const USOS = { zona: 'de la zona de fruta', entrega: 'de entrega' };
+  const usoDe = a => { if (!Object.hasOwn(USOS, a.uso)) throw new Error(`exportar: marcador ${a.id} sin uso válido (${a.uso})`); return a.uso; };
+  const yLista = vs => vs.length < 2 ? vs.join('') : `${vs.slice(0, -1).join(', ')} y ${vs.at(-1)}`;
+
   // ---------- posiciones.yaml (T1.5, T2.1): el mismo texto que escribía generarYaml ----------
-  // fecha: 'AAAA-MM-DD' (la única línea que cambia de un día a otro). Lo que viene de la disposición sin validar (robot_id,
-  // frame, prefijo_frames y su prefijo en las líneas de comentario) se escribe con el mismo escape que los ficheros de ROS
-  // (cad, comentario y limpio; DT35): una disposición de solo lectura de una versión más nueva puede traer cualquier texto.
+  // fecha: 'AAAA-MM-DD' (la única línea que cambia de un día a otro), entre comillas: sin ellas YAML 1.1 la lee como timestamp.
+  // El fichero se lee igual con YAML 1.1 (PyYAML) que con 1.2 (TD.3, DT42): la clave «y» de los mapas en línea va entre
+  // comillas (P), y la línea «# layout-json:» lleva JSON.stringify(L) con jsonYaml11 (los caracteres que 1.1 no admite,
+  // escapados). Lo que viene de la disposición sin validar (robot_id, frame, prefijo_frames y su prefijo en las líneas de
+  // comentario) se escribe con el mismo escape que los ficheros de ROS (cad, comentario y limpio; DT35): una disposición de solo
+  // lectura de una versión más nueva puede traer cualquier texto.
   function posiciones(m, O, fecha) {
     const c = m.ctx, og = k => O.yaml(k, c), ot = k => O.tipo(k, c);
     const R = m.robot, frame = R.frame, sup = `# ${og('disposicion')}`;
@@ -2140,25 +2152,26 @@ const EXPORTAR = (() => {
     y += `# Origen de cada valor, al final de su línea: ${O.LEYENDA}; lo que ha decidido el grupo, «${O.GRUPO}». Las cámaras dan el giro desde +y de ${limpio(frame)} hacia +x.\n`;
     for (const l of lineaCentro(m)) y += `# ${l}\n`;
     // La posición A/B es una elección del gemelo (DT34); la posición medida de cada base no se escribe en este fichero
-    y += `fecha: ${fecha}\nrobot: ${R.posicion}  # ${O.ELEGIDO}\nrobot_id: ${R.desconocido ? `${cad(R.idLayout)}  # de la disposición; el gemelo no lo conoce y usa la cinemática nominal` : `${cad(R.id)}  # ${O.ELEGIDO}`}\n`;
+    y += `fecha: '${fecha}'\nrobot: ${R.posicion}  # ${O.ELEGIDO}\nrobot_id: ${R.desconocido ? `${cad(R.idLayout)}  # de la disposición; el gemelo no lo conoce y usa la cinemática nominal` : `${cad(R.id)}  # ${O.ELEGIDO}`}\n`;
     const w = R.worldABase;
-    y += `frame: ${cad(frame)}\nprefijo_frames: ${cad(R.prefijo)}\nworld_a_base_link: {x: ${r3(w.x)}, y: ${r3(w.y)}, z: ${r3(w.z)}, yaw_rad: ${rad3(R.yaw)}}  # world del gemelo (ejes de la mesa): ${ot('orientacion_base_link')} · giro: mount_yaw − π del xacro del curso, ${og('orientacion_base_link')}\n`;
-    if (R.doble) y += `pose_en_world_doble: {frame: ${cad(frame)}, x: ${r3(R.doble.x)}, y: ${r3(R.doble.y)}, z: ${r3(R.doble.z)}, yaw_rad: ${rad3(R.doble.yaw)}}  # xacro del curso, ${R.doble.nombre}: ${og('pose_doble')}\n`;
+    y += `frame: ${cad(frame)}\nprefijo_frames: ${cad(R.prefijo)}\nworld_a_base_link: {x: ${r3(w.x)}, 'y': ${r3(w.y)}, z: ${r3(w.z)}, yaw_rad: ${rad3(R.yaw)}}  # world del gemelo (ejes de la mesa): ${ot('orientacion_base_link')} · giro: mount_yaw − π del xacro del curso, ${og('orientacion_base_link')}\n`;
+    if (R.doble) y += `pose_en_world_doble: {frame: ${cad(frame)}, x: ${r3(R.doble.x)}, 'y': ${r3(R.doble.y)}, z: ${r3(R.doble.z)}, yaw_rad: ${rad3(R.doble.yaw)}}  # xacro del curso, ${R.doble.nombre}: ${og('pose_doble')}\n`;
     y += `pinza: {modelo: ${m.pinza.modelo}, tcp_z_m: ${r3(m.pinza.tcpZ)}, carrera_m: ${r3(m.pinza.carrera)}}  # tcp_z: ${og('tcp_pinza')} · carrera: ${og('pinza')}\n`;
     const me = m.mesa;
-    y += `mesa: {ancho_m: ${r3(me.ancho)}, fondo_m: ${r3(me.fondo)}, alto_m: ${r3(me.alto)}, centro_en_base_link: {x: ${r3(me.x)}, y: ${r3(me.y)}}, yaw_rad: ${rad3(me.yaw)}}  # ${conGiro ? `medidas: ${og('mesa')} · centro_en_base_link y yaw_rad: ${giroSup}` : og('mesa')}\n`;
+    y += `mesa: {ancho_m: ${r3(me.ancho)}, fondo_m: ${r3(me.fondo)}, alto_m: ${r3(me.alto)}, centro_en_base_link: {x: ${r3(me.x)}, 'y': ${r3(me.y)}}, yaw_rad: ${rad3(me.yaw)}}  # ${conGiro ? `medidas: ${og('mesa')} · centro_en_base_link y yaw_rad: ${giroSup}` : og('mesa')}\n`;
     y += `pedido: ${m.pedido === 1 ? 'un_plato  # al centro de la bandeja' : 'dos_platos  # primero y segundo'} · ${O.ELEGIDO}\n`;
     const pl = m.platos;
     y += `platos: {sobre_caja: ${pl.sobreCaja}, caja_alto_m: ${r3(pl.cajaAlto)}, caja_lado_m: ${r3(pl.cajaLado)}, agarre: ${pl.agarre}, radio_agarre_m: ${r3(pl.radioAgarre)}}  # agarre: ${og('agarre_plato')} · resto: ${og('caja_plato')}\n`;
     const z = m.zona;
-    y += `objetos:\n  zona_fruta: {x: ${r3(z.x)}, y: ${r3(z.y)}, z: ${r3(z.z)}, yaw_rad: ${rad3(z.yaw)}, ancho_m: ${r3(z.ancho)}, fondo_m: ${r3(z.fondo)}}  ${sup}\n`;
+    y += `objetos:\n  zona_fruta: {x: ${r3(z.x)}, 'y': ${r3(z.y)}, z: ${r3(z.z)}, yaw_rad: ${rad3(z.yaw)}, ancho_m: ${r3(z.ancho)}, fondo_m: ${r3(z.fondo)}}  ${sup}\n`;
     for (const p of pl.lista) y += `  ${p.clave}: ${P(p)}  ${sup}\n`;
-    m.marcadores.forEach((a, i) => { y += `  marcador_entrega_${i + 1}: {id: ${a.id}, diccionario: ${a.diccionario}, x: ${r3(a.x)}, y: ${r3(a.y)}, z: ${r3(a.z)}}  ${sup}\n`; });
-    const b = m.bandeja; y += `  bandeja_recepcion: {x: ${r3(b.x)}, y: ${r3(b.y)}, z: ${r3(b.z)}, yaw_rad: ${rad3(b.yaw)}}  ${sup}\n`;
+    const nUso = {}; // marcador_zona_<n> y marcador_entrega_<n>: n cuenta dentro de cada uso
+    for (const a of m.marcadores) { const u = usoDe(a); nUso[u] = (nUso[u] || 0) + 1; y += `  marcador_${u}_${nUso[u]}: {id: ${a.id}, diccionario: ${a.diccionario}, x: ${r3(a.x)}, 'y': ${r3(a.y)}, z: ${r3(a.z)}}  ${sup}\n`; }
+    const b = m.bandeja; y += `  bandeja_recepcion: {x: ${r3(b.x)}, 'y': ${r3(b.y)}, z: ${r3(b.z)}, yaw_rad: ${rad3(b.yaw)}}  ${sup}\n`;
     for (const zb of b.zonas) y += `  ${zb.clave}: ${P(zb.base)}  ${sup}\n`;
-    const pe = m.persona; y += `  persona: {x: ${r3(pe.x)}, y: ${r3(pe.y)}, yaw_rad: ${rad3(pe.yaw)}}  ${sup}\ncamaras:\n`;
+    const pe = m.persona; y += `  persona: {x: ${r3(pe.x)}, 'y': ${r3(pe.y)}, yaw_rad: ${rad3(pe.yaw)}}  ${sup}\ncamaras:\n`;
     for (const k of m.camaras) { const o = k.orient; y += `  camara_${k.clave}: {grupo: ${k.grupo}, modelo: ${k.modelo}, focal_mm: ${k.focal.toFixed(1)}, modo: ${k.modo}, hfov_rad: ${r3(k.hfov)}, posicion: ${P(k.pos)}, mira: ${P(k.mira)}, orientacion_rad: {giro: ${rad3(o.pan)}, inclinacion: ${rad3(o.tilt)}, alabeo: ${rad3(o.roll)}}, pinza_mesa: ${P(k.clamp)}}  # pose: ${ot('disposicion')} · modelo: ${og('camaras')} · focal y modo: elegidos · hfov: ${og('campo_vision')}\n`; }
-    y += `# layout-json: ${m.layoutJson}\n`;
+    y += `# layout-json: ${jsonYaml11(m.layoutJson)}\n`;
     return y;
   }
 
@@ -2172,6 +2185,11 @@ const EXPORTAR = (() => {
   const lista = vs => `[${vs.join(', ')}]`; // array homogéneo (sin listas de mapas: rcl no las admite)
   const xyz = p => lista([d3(p.x), d3(p.y), d3(p.z)]);
   const comentario = l => limpio(l.slice(0, -1)) + '\n'; // una línea de cabecera con texto de la disposición
+  // El JSON de la disposición en una línea de comentario que YAML 1.1 lea entera (TD.3, DT42): JSON.stringify no escapa U+2028
+  // ni U+2029, que YAML 1.1 (PyYAML) lee como salto de línea, ni U+0085 (también salto en 1.1), U+007F–U+009F, U+FFFE y U+FFFF
+  // (no imprimibles en YAML: PyYAML rechaza el fichero). Se escriben como \uXXXX, que JSON.parse lee como el mismo carácter:
+  // la disposición se recupera igual. Fuera de los textos, JSON.stringify no escribe ninguno de ellos.
+  const jsonYaml11 = j => String(j).replace(/[\u007f-\u009f\u2028\u2029\ufffe\uffff]/g, c => `\\u${c.charCodeAt(0).toString(16).padStart(4, '0')}`);
 
   // Huella de la disposición: FNV-1a de 32 bits de los bytes UTF-8 de JSON.stringify(L), en 8 cifras hexadecimales
   function huella(texto) {
@@ -2202,6 +2220,13 @@ const EXPORTAR = (() => {
       `# Carga: ${carga} [SIN VALIDAR en ROS: U4].\n`, ...extra.map(l => `# ${l}\n`),
       `# Origen de cada valor, ${donde}: ${O.LEYENDA}; lo que se elige en el gemelo, «${O.ELEGIDO}»${grupo ? `; lo que ha decidido el grupo, «${O.GRUPO}»` : ''}.\n`].join('');
   }
+
+  // Qué ids son de cada uso, en una línea de la cabecera de parametros_celda.yaml (TD.4): los ids siguen siendo una propuesta
+  const lineaMarcadores = m => {
+    const de = u => m.marcadores.filter(a => usoDe(a) === u).map(a => ent(a.id)), z = de('zona'), e = de('entrega');
+    if (!z.length) return [];
+    return [`marcadores ${yLista(z)}: los de las esquinas de la zona de fruta (por fuera de la zona, con sus ejes)${e.length ? `; ${yLista(e)}: los de entrega (con los ejes de la mesa)` : ''}. Ids propuestos, sin aceptar por el grupo.`];
+  };
 
   // ---------- parametros_celda.yaml (T2.2): ros__parameters para --params-file ----------
   // Los mismos números que posiciones.yaml, escritos igual, más los frame_id de las TF, el rpy del marco de cada cámara y el
@@ -2260,6 +2285,8 @@ const EXPORTAR = (() => {
       'Nombres en celda: robot (posicion, id, frame, prefijo_frames, world_a_base_link, pose_en_world_doble), pinza, mesa, pedido, platos (caja_tamano_m, plato_1, plato_2),',
       `  zona_fruta, marcadores (ids, marcador_<id>), bandeja (${b.zonas.map(zb => limpio(zb.clave)).join(', ')}), persona (xy, yaw) y camaras (nombres, <nombre>: frame_id del marco óptico,`,
       '  xyz y rpy del marco camara_<nombre>, mira, orientacion_rad como en posiciones.yaml y pinza_mesa).',
+      'marcadores.marcador_<id>.lado_m: el lado del cuadrado negro del marcador, el markerLength de OpenCV; el margen blanco va por fuera.',
+      ...lineaMarcadores(m),
       ...lineaCentro(m),
     ], undefined, true) + raiz([mapa('celda', ...nodos)]);
   }
@@ -2301,7 +2328,10 @@ const EXPORTAR = (() => {
     a(raizTF, 'mesa', m.mesa, [0, 0, m.mesa.yaw], giro, 'centro de la cara de arriba de la mesa, con su giro');
     a(raizTF, 'zona_fruta', m.zona, [0, 0, m.zona.yaw], sup, 'centro y giro de la zona de fruta');
     for (const p of m.platos.lista) a(raizTF, `${p.clave}_inicio`, p, [0, 0, m.mesa.yaw], sup, `dónde está el ${p.clave.replace('_', ' ')} antes de cogerlo, con los ejes de la mesa (el robot lo mueve y una TF estática no lo sigue)`);
-    for (const k of m.marcadores) a(raizTF, `marcador_${ent(k.id)}`, k, [0, 0, k.yaw], sup, `marcador de entrega ${ent(k.id)} (${limpio(k.diccionario)}), plano sobre la mesa y con sus ejes; convenio de ArUco de OpenCV: z sale de la cara impresa, x a la derecha e y hacia arriba del patrón`);
+    const ARUCO_CV = 'convenio de ArUco de OpenCV: z sale de la cara impresa, x a la derecha e y hacia arriba del patrón';
+    for (const k of m.marcadores) a(raizTF, `marcador_${ent(k.id)}`, k, [0, 0, k.yaw], sup, usoDe(k) === 'zona'
+      ? `marcador ${ent(k.id)} de la zona de fruta (${limpio(k.diccionario)}), plano sobre la mesa, por fuera de una esquina de la zona y con sus ejes (id propuesto, sin aceptar por el grupo); ${ARUCO_CV}`
+      : `marcador de entrega ${ent(k.id)} (${limpio(k.diccionario)}), plano sobre la mesa y con sus ejes; ${ARUCO_CV}`);
     a(raizTF, 'bandeja', m.bandeja, [0, 0, m.bandeja.yaw], sup, 'pose de plan de la bandeja (sin balanceo), en la cara de arriba', 'nominal: la sustituye la pose que publique Visión');
     for (const z of m.bandeja.zonas) a('bandeja', z.clave, z.local, [0, 0, 0], og('plato_bandeja_persona'), `${z.clave}, donde se deja un plato en la bandeja: cuelga de la bandeja para seguirla cuando Visión publique su pose`, null, z.clave === CENTRO ? lineaCentro(m) : []);
     for (const k of m.camaras) {
@@ -2476,12 +2506,18 @@ const EXPORTAR = (() => {
 
   // ---------- Cámaras (T2.5): camera_info/camara_<k>.yaml (nominal) y usb_cam/camara_<k>.yaml ----------
   // K de lente ideal con el modelo de la cámara de render del gemelo (su campo vertical y el aspecto del modo, que salen del
-  // modelo de sensor): fx = (w/2)/tan(hfov/2), fy = (h/2)/tan(vfov/2), cx = (w − 1)/2 y cy = (h − 1)/2 (convenio de OpenCV y
-  // ROS: el centro del píxel (0, 0) está en 0). D = 0 (plumb_bob), R = I y P = [K | 0]. En píxeles, con 3 decimales.
+  // modelo de sensor): fx = fy = (h/2)/tan(vfov/2), cx = (w − 1)/2 y cy = (h − 1)/2 (convenio de OpenCV y ROS: el centro del
+  // píxel (0, 0) está en 0). D = 0 (plumb_bob), R = I y P = [K | 0]. En píxeles, con 3 decimales. La cámara de render
+  // (PerspectiveCamera de three) fija el campo vertical y el aspecto w/h, con píxeles cuadrados: su campo horizontal es
+  // hfovRender = 2·atan(tan(vfov/2)·w/h) y fx = (w/2)/tan(hfovRender/2) = fy (TD.5, DT39). Cuando el área útil del sensor no
+  // tiene el aspecto del modo (el alto la limita: «gemelo v8» en 4:3), el hfov del sensor (hfov_rad de posiciones.yaml) es algo
+  // mayor que hfovRender; fx sale de hfovRender, el que se pinta. Con el área del aspecto del modo, los dos coinciden.
   function intrinseca(k) {
-    const w = num(k.px.w), h = num(k.px.h), fx = w / 2 / Math.tan(num(k.hfov) / 2), fy = h / 2 / Math.tan(num(k.vfov) / 2), cx = (w - 1) / 2, cy = (h - 1) / 2;
-    return { K: [fx, 0, cx, 0, fy, cy, 0, 0, 1], D: [0, 0, 0, 0, 0], R: [1, 0, 0, 0, 1, 0, 0, 0, 1], P: [fx, 0, cx, 0, 0, fy, cy, 0, 0, 0, 1, 0] };
+    const w = num(k.px.w), h = num(k.px.h), fy = h / 2 / Math.tan(num(k.vfov) / 2), fx = fy, cx = (w - 1) / 2, cy = (h - 1) / 2;
+    return { K: [fx, 0, cx, 0, fy, cy, 0, 0, 1], D: [0, 0, 0, 0, 0], R: [1, 0, 0, 0, 1, 0, 0, 0, 1], P: [fx, 0, cx, 0, 0, fy, cy, 0, 0, 0, 1, 0], hfovRender: 2 * Math.atan(Math.tan(num(k.vfov) / 2) * w / h) };
   }
+  // Si el hfov del sensor y el del render difieren más que el redondeo de coma flotante, el camera_info lo dice
+  const difiereHfov = (k, I) => Math.abs(I.hfovRender - num(k.hfov)) > 1e-9 * Math.abs(num(k.hfov));
   const nombreCam = k => `camara_${limpio(k.clave)}`;
   const RUTA_CI = n => `file://\${ROS_HOME}/camera_info/${n}.yaml`; // la de camera_info_manager por defecto
   function cameraInfo(m, O, k) {
@@ -2490,7 +2526,8 @@ const EXPORTAR = (() => {
     const mat = (clave, rows, cols, data, o) => `${clave}:\n  rows: ${ent(rows)}  # ${fmtCI}\n  cols: ${ent(cols)}  # ${fmtCI}\n  data: ${lista(data.map(d3))}  # ${limpio(o)}\n`;
     return cabecera(m, O, `camera_info/${n}.yaml`, `el camera_info_url de usb_cam/${n}.yaml: cópialo a \${ROS_HOME}/camera_info/${n}.yaml (por defecto ~/.ros/camera_info/)`, [
       `Cámara ${limpio(k.clave)}: ${limpio(k.modelo)}, focal ${num(k.focal).toFixed(1)} mm (focal_mm, DT19), modo ${limpio(k.modo)} (${ent(k.px.w)} × ${ent(k.px.h)} a ${num(k.px.fps).toFixed(1)} fps), sensor «${limpio(s.nombre)}» de ${fmt(num(s.w), 3)} mm de ancho útil.`,
-      `K en píxeles, de lente ideal y con el modelo de la cámara con la que el gemelo pinta lo que ve: fx = (w/2)/tan(hfov/2) y fy = (h/2)/tan(vfov/2), con hfov ${d3(k.hfov)} rad y vfov ${d3(k.vfov)} rad;`,
+      `K en píxeles, de lente ideal y con el modelo de la cámara con la que el gemelo pinta lo que ve: fx = (w/2)/tan(hfov/2) y fy = (h/2)/tan(vfov/2), con hfov ${d3(I.hfovRender)} rad y vfov ${d3(k.vfov)} rad;`,
+      ...(difiereHfov(k, I) ? [`  hfov es el campo horizontal de la cámara de render, 2·atan(tan(vfov/2)·w/h), con píxeles cuadrados (fx = fy): el área útil del sensor no tiene el aspecto del modo y su hfov (hfov_rad de posiciones.yaml) es ${d3(k.hfov)} rad.`] : []),
       '  cx = (w − 1)/2 y cy = (h − 1)/2: el píxel (0, 0) tiene su centro en 0, como en OpenCV y ROS. Números de las matrices con 3 decimales.',
       `D = 0 (plumb_bob), R = I y P = [K | 0]. Nominal: lo sustituye la calibración intrínseca (F4) guardada con el mismo camera_name (${n}) en la misma ruta.`,
     ]) + `image_width: ${ent(k.px.w)}  # ${modo}\nimage_height: ${ent(k.px.h)}  # ${modo}\ncamera_name: ${cad(n)}  # ${og('nombre_frame')}; el de usb_cam/${n}.yaml\n`
@@ -2548,6 +2585,7 @@ const EXPORTAR = (() => {
         ...T.orden.map((o, i) => hoja(o, lista(k.esquinas[i].map(d3)), `${sup}; esquina del patrón con z saliendo de la cara impresa`)))))];
     return [`# tablero_bandeja.yaml · gemelo de la celda UR3e · generado por el gemelo (IA), BORRADOR\n`,
       `# Tablero de marcadores ArUco (${limpio(T.diccionario)}) de la bandeja: ids, lado y esquinas de cada marcador, para cv2.aruco.estimatePoseBoard.\n`,
+      '# lado_m: el lado del cuadrado negro de cada marcador, el markerLength de OpenCV; el margen blanco va por fuera y las esquinas son las del cuadrado negro, a ±lado_m/2 del centro.\n',
       '# Marco: bandeja (el de la TF bandeja, tf/bandeja.yaml). Metros y radianes (REP-103), redondeo a 1 mm y 0,001 rad (I7): con un lado que no es múltiplo de 2 mm el cuadrado escrito se desvía hasta 1 mm del ideal.\n',
       '# El tablero es plano, en z = 0 (la cara de arriba de la bandeja; el dibujo del gemelo lo levanta 0,6 mm). Cada marcador sigue el convenio de ArUco de OpenCV: x a la derecha, y hacia arriba y z saliendo de la cara impresa; con yaw_rad = 0 sus ejes son los de la bandeja.\n',
       '# Esquinas de cada marcador_<id>: arriba_izquierda, arriba_derecha, abajo_derecha, abajo_izquierda, en ese orden (orden_esquinas), como las que OpenCV devuelve al detectar.\n',
@@ -2936,16 +2974,19 @@ class Pinza {
 }
 
 // ======================= Geometría de objetos =======================
+// El patrón ArUco (DT45, TD.1): el cuadrado negro ocupa toda la textura, 6 × 6 celdas de 16 px (el borde negro y los 4 × 4 bits
+// del diccionario), así que en el plano de lado `lado` el negro mide `lado`: el markerLength de OpenCV. El margen blanco va por fuera.
+const ARUCO_PAPEL = 1.25; // papel de lado·1,25 detrás del patrón: margen blanco de lado/8 por cada lado (al menos lado/10)
 function arucoTex(id) {
-  const c = document.createElement('canvas'); c.width = c.height = 96; const x = c.getContext('2d');
-  x.fillStyle = '#fff'; x.fillRect(0, 0, 96, 96); x.fillStyle = '#000'; x.fillRect(8, 8, 80, 80);
+  const c = document.createElement('canvas'); c.width = c.height = 96; const x = c.getContext('2d'), celda = 96 / 6;
+  x.fillStyle = '#000'; x.fillRect(0, 0, 96, 96);
   const bits = ARUCO[id % ARUCO.length];
-  for (let r = 0; r < 4; r++) for (let k = 0; k < 4; k++) if (bits[r * 4 + k] === '1') { x.fillStyle = '#fff'; x.fillRect(8 + 13.33 * (k + 1), 8 + 13.33 * (r + 1), 13.4, 13.4); }
+  for (let r = 0; r < 4; r++) for (let k = 0; k < 4; k++) if (bits[r * 4 + k] === '1') { x.fillStyle = '#fff'; x.fillRect(celda * (k + 1), celda * (r + 1), celda, celda); }
   const t = new THREE.CanvasTexture(c); t.magFilter = THREE.NearestFilter; t.colorSpace = THREE.SRGBColorSpace; return t;
 }
 function aruco(id, lado = 0.05) {
   const g = new THREE.Group();
-  const papel = new THREE.Mesh(new THREE.PlaneGeometry(lado * 1.25, lado * 1.25), new THREE.MeshStandardMaterial({ color: '#f4f2ee', roughness: 0.9 })); papel.receiveShadow = true; g.add(papel);
+  const papel = new THREE.Mesh(new THREE.PlaneGeometry(lado * ARUCO_PAPEL, lado * ARUCO_PAPEL), new THREE.MeshStandardMaterial({ color: '#f4f2ee', roughness: 0.9 })); papel.receiveShadow = true; g.add(papel);
   const m = new THREE.Mesh(new THREE.PlaneGeometry(lado, lado), new THREE.MeshStandardMaterial({ map: arucoTex(id), roughness: 0.85 })); m.position.z = 0.0002; m.receiveShadow = true; g.add(m);
   g.userData.id = id; g.userData.lado = lado; return g;
 }
@@ -2979,6 +3020,10 @@ const zonaBorde = new THREE.LineLoop(new THREE.BufferGeometry(), new THREE.LineB
 OBJ.zona.add(zonaBorde);
 const zonaFondo = new THREE.Mesh(new THREE.PlaneGeometry(1, 1), new THREE.MeshBasicMaterial({ color: '#e6b422', transparent: true, opacity: 0.08, depthWrite: false })); zonaFondo.position.z = 0.0009; OBJ.zona.add(zonaFondo);
 const zonaMarc = []; for (let i = 0; i < 4; i++) { const a = aruco(i, 0.04); a.position.z = 0.0012; OBJ.zona.add(a); zonaMarc.push(a); }
+// Centro del marcador i de la zona (ids 0–3) en el marco de la zona z: por fuera de cada esquina, a 26 mm de sus bordes. Lo usan
+// el dibujo (actualizarZona) y lo exportado (modeloExportacion, TD.4)
+const MARC_ZONA = [[-1, -1], [1, -1], [1, 1], [-1, 1]], MARC_ZONA_FUERA = 0.026;
+const marcZonaLocal = (z, i) => ({ u: MARC_ZONA[i][0] * (z.w / 2 + MARC_ZONA_FUERA), v: MARC_ZONA[i][1] * (z.d / 2 + MARC_ZONA_FUERA) });
 LBL.zona = etiqueta('Zona de fruta · V2'); OBJ.zona.add(LBL.zona);
 let piezas = [];
 function crearPiezas() { VERSION_ESCENA++;
@@ -2991,7 +3036,7 @@ function actualizarZona() {
   const hw = z.w / 2, hd = z.d / 2;
   zonaBorde.geometry.setFromPoints([new THREE.Vector3(-hw, -hd, 0.001), new THREE.Vector3(hw, -hd, 0.001), new THREE.Vector3(hw, hd, 0.001), new THREE.Vector3(-hw, hd, 0.001)]);
   zonaFondo.scale.set(z.w, z.d, 1);
-  [[-1, -1], [1, -1], [1, 1], [-1, 1]].forEach(([sx, sy], i) => zonaMarc[i].position.set(sx * (hw + 0.026), sy * (hd + 0.026), 0.0012));
+  zonaMarc.forEach((a, i) => { const q = marcZonaLocal(z, i); a.position.set(q.u, q.v, 0.0012); });
   LBL.zona.position.set(0, hd + 0.05, 0.02);
 }
 pickables.push({ key: 'zona', obj: OBJ.zona, nombre: 'Zona de fruta', grupo: 'V2' });
@@ -5682,6 +5727,7 @@ function modeloExportacion() {
   const v = p => ({ x: p.x, y: p.y, z: p.z }), B = o => v(enBase({ x: o.x, y: o.y, z: o.z ?? MESA.h }));
   // La bandeja en su pose de plan (poseBandejaPlan) y sus zonas llevadas a ella con su posición en la bandeja, la de su TF
   // (DT35): durante la demo, la bandeja dibujada se balancea y lo exportado no la sigue
+  const zl = L.zona, enZona = q => ({ x: zl.x + Math.cos(zl.yaw) * q.u - Math.sin(zl.yaw) * q.v, y: zl.y + Math.sin(zl.yaw) * q.u + Math.cos(zl.yaw) * q.v }); // del marco de la zona a world
   const tp = poseBandejaPlan(), enPlan = l => ({ x: tp.x + Math.cos(tp.yaw) * l.x - Math.sin(tp.yaw) * l.y, y: tp.y + Math.sin(tp.yaw) * l.x + Math.cos(tp.yaw) * l.y, z: tp.z + l.z });
   const id = ROB.id, d = ROB.datos, pf = L.prefijoFrames || '';
   // Una disposición de solo lectura puede traer un robot que esta versión no conoce: se dice y se usa el nominal (corrección 5)
@@ -5705,9 +5751,18 @@ function modeloExportacion() {
     pedido: L.pedido,
     platos: { sobreCaja: L.caja.on, cajaAlto: L.caja.h, cajaLado: CAJA_LADO, agarre: 'horizontal_por_el_borde', radioAgarre: R_AGARRE, lista: ['plato1', 'plato2'].map(pk => ({ clave: pk.replace('plato', 'plato_'), ...B({ x: L[pk].x, y: L[pk].y, z: zPlato() }) })) },
     zona: { ...zf, yaw: yawABase(L.zona.yaw), ancho: L.zona.w, fondo: L.zona.d },
-    // marcadores de entrega: planos sobre la mesa y con sus ejes (OBJ.arucoE no gira), de 6 cm (aruco(4 + i, 0.06))
-    marcadores: L.arucoE.map((a, i) => ({ id: 4 + i, diccionario: 'DICT_4X4_50', lado: 0.06, ...B(a), yaw: yawABase(0) })),
-    bandeja: { ...bt, yaw: yawABase(tp.yaw), zonas: ['zona_primero', 'zona_segundo', 'zona_centro'].map(k => ({ clave: k, base: B(enPlan(zonasB[k].position)), local: v(zonasB[k].position) })) }, // zona_centro siempre (DT36)
+    // marcadores: primero los de la zona de fruta (TD.4, DT36), planos sobre la mesa, por fuera de las esquinas de la zona y con
+    // sus ejes (cuelgan de OBJ.zona), con el lado de su dibujo (aruco(i, 0.04)); luego los de entrega, planos sobre la mesa y con
+    // sus ejes (OBJ.arucoE no gira), de 6 cm (aruco(4 + i, 0.06)). En la cara de la mesa: la elevación de 1,2 y 1,3 mm del
+    // dibujo (para que no parpadee) no se exporta
+    marcadores: [
+      ...zonaMarc.map((a, i) => { const q = marcZonaLocal(L.zona, i); return { id: a.userData.id, uso: 'zona', diccionario: 'DICT_4X4_50', lado: a.userData.lado, ...B(enZona(q)), yaw: yawABase(L.zona.yaw) }; }),
+      ...L.arucoE.map((a, i) => ({ id: 4 + i, uso: 'entrega', diccionario: 'DICT_4X4_50', lado: 0.06, ...B(a), yaw: yawABase(0) })),
+    ],
+    // las zonas, en la cara de la bandeja (z local = 0, DT44): la elevación de 0,5 mm del dibujo (para que no parpadee) no se
+    // exporta, como la de los marcadores; así tf/bandeja ∘ tf/zona_* y los parámetros dan la misma z. El planificador sigue
+    // usando la zona dibujada (zonasB), sin cambios
+    bandeja: { ...bt, yaw: yawABase(tp.yaw), zonas: ['zona_primero', 'zona_segundo', 'zona_centro'].map(k => { const enCara = { ...v(zonasB[k].position), z: 0 }; return { clave: k, base: B(enPlan(enCara)), local: enCara }; }) }, // zona_centro siempre (DT36)
     persona: { ...pe, yaw: yawABase(L.persona.yaw) },
     camaras,
     escena: escenaExportacion(B, mc, bt, yawABase(tp.yaw), camaras),

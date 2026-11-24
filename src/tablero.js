@@ -4,7 +4,8 @@
 // escribe EXPORTAR.tablero (src/exportar.js), el único formateador. Se prueba con node:test (tests/unit/tablero-t44.test.mjs) y se
 // concatena en app.js con el marcador @@TABLERO@@.
 // Marcador: { id, lado, x, y, yaw } en metros y radianes, en el marco de la bandeja (x e y sobre su cara de arriba, yaw hacia
-// +y); el tablero es plano, en z = 0. El patrón de un marcador tiene el convenio de ArUco de OpenCV: x a la derecha, y hacia
+// +y); el tablero es plano, en z = 0. `lado` es el lado del cuadrado negro, el markerLength de OpenCV (DT45, TD.1): el margen
+// blanco va por fuera y no entra en las esquinas. El patrón de un marcador tiene el convenio de ArUco de OpenCV: x a la derecha, y hacia
 // arriba y z saliendo de la cara impresa; con yaw = 0 sus ejes son los de la bandeja.
 // Fuentes. El estudio «percepcion-bandeja-personas» no está en el repo: solo se cita lo que da la ficha de T4.4 del plan (el
 // aviso de marcadores alineados sobre un solo borde, «pose con varios marcadores») y la aritmética (el diccionario DICT_4X4_50

@@ -15,7 +15,7 @@
     translation:
       'x': -0.020  # SUPUESTO (sin medir)
       'y': 0.100  # SUPUESTO (sin medir)
-      'z': 0.001  # SUPUESTO (sin medir)
+      'z': 0.000  # SUPUESTO (sin medir)
     rotation:
       'x': 0.000000000  # SUPUESTO (sin medir)
       'y': 0.000000000  # SUPUESTO (sin medir)

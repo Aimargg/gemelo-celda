@@ -13,7 +13,7 @@ const cerca = (a, b, tol, que) => assert.ok(Math.abs(a - b) <= tol, `${que}: ${a
 const CAM = { o: [0, 0, 0], x: [1, 0, 0], y: [0, 1, 0], z: [0, 0, 1], near: 0.03, far: 8 };
 const V = CAPTURA.vista(6.4, 4);
 const CTX = { robotId: 'nominal', sospechoso: false, yaw: 0, sensor: { id: 'elp-ficha', ...SENSOR.de('elp-ficha') }, tcpZ: 0.2 };
-// Una escena de muestra: un marcador de 6 cm de frente a 2 m (las esquinas del cuadrado negro, ±2,5 cm, en el orden del marcador: la y
+// Una escena de muestra: un marcador de 5 cm (el cuadrado negro) de frente a 2 m (sus esquinas, ±2,5 cm, en el orden del marcador: la y
 // del marcador, hacia arriba, es −y en este marco), un plato plano a 2 m, una fruta con caja 3D entre 1 y 2 m, y los casos de borde
 const ARUCO = { clase: 'aruco', id: 5, nombre: 'marcador 5', esquinas: [[-0.025, -0.025, 2], [0.025, -0.025, 2], [0.025, 0.025, 2], [-0.025, 0.025, 2]], normal: [0, 0, -1] };
 const PLATO = { clase: 'plato', id: null, nombre: 'plato 1º', puntos: [[-0.1, -0.05, 2], [0.1, -0.05, 2], [0.1, 0.05, 2], [-0.1, 0.05, 2]] };
@@ -43,10 +43,10 @@ test('proyectar: un punto del eje sale en el centro y uno desplazado en u = 319,
   q = CAPTURA.proyectar(V, cam, [3, 1.8, 2.9]); cerca(q.u, 359.5, 1e-9, 'u con otra pose'); cerca(q.v, 259.5, 1e-9, 'v con otra pose'); cerca(q.prof, 2, 1e-12, 'profundidad con otra pose');
 });
 
-test('esquinasAruco: las del cuadrado negro (80 de los 96 px del plano), en el orden de OpenCV y con z = 0', () => {
+test('esquinasAruco: las del cuadrado negro, que mide todo `lado` (markerLength de OpenCV, TD.1), en el orden de OpenCV y con z = 0', () => {
   assert.deepEqual(CAPTURA.ORDEN_ESQUINAS, ['arriba_izquierda', 'arriba_derecha', 'abajo_derecha', 'abajo_izquierda']);
-  cerca(CAPTURA.ARUCO_NEGRO, 5 / 6, 1e-15, 'el negro es 5/6 del plano');
-  const E = CAPTURA.esquinasAruco(0.06), h = 0.025; // 0,06 · 5/6 / 2
+  assert.equal(CAPTURA.ARUCO_NEGRO, undefined, 'sin factor del negro: `lado` ya es el cuadrado negro (DT45)');
+  const E = CAPTURA.esquinasAruco(0.06), h = 0.03; // 0,06 / 2
   const quiere = [[-h, h, 0], [h, h, 0], [h, -h, 0], [-h, -h, 0]];
   assert.equal(E.length, 4); E.forEach((p, i) => p.forEach((v, j) => cerca(v, quiere[i][j], 1e-12, `esquina ${i}, eje ${j}`)));
 });

@@ -23,9 +23,9 @@ const CAPTURA = (() => {
   // Las esquinas de un ArUco, en el orden de OpenCV (las devuelve detectMarkers): arriba-izquierda, arriba-derecha, abajo-derecha y
   // abajo-izquierda del marcador tal como está impreso
   const ORDEN_ESQUINAS = ['arriba_izquierda', 'arriba_derecha', 'abajo_derecha', 'abajo_izquierda'];
-  // El plano de un marcador del gemelo mide `lado` y arucoTex dibuja el cuadrado negro (las 6 × 6 celdas del patrón) en 80 de sus 96 px:
-  // las esquinas que da un detector son las del cuadrado negro, no las del plano
-  const ARUCO_NEGRO = 80 / 96;
+  // `lado` es el lado del cuadrado negro de un marcador (el markerLength de OpenCV; DT45, TD.1): arucoTex dibuja el negro (las 6 × 6 celdas
+  // del patrón) en todo el plano de lado `lado` y el margen blanco va por fuera, en el papel. Las esquinas que da un detector son las del
+  // cuadrado negro, a ±lado/2 del centro: las mismas que tablero_bandeja.yaml
   const OCLUSION = 'solo la del campo y los bordes: un objeto tapado por otro o por el brazo dentro del campo se anota como visible; la oclusión por el brazo (T4.2) se mide sobre el plan de Calcular y no se aplica a la captura';
   const PERSONAS = 'sin personas: la figura de la persona del gemelo no se dibuja en la captura ni se anota; no hay ninguna clase de persona';
   const DISTORSION = 'ninguna: proyección estenopeica de lente ideal; la distorsión de T4.5 no se aplica a la captura';
@@ -43,10 +43,10 @@ const CAPTURA = (() => {
     const d = [p[0] - cam.o[0], p[1] - cam.o[1], p[2] - cam.o[2]], prof = T_.profundidad(p, cam.o, cam.z);
     return { u: v.cx + v.fx * T_.dot(d, cam.x) / prof, v: v.cy + v.fy * T_.dot(d, cam.y) / prof, prof };
   }
-  // Las cuatro esquinas del cuadrado negro de un marcador de lado `lado` (m), en su marco local (x a la derecha, y hacia arriba, z = 0 y
-  // la normal hacia quien lo mira) y en el orden de ORDEN_ESQUINAS
+  // Las cuatro esquinas del cuadrado negro de un marcador de lado `lado` (m, el del cuadrado negro), en su marco local (x a la derecha, y
+  // hacia arriba, z = 0 y la normal hacia quien lo mira) y en el orden de ORDEN_ESQUINAS: a ±lado/2 del centro
   function esquinasAruco(lado) {
-    const h = lado * ARUCO_NEGRO / 2; return [[-h, h, 0], [h, h, 0], [h, -h, 0], [-h, -h, 0]];
+    const h = lado / 2; return [[-h, h, 0], [h, h, 0], [h, -h, 0], [-h, -h, 0]];
   }
   const media = P => [0, 1, 2].map(i => P.reduce((s, p) => s + p[i], 0) / P.length);
 
@@ -101,6 +101,6 @@ const CAPTURA = (() => {
     .replace(new RegExp(`\\[\\s+(${NUM}),\\s+(${NUM})\\s+\\]`, 'g'), '[$1, $2]')
     .replace(new RegExp(`\\{\\s+"x": (${NUM}),\\s+"y": (${NUM}),\\s+"ancho": (${NUM}),\\s+"alto": (${NUM})\\s+\\}`, 'g'), '{ "x": $1, "y": $2, "ancho": $3, "alto": $4 }') + '\n';
 
-  return { ANCHO, ALTO, AVISO, ESQUEMA, CLASES, ORDEN_ESQUINAS, ARUCO_NEGRO, OCLUSION, PERSONAS, vista, proyectar, esquinasAruco, anotar, documento, texto };
+  return { ANCHO, ALTO, AVISO, ESQUEMA, CLASES, ORDEN_ESQUINAS, OCLUSION, PERSONAS, vista, proyectar, esquinasAruco, anotar, documento, texto };
 })();
 if (typeof module !== 'undefined') module.exports = CAPTURA;

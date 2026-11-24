@@ -1,12 +1,16 @@
 // world ↔ base_link por robot en la página (T1.5, I7): conversión de cada id contra su JSON, cabecera e ida y vuelta de
 // posiciones.yaml y las correcciones 5, 7 y 9. La pregunta al cambiar de robot, el campo del prefijo de frames y las
-// correcciones 1 y 2 están en cambio-robot.test.mjs (nivel de puerta, T2.0).
+// correcciones 1 y 2 están en cambio-robot.test.mjs (nivel de puerta, T2.0). TD.3 (DT42): posiciones.yaml con U+2028 en la
+// disposición se lee igual con YAML 1.1 y 1.2 e Importar YAML la recupera; un posiciones.yaml de antes de TD.3 se sigue importando.
 import { test, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
 import { arrancarServidor, RAIZ } from '../servidor.mjs';
+import YAML from 'yaml';
 import { abrir, comprobar } from '../navegador.mjs';
+import { sinFecha } from '../medir.mjs';
+import { problemas11 } from '../yaml11.mjs';
 
 const REF = id => JSON.parse(fs.readFileSync(path.join(RAIZ, `tests/fixtures/cinematica/${id}.json`), 'utf8'));
 let srv;
@@ -40,7 +44,7 @@ test('T1.5-1: con cada robot elegido, un punto de la mesa en base_link (la conve
 
 // Lee las posiciones (x, y, z) y los giros (yaw_rad) de los objetos de un posiciones.yaml exportado
 function leerYaml(txt) {
-  const out = {}; const num = (l, k) => { const m = l.match(new RegExp(`\\b${k}: (-?[\\d.]+)`)); return m ? +m[1] : undefined; };
+  const out = {}; const num = (l, k) => { const m = l.match(new RegExp(`(?:^|, )'?${k}'?: (-?[\\d.]+)`)); return m ? +m[1] : undefined; }; // «'y'» entre comillas (TD.3)
   for (const l of txt.split('\n')) { const m = l.match(/^\s+(\w+): \{(.*)$/); if (m) out[m[1]] = { x: num(m[2], 'x'), y: num(m[2], 'y'), z: num(m[2], 'z'), yaw: num(m[2], 'yaw_rad') }; }
   return out;
 }
@@ -71,8 +75,12 @@ test('T1.5-2 e I7: posiciones.yaml con el 203: cabecera (robot, frame con su pre
     // ida y vuelta (I7): exportar → leer → comparar con la posición de cada objeto pasada a base_link con world_base_link
     // del JSON: cada coordenada a ±0,5 mm (redondeo a 1 mm) y cada giro a ±0,0005 rad (redondeo a 0,001 rad)
     const T = REF('203').world_base_link.individual.T, yaw = REF('203').world_base_link.individual.rpy[2];
-    const obj = leerYaml(y), L = await p.evaluate(() => { const g = window.__g, l = g.L(); return { b: g.BASES[l.robot], zona: l.zona, plato1: l.plato1, persona: l.persona, m: l.arucoE[0] }; });
-    for (const [k, ref] of [['zona_fruta', L.zona], ['plato_1', L.plato1], ['persona', L.persona], ['marcador_entrega_1', L.m]]) {
+    // TD.4: marcador_zona_1 (id 0), contra el centro de su dibujo en la zona de fruta
+    const obj = leerYaml(y), L = await p.evaluate(() => {
+      const g = window.__g, l = g.L(), mz = g.OBJ.zona.children.find(a => a.userData.id === 0 && a.userData.lado > 0).getWorldPosition(new (g.robot.root.position.constructor)());
+      return { b: g.BASES[l.robot], zona: l.zona, plato1: l.plato1, persona: l.persona, m: l.arucoE[0], mz: { x: mz.x, y: mz.y } };
+    });
+    for (const [k, ref] of [['zona_fruta', L.zona], ['plato_1', L.plato1], ['persona', L.persona], ['marcador_entrega_1', L.m], ['marcador_zona_1', L.mz]]) {
       const j = porJSON(T, L.b, 0.76, { x: ref.x, y: ref.y, z: 0.76 });
       assert.ok(Math.abs(obj[k].x - j[0]) <= 0.5e-3 + 1e-9 && Math.abs(obj[k].y - j[1]) <= 0.5e-3 + 1e-9, `${k}: (${obj[k].x}, ${obj[k].y}) frente a (${j[0]}, ${j[1]})`);
     }
@@ -97,6 +105,48 @@ test('corrección 5: una v10 de solo lectura con un robot desconocido se exporta
     assert.match(y, /^# Frame: 207_base_link \(prefijo «207_» de la disposición; esta versión del gemelo no conoce su URDF doble\)/m);
     assert.match(y, /^robot_id: '207'  # de la disposición; el gemelo no lo conoce y usa la cinemática nominal$/m);
     assert.equal(await p.evaluate(() => window.__g.ROB.id), 'nominal');
+    comprobar(s.reg);
+  } finally { await s.cerrar(); }
+});
+
+// TD.3 (DT42). Los caracteres, con fromCharCode: este fichero no los lleva tal cual
+const ch = c => String.fromCharCode(c), LS = ch(0x2028), PS = ch(0x2029), escape = c => `${ch(92)}u${c.toString(16).padStart(4, '0')}`;
+test('TD.3-C1, C3 y C4 (DT42): U+2028 en una nota (v9) y en el robotId (v10 de solo lectura): posiciones.yaml se lee igual en YAML 1.1 y 1.2 e Importar YAML recupera la disposición; un posiciones.yaml de antes de TD.3 se sigue importando igual', { timeout: 300000 }, async () => {
+  const s = await abrir(srv.url); const p = s.page;
+  const n = () => p.evaluate(() => window.__toastsPrueba.length);
+  const aviso = (n0, t) => p.waitForFunction(([n0, t]) => window.__toastsPrueba.slice(n0).includes(t), [n0, t], { timeout: 60000, polling: 50 });
+  const L = () => p.evaluate(() => JSON.stringify(window.__g.L()));
+  const restablecer = async () => { const n0 = await n(); await p.evaluate(() => document.getElementById('btnReset').click()); await aviso(n0, 'Distribución de partida restaurada'); };
+  const importar = async (yaml, t) => { const n0 = await n(); await p.evaluate(y => { document.getElementById('yamlIn').value = y; document.getElementById('btnImport').click(); }, yaml); await aviso(n0, t); };
+  try {
+    await p.click('.tabs [data-tab="datos"]');
+    const l0 = await p.evaluate(() => JSON.parse(JSON.stringify(window.__g.L())));
+    for (const [nombre, layout, t] of [
+      ['v9 con U+2028 y U+2029 en una nota', { ...l0, nota: `uno${LS}falsa: 1${PS}dos` }, 'Distribución aplicada'],
+      ['v10 de solo lectura con U+2028 en el robotId', { ...l0, version: 10, robotId: `207${LS}falso: 1` }, 'Distribución aplicada en solo lectura: es de una versión más nueva del gemelo'],
+    ]) {
+      // la escena se abre con su código (nombre y nota de la escena con U+2028 también)
+      const codigo = 'GEMELO1.' + Buffer.from(JSON.stringify({ v: 1, nombre: `Rara${LS}escena`, nota: `nota${PS}`, layout }), 'utf8').toString('base64');
+      await p.evaluate(c => setTimeout(() => window.__g.abrirCodigo(c), 0), codigo); // como desde la interfaz: un error sería un pageerror
+      await p.waitForFunction(j => JSON.stringify(window.__g.L()) === j, JSON.stringify(layout), { timeout: 60000, polling: 50 });
+      const antes = await L(), y = await p.evaluate(() => window.__g.generarYaml());
+      assert.ok(!y.includes(LS) && !y.includes(PS), `${nombre}: ni U+2028 ni U+2029 tal cual`);
+      assert.ok(y.split('\n').find(l => l.startsWith('# layout-json: ')).includes(escape(0x2028)), `${nombre}: U+2028 escapado en la línea «# layout-json:»`);
+      assert.deepEqual(YAML.parse(y, { version: '1.1' }), YAML.parse(y), `${nombre}: el mismo objeto con YAML 1.1 y 1.2`);
+      assert.deepEqual(problemas11(y), [], `${nombre}: sin clave falsa ni nada que YAML 1.1 lea distinto`);
+      // otra disposición y vuelta con Importar YAML: la misma disposición, byte a byte en JSON
+      await restablecer(); assert.notEqual(await L(), antes);
+      await importar(y, t);
+      assert.equal(await L(), antes, `${nombre}: Importar YAML recupera la disposición igual`);
+    }
+    // C4: el posiciones.yaml que exportaba el gemelo antes de TD.3 (9393f30: fecha y claves «y» sin comillas, layout-json sin
+    // escapes), del caso 203 con prefijo: se importa y da la misma disposición, y exportarla da la referencia de ahora
+    const antiguo = fs.readFileSync(path.join(RAIZ, 'tests/fixtures/yaml-antes-td3/203-prefijo.yaml'), 'utf8');
+    assert.match(antiguo, /^fecha: \d{4}-\d{2}-\d{2}$/m); assert.match(antiguo, /^ {2}plato_1: \{x: -?[\d.]+, y: /m);
+    await restablecer();
+    await importar(antiguo, 'Distribución aplicada · Esta escena usa el robot 203: cambian la cinemática y el giro de la base (−135,0°)'); // de nominal al 203
+    assert.equal(await L(), antiguo.match(/^# layout-json: (\{.*\})$/m)[1], 'la disposición del fichero antiguo, tal cual');
+    assert.equal(sinFecha(await p.evaluate(() => window.__g.generarYaml())), sinFecha(fs.readFileSync(path.join(RAIZ, 'tests/fixtures/yaml/203-prefijo.yaml'), 'utf8')), 'exportada de nuevo: la referencia de ahora');
     comprobar(s.reg);
   } finally { await s.cerrar(); }
 });

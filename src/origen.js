@@ -53,7 +53,7 @@ const ORIGEN = (() => {
       fuente: c => `${c.sensor.origen}; medir en la calibración intrínseca (F4)`,
       yaml: (t, c) => con(t, `lente ideal, sensor ${c.sensor.id}`),
     },
-    { clave: 'marcadores', nombre: 'Marcadores', tipo: S, valor: 'ArUco DICT_4X4_50: zona 0–3, entrega 4–5, bandeja 6–9 (dibujados con su patrón real)', fuente: 'Ids propuestos', yaml: t => con(t, 'ids propuestos') },
+    { clave: 'marcadores', nombre: 'Marcadores', tipo: S, valor: 'ArUco DICT_4X4_50: zona 0–3, entrega 4–5, bandeja 6–9 (dibujados con su patrón real); el lado es el del cuadrado negro, el markerLength de OpenCV, con el margen blanco por fuera', fuente: 'Ids propuestos', yaml: t => con(t, 'ids propuestos') },
     { clave: 'soportes_camara', nombre: 'Soportes de cámara', tipo: M, valor: 'Manfrotto 035 + brazo 244 de 53 cm', fuente: 'Foto + ficha', yaml: t => t },
     { clave: 'fruta', nombre: 'Fruta', tipo: S, valor: 'piezas de plástico de 4,5–7 cm', fuente: 'Foto de referencia del grupo', yaml: t => t },
     { clave: 'plato_bandeja_persona', nombre: 'Plato, bandeja y persona', tipo: S, valor: 'plato Ø160 mm · bandeja 450 × 330 mm a 1,00 m del suelo · persona en el lateral derecho, de frente, con la bandeja a la derecha del robot y fuera de la mesa', fuente: 'Sin medir; posición elegida porque es donde el robot puede dejar los platos nivelados', yaml: t => con(t, 'sin medir') },
@@ -71,7 +71,7 @@ const ORIGEN = (() => {
     { clave: 'pose_doble', nombre: null, tipo: S, valor: 'pose de <id>_base_link en el world del URDF doble', fuente: 'xacro del URDF doble del curso (doble_ur3e_<a>_<b>)', yaml: t => con(t, 'sin validar en ROS') },
     // Valores nuevos de parametros_celda.yaml y de las TF estáticas (T2.2, T2.4), también solo en los ficheros
     { clave: 'nombre_frame', nombre: null, tipo: S, valor: 'nombres de los frames de la celda: mesa, zona_fruta, plato_<n>_inicio, marcador_<id>, bandeja, zona_primero, zona_segundo, zona_centro, camara_<k> y camara_<k>_optical', fuente: 'propuestos por el gemelo (T2.4); los fija el grupo con la arquitectura (D3)', yaml: t => con(t, 'nombre propuesto') },
-    { clave: 'lado_marcador', nombre: null, tipo: S, valor: 'lado de 6 cm de los marcadores de entrega (ids 4 y 5)', fuente: 'el dibujo del gemelo, sin medir: el impreso puede ser otro', yaml: t => con(t, 'lado del dibujo del gemelo, sin medir') },
+    { clave: 'lado_marcador', nombre: null, tipo: S, valor: 'lado de 4 cm de los marcadores de la zona de fruta (ids 0–3) y de 6 cm de los de entrega (ids 4 y 5)', fuente: 'el dibujo del gemelo, sin medir: el impreso puede ser otro', yaml: t => con(t, 'lado del dibujo del gemelo, sin medir') },
     { clave: 'marco_optico', nombre: null, tipo: F, valor: 'camara_<k> → camara_<k>_optical: rpy (−π/2, 0, −π/2), sin traslación', fuente: 'convenio de REP-103 (marco del cuerpo y marco óptico de una cámara)', yaml: t => con(t, 'convenio de REP-103') },
     // Valores nuevos de la escena de colisión (T2.3), también solo en los ficheros
     { clave: 'id_escena', nombre: null, tipo: S, valor: 'ids de los objetos de la escena de colisión: mesa, caja_plato_<n>, plato_<n>, bandeja y camara_<k>', fuente: 'propuestos por el gemelo (T2.3); el id suelo es el del ejemplo del profesor y no se usa', yaml: t => con(t, 'id propuesto') },

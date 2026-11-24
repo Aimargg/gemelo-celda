@@ -17,6 +17,14 @@ ros2 run tf2_ros static_transform_publisher --x 0.221 --y -0.223 --z 0.000 --rol
 ros2 run tf2_ros static_transform_publisher --x 0.344 --y 0.105 --z 0.100 --roll 0.000 --pitch 0.000 --yaw 2.356 --frame-id 203_base_link --child-frame-id plato_1_inicio --ros-args -r __node:=tf_plato_1_inicio &
 # 203_base_link → plato_2_inicio: SUPUESTO (disposición propuesta, sin medir)
 ros2 run tf2_ros static_transform_publisher --x 0.348 --y -0.093 --z 0.100 --roll 0.000 --pitch 0.000 --yaw 2.356 --frame-id 203_base_link --child-frame-id plato_2_inicio --ros-args -r __node:=tf_plato_2_inicio &
+# 203_base_link → marcador_0: SUPUESTO (disposición propuesta, sin medir)
+ros2 run tf2_ros static_transform_publisher --x 0.392 --y -0.244 --z 0.000 --roll 0.000 --pitch 0.000 --yaw 2.356 --frame-id 203_base_link --child-frame-id marcador_0 --ros-args -r __node:=tf_marcador_0 &
+# 203_base_link → marcador_1: SUPUESTO (disposición propuesta, sin medir)
+ros2 run tf2_ros static_transform_publisher --x 0.200 --y -0.052 --z 0.000 --roll 0.000 --pitch 0.000 --yaw 2.356 --frame-id 203_base_link --child-frame-id marcador_1 --ros-args -r __node:=tf_marcador_1 &
+# 203_base_link → marcador_2: SUPUESTO (disposición propuesta, sin medir)
+ros2 run tf2_ros static_transform_publisher --x 0.050 --y -0.202 --z 0.000 --roll 0.000 --pitch 0.000 --yaw 2.356 --frame-id 203_base_link --child-frame-id marcador_2 --ros-args -r __node:=tf_marcador_2 &
+# 203_base_link → marcador_3: SUPUESTO (disposición propuesta, sin medir)
+ros2 run tf2_ros static_transform_publisher --x 0.243 --y -0.394 --z 0.000 --roll 0.000 --pitch 0.000 --yaw 2.356 --frame-id 203_base_link --child-frame-id marcador_3 --ros-args -r __node:=tf_marcador_3 &
 # 203_base_link → marcador_4: SUPUESTO (disposición propuesta, sin medir)
 ros2 run tf2_ros static_transform_publisher --x 0.087 --y 0.152 --z 0.000 --roll 0.000 --pitch 0.000 --yaw 2.356 --frame-id 203_base_link --child-frame-id marcador_4 --ros-args -r __node:=tf_marcador_4 &
 # 203_base_link → marcador_5: SUPUESTO (disposición propuesta, sin medir)
@@ -24,11 +32,11 @@ ros2 run tf2_ros static_transform_publisher --x 0.144 --y 0.308 --z 0.000 --roll
 # 203_base_link → bandeja: SUPUESTO (disposición propuesta, sin medir) · nominal: la sustituye la pose que publique Visión
 ros2 run tf2_ros static_transform_publisher --x -0.351 --y 0.279 --z 0.240 --roll 0.000 --pitch 0.000 --yaw -0.785 --frame-id 203_base_link --child-frame-id bandeja --ros-args -r __node:=tf_bandeja &
 # bandeja → zona_primero: SUPUESTO (sin medir)
-ros2 run tf2_ros static_transform_publisher --x -0.020 --y 0.100 --z 0.001 --roll 0.000 --pitch 0.000 --yaw 0.000 --frame-id bandeja --child-frame-id zona_primero --ros-args -r __node:=tf_zona_primero &
+ros2 run tf2_ros static_transform_publisher --x -0.020 --y 0.100 --z 0.000 --roll 0.000 --pitch 0.000 --yaw 0.000 --frame-id bandeja --child-frame-id zona_primero --ros-args -r __node:=tf_zona_primero &
 # bandeja → zona_segundo: SUPUESTO (sin medir)
-ros2 run tf2_ros static_transform_publisher --x -0.020 --y -0.100 --z 0.001 --roll 0.000 --pitch 0.000 --yaw 0.000 --frame-id bandeja --child-frame-id zona_segundo --ros-args -r __node:=tf_zona_segundo &
+ros2 run tf2_ros static_transform_publisher --x -0.020 --y -0.100 --z 0.000 --roll 0.000 --pitch 0.000 --yaw 0.000 --frame-id bandeja --child-frame-id zona_segundo --ros-args -r __node:=tf_zona_segundo &
 # bandeja → zona_centro: SUPUESTO (sin medir)
-ros2 run tf2_ros static_transform_publisher --x -0.020 --y 0.000 --z 0.001 --roll 0.000 --pitch 0.000 --yaw 0.000 --frame-id bandeja --child-frame-id zona_centro --ros-args -r __node:=tf_zona_centro &
+ros2 run tf2_ros static_transform_publisher --x -0.020 --y 0.000 --z 0.000 --roll 0.000 --pitch 0.000 --yaw 0.000 --frame-id bandeja --child-frame-id zona_centro --ros-args -r __node:=tf_zona_centro &
 # 203_base_link → camara_cenital: SUPUESTO (disposición propuesta, sin medir) · nominal: la sustituye la calibración
 ros2 run tf2_ros static_transform_publisher --x 0.497 --y 0.124 --z 0.410 --roll 0.000 --pitch 0.988 --yaw -2.393 --frame-id 203_base_link --child-frame-id camara_cenital --ros-args -r __node:=tf_camara_cenital &
 # camara_cenital → camara_cenital_optical: FABRICANTE (convenio de REP-103)

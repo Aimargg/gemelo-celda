@@ -70,7 +70,7 @@ test('T2.7 (DT41, DT35, DT31): #btnCalc tras un cálculo, zonas de plan durante 
       assert.deepEqual(B, A, 'posiciones.yaml (bandeja_recepcion y zonas), tf/bandeja y tf/zona_* y el bloque bandeja de parametros_celda.yaml, iguales');
       // y la red puede fallar: las zonas dibujadas ahora no están donde dice el fichero (en base_link, más de 1 mm)
       for (const [k, w] of Object.entries(durante.zonasAhora)) {
-        const m = B.lineas[k].match(/\{x: (-?[\d.]+), y: (-?[\d.]+), z: (-?[\d.]+)\}/).slice(1).map(Number), e = Math.hypot(...m.map((v, i) => v - w[i]));
+        const m = B.lineas[k].match(/\{x: (-?[\d.]+), 'y': (-?[\d.]+), z: (-?[\d.]+)\}/).slice(1).map(Number), e = Math.hypot(...m.map((v, i) => v - w[i]));
         assert.ok(e > 0.001, `${k}: la zona dibujada está a ${(e * 1000).toFixed(1)} mm de la exportada`);
         st.diagnostic(`${k}: la dibujada, a ${(e * 1000).toFixed(1)} mm de la exportada (la bandeja, a ${(d * 1000).toFixed(1)} mm de su pose de plan)`);
       }
@@ -98,8 +98,8 @@ test('T2.7 (DT41, DT35, DT31): #btnCalc tras un cálculo, zonas de plan durante 
         const r = await p.evaluate(() => ({ yaml: window.__g.generarYaml(), par: window.__g.ficherosRos().find(f => f.nombre === 'parametros_celda.yaml').texto, rob: window.__g.ROB.id }));
         assert.equal(r.rob, conocido ? '203' : 'nominal');
         // en los dos modos: sin errores, las mismas claves de primer nivel (nada se sale de su línea) y los textos de la
-        // disposición con el escape de los ficheros de ROS, iguales que en parametros_celda.yaml. (El resto del fichero no es
-        // igual en 1.1: fecha es un timestamp y las claves «y» de los mapas en línea, true; no es de DT35)
+        // disposición con el escape de los ficheros de ROS, iguales que en parametros_celda.yaml. (Que el resto del fichero se
+        // lea igual en 1.1, con fecha y las claves «y» entre comillas, lo prueban datos y exportar: TD.3, DT42)
         const par = YAML.parse(r.par)['/**'].ros__parameters.celda.robot, esperado = [comoROS(robotId), `${comoROS(prefijoFrames)}base_link`, comoROS(prefijoFrames)];
         let v;
         for (const version of ['1.1', '1.2']) {
