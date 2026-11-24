@@ -652,3 +652,39 @@ test('T2.2 y T2.4 con nominal, el 203 y el 203 con prefijo: parametros_celda.yam
     });
   } finally { await s.cerrar(); }
 });
+
+// TD.5 (DT39): con los dos sensores y los modos 4:3 de 1280 × 960 y 2048 × 1536 en las tres cámaras, el camera_info exportado
+// tiene fx = fy (0,001 px) y su campo horizontal, 2·atan(w/(2·fx)), es el de la cámara de render de three (0,01 %): el que da
+// su matriz de proyección, 2·atan(1/P[0][0]). Con «gemelo v8» en 4:3 el alto limita el área útil y antes salía fx ≠ fy.
+test('TD.5 (DT39): camera_info con fx = fy y el campo horizontal de la cámara de render, con los dos sensores en 1280×960 y 2048×1536', { timeout: 300000 }, async t => {
+  const s = await abrir(srv.url); const p = s.page;
+  try {
+    await p.click('.tabs [data-tab="camaras"]'); await p.locator('#f_cenital').waitFor();
+    const cams = await p.evaluate(() => Object.keys(window.__g.L().cams));
+    for (const sensor of ['elp-ficha', 'gemelo-v8']) {
+      await p.click(`#segSensor [data-v="${sensor}"]`);
+      await p.waitForFunction(v => window.__g.L().sensor === v, sensor, { timeout: 10000, polling: 50 });
+      for (const modo of ['1280x960', '2048x1536']) {
+        for (const k of cams) await p.selectOption(`#m_${k}`, modo);
+        await p.waitForFunction(m => Object.values(window.__g.L().cams).every(c => c.modo === m), modo, { timeout: 10000, polling: 50 });
+        const r = await p.evaluate(() => {
+          const g = window.__g, F = g.ficherosRos();
+          return Object.fromEntries(Object.keys(g.L().cams).map(k => { const c = g.CAMS[k].cam, e = c.projectionMatrix.elements; return [k, { ci: F.find(f => f.nombre === `camera_info/camara_${k}.yaml`).texto, p00: e[0], p11: e[5], fov: c.fov, aspect: c.aspect, vf: g.vfovDe(g.L().cams[k]) }]; }));
+        });
+        comprobar(s.reg);
+        await t.test(`${sensor}, ${modo}`, st => {
+          for (const k of cams) {
+            const x = r[k], ci = YAML.parse(x.ci), K = ci.camera_matrix.data, [w, h] = modo.split('x').map(Number), que = `${sensor}, ${modo}, ${k}`;
+            assert.deepEqual(problemasCameraInfo(x.ci), [], que); assert.deepEqual([ci.image_width, ci.image_height], [w, h], que);
+            assert.ok(Math.abs(x.fov * Math.PI / 180 - x.vf) < 1e-12 && Math.abs(x.aspect - w / h) < 1e-12, `${que}: la cámara de render tiene el vfov del sensor y el aspecto del modo`);
+            assert.ok(Math.abs(K[0] - K[4]) <= 0.001, `${que}: fx ${K[0]} y fy ${K[4]}`);
+            const hRender = 2 * Math.atan(1 / x.p00), hCI = 2 * Math.atan(w / (2 * K[0])), vRender = 2 * Math.atan(1 / x.p11), vCI = 2 * Math.atan(h / (2 * K[4]));
+            assert.ok(Math.abs(hCI - hRender) <= 1e-4 * hRender, `${que}: campo horizontal del camera_info ${hCI} rad y del render ${hRender} rad`);
+            assert.ok(Math.abs(vCI - vRender) <= 1e-4 * vRender, `${que}: campo vertical del camera_info ${vCI} rad y del render ${vRender} rad`);
+            st.diagnostic(`${k}: fx ${K[0]}, fy ${K[4]}; horizontal ${hCI.toFixed(6)} rad (render ${hRender.toFixed(6)}), vertical ${vCI.toFixed(6)} rad (render ${vRender.toFixed(6)})`);
+          }
+        });
+      }
+    }
+  } finally { await s.cerrar(); }
+});
