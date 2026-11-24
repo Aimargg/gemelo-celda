@@ -9,6 +9,8 @@ import vm from 'node:vm';
 import { createRequire } from 'node:module';
 import { fileURLToPath } from 'node:url';
 import { problemasParams } from '../rcl-params.mjs';
+import YAML from 'yaml';
+import { problemas11 } from '../yaml11.mjs';
 const require = createRequire(import.meta.url);
 const ORIGEN = require('../../src/origen.js');
 const SENSOR = require('../../src/sensor.js');
@@ -271,7 +273,7 @@ test('DT36: zona_centro, con un plato y con dos: su TF hija de bandeja, sus par�
     assert.match(tz, /^ {6}'x': -0\.020 {2}# SUPUESTO \(sin medir\)\n {6}'y': 0\.000 {2}# SUPUESTO \(sin medir\)\n {6}'z': 0\.000 {2}# SUPUESTO \(sin medir\)$/m);
     assert.ok(s.split('\n').includes('ros2 run tf2_ros static_transform_publisher --x -0.020 --y 0.000 --z 0.000 --roll 0.000 --pitch 0.000 --yaw 0.000 --frame-id bandeja --child-frame-id zona_centro --ros-args -r __node:=tf_zona_centro &'));
     assert.equal(bloque(p, '        zona_centro:', 3), ['        zona_centro:', "          frame_id: 'zona_centro'  # SUPUESTO (nombre propuesto)", '          xyz: [0.470, 0.050, 0.240]  # SUPUESTO (disposición propuesta, sin medir)'].join('\n'));
-    assert.ok(y.split('\n').includes('  zona_centro: {x: 0.470, y: 0.050, z: 0.240}  # SUPUESTO (disposición propuesta, sin medir)'));
+    assert.ok(y.split('\n').includes("  zona_centro: {x: 0.470, 'y': 0.050, z: 0.240}  # SUPUESTO (disposición propuesta, sin medir)"));
     assert.match(p, /^# {3}zona_fruta, marcadores \(ids, marcador_<id>\), bandeja \(zona_primero, zona_segundo, zona_centro\), persona/m);
     for (const [n, t] of [['tz', tz], ['p', p], ['s', s], ['y', y]]) assert.equal(t.split('\n').filter(l => l === linea[pedido]).length, 1, `${n}, ${pedido} plato(s)`);
     assert.ok(!texto('tf/zona_primero.yaml').includes('# zona_centro (') && !texto('tf/mesa.yaml').includes('# zona_centro ('), 'solo los ficheros que la llevan');
@@ -313,7 +315,7 @@ test('TD.4 (DT36): los marcadores de la zona (0–3) en parametros_celda.yaml, e
   assert.match(texto('tf/marcador_4.yaml'), /^# TF estática base_link → marcador_4: marcador de entrega 4 \(DICT_4X4_50\), plano sobre la mesa y con sus ejes; convenio/m);
   const s = texto('tf_estaticas.sh').split('\n'), c = 'ros2 run tf2_ros static_transform_publisher --x -0.200 --y 0.200 --z 0.000 --roll 0.000 --pitch 0.000 --yaw 1.571 --frame-id base_link --child-frame-id marcador_2 --ros-args -r __node:=tf_marcador_2 &';
   assert.ok(s.includes(c)); assert.equal(s[s.indexOf(c) - 1], '# base_link → marcador_2: SUPUESTO (disposición propuesta, sin medir)');
-  const y = EXPORTAR.posiciones(m, ORIGEN, '2026-01-01').split('\n'), i = y.indexOf('  marcador_zona_1: {id: 0, diccionario: DICT_4X4_50, x: -0.400, y: -0.200, z: 0.000}  # SUPUESTO (disposición propuesta, sin medir)');
+  const y = EXPORTAR.posiciones(m, ORIGEN, '2026-01-01').split('\n'), i = y.indexOf("  marcador_zona_1: {id: 0, diccionario: DICT_4X4_50, x: -0.400, 'y': -0.200, z: 0.000}  # SUPUESTO (disposición propuesta, sin medir)");
   assert.ok(i > 0, 'marcador_zona_1 en posiciones.yaml');
   assert.deepEqual(y.slice(i, i + 6).map(l => l.split(':')[0]), ['  marcador_zona_1', '  marcador_zona_2', '  marcador_zona_3', '  marcador_zona_4', '  marcador_entrega_1', '  marcador_entrega_2'], 'en el orden de los ids, y los de entrega con su nombre de antes');
   // sin marcadores de la zona (el modelo a mano), ni la línea de la cabecera ni sus TF: nada se inventa
@@ -344,4 +346,69 @@ test('texto seguro en el script: un prefijo con comillas y punto y coma va entre
   assert.ok(s.includes("--frame-id 'x'\\''; touch ./nada; '\\''' --child-frame-id mesa "), 'el frame es un solo argumento entre comillas');
   assert.equal(spawnSync('bash', ['-n'], { input: s }).status, 0);
   assert.deepEqual(problemasParams(fichero(m, 'tf/mesa.yaml')), []);
+});
+
+// ---------- TD.3 (DT42): posiciones.yaml se lee igual con YAML 1.1 (PyYAML) que con 1.2 ----------
+// Los caracteres que JSON.stringify no escapa y YAML 1.1 no lee como texto de una línea: U+2028 y U+2029 (saltos de línea en
+// 1.1), U+0085 (también salto en 1.1), U+007F–U+009F, U+FFFE y U+FFFF (no imprimibles). Escritos con fromCharCode para que
+// este fichero no los lleve tal cual.
+const ch = c => String.fromCharCode(c), LS = ch(0x2028), PS = ch(0x2029), NEL = ch(0x85);
+const RAROS = [0x7f, 0x80, 0x85, 0x9f, 0x2028, 0x2029, 0xfffe, 0xffff];
+const escape = c => `${ch(92)}u${c.toString(16).padStart(4, '0')}`; // \uXXXX, como lo escribe jsonYaml11
+// la expresión con la que Importar YAML (#btnImport, src/app.js) encuentra la disposición
+const IMPORTAR = /#\s*layout-json:\s*(\{.*\})\s*$/m;
+const lineaLayout = y => { const ls = y.split('\n').filter(l => l.startsWith('# layout-json: ')); assert.equal(ls.length, 1, 'una sola línea «# layout-json:»'); return ls[0].slice('# layout-json: '.length); };
+const conLayout = (m, L) => { const c = plano(m); c.layoutJson = JSON.stringify(L); return c; };
+
+test('TD.3-C1 (DT42): U+2028, U+2029 y los demás caracteres que YAML 1.1 no lee en una línea salen escapados en «# layout-json:» y la disposición se recupera igual', () => {
+  assert.ok(fs.readFileSync(path.join(RAIZ, 'src/app.js'), 'utf8').includes(`t.match(/${IMPORTAR.source}/m)`), 'la misma expresión que Importar YAML');
+  // una nota y un nombre con U+2028 (y el resto de los raros), junto a texto no ASCII que no se toca
+  const L = { version: 9, robotId: 'nominal', nombre: `Cámara «cenital»${LS}−135°`, nota: `uno${LS}dos${PS}tres${NEL}cuatro`, raros: RAROS.map(ch).join('|'), emoji: '😀' };
+  const m = conLayout(MODELO, L), y = EXPORTAR.posiciones(m, ORIGEN, '2026-01-01'), lj = lineaLayout(y);
+  for (const c of RAROS) { assert.ok(!y.includes(ch(c)), `U+${c.toString(16)} no sale tal cual`); assert.ok(lj.includes(escape(c)), `U+${c.toString(16)} sale como ${escape(c)}`); }
+  assert.ok(lj.includes('Cámara «cenital»') && lj.includes('−135°') && lj.includes('😀'), 'el resto del texto, tal cual');
+  // ida y vuelta: lo que lee Importar YAML es la misma disposición, y JSON.stringify de ella da el JSON de antes (la huella casa)
+  const leida = JSON.parse(y.match(IMPORTAR)[1]);
+  assert.deepEqual(leida, L); assert.equal(JSON.stringify(leida), m.layoutJson);
+  // sin caracteres raros, la línea es JSON.stringify(L) byte a byte (los ficheros que ya tiene el grupo no cambian ahí)
+  const normal = conLayout(MODELO, { version: 9, nombre: 'Cámara «cenital» −135° 😀' });
+  assert.equal(lineaLayout(EXPORTAR.posiciones(normal, ORIGEN, '2026-01-01')), normal.layoutJson);
+  assert.deepEqual(problemas11(y), []);
+});
+
+test('TD.3-C3 (DT42): sin el escape, como antes de TD.3, YAML 1.1 corta la línea «# layout-json:» y lee una clave falsa (el test puede fallar)', () => {
+  const L = { version: 9, nota: `uno${LS}falsa: 1` }, m = conLayout(MODELO, L), y = EXPORTAR.posiciones(m, ORIGEN, '2026-01-01');
+  assert.deepEqual(problemas11(y), []);
+  const antes = y.split('\n').map(l => l.startsWith('# layout-json: ') ? `# layout-json: ${m.layoutJson}` : l).join('\n');
+  const p = problemas11(antes);
+  assert.ok(p.some(x => /U\+2028, salto de línea en YAML 1\.1/.test(x)), p.join('\n'));
+  assert.ok(p.includes('falsa: clave que solo lee YAML 1.1'), p.join('\n'));
+  assert.equal(YAML.parse(antes.split(/[\n\u2028]/).join('\n'), { version: '1.1' }).falsa, '1"}', 'la clave falsa, con el resto de la línea como valor');
+  // hallazgo de TD.3 (sin arreglar, fuera de su alcance): un fichero de antes con U+2028 sin escapar tampoco lo importaba el
+  // gemelo: en la expresión de Importar YAML, «.» no cruza U+2028
+  assert.equal(antes.match(IMPORTAR), null);
+  // y sin las comillas de fecha ni de «y», 1.1 lee un timestamp y la clave true
+  const sinComillas = y.replace(/^fecha: '(.*)'$/m, 'fecha: $1').replaceAll("'y': ", 'y: '), q = problemas11(sinComillas);
+  assert.ok(q.some(x => x.startsWith('fecha: YAML 1.1 lee timestamp')), q.join('\n'));
+  assert.ok(q.includes('objetos.plato_1.true: clave que solo lee YAML 1.1'), q.join('\n'));
+});
+
+test('TD.3-C2 y C3 (DT42): fecha entre comillas y ninguna clave ni valor que YAML 1.1 lea distinto, con cada modelo a mano y con las referencias de --yaml', () => {
+  const unPlato = plano(conZona()); unPlato.pedido = 1; unPlato.bandeja.zonas.push({ clave: 'zona_centro', base: { x: 0.47, y: 0.05, z: 0.2404 }, local: { x: -0.02, y: 0, z: 0.0004 } });
+  const desconocido = conLayout(MODELO, { version: 10, robotId: `207${LS}falso: 1` });
+  Object.assign(desconocido.robot, { idLayout: `207${LS}falso: 1`, desconocido: true, prefijo: `207${PS}_`, frame: `207${PS}_base_link` });
+  const casos = [['nominal', MODELO], ['203 con prefijo', MODELO_203], ['un plato, zona_centro y marcadores de la zona', unPlato], ['v10 con U+2028 en el robot', desconocido]];
+  const ref = JSON.parse(fs.readFileSync(path.join(RAIZ, 'tests/fixtures/yaml/casos.json'), 'utf8')).casos;
+  assert.equal(ref.length, 3);
+  for (const c of ref) casos.push([`referencia ${c.yaml}`, fs.readFileSync(path.join(RAIZ, 'tests/fixtures/yaml', c.yaml), 'utf8')]);
+  for (const [nombre, m] of casos) {
+    const y = typeof m === 'string' ? m : EXPORTAR.posiciones(m, ORIGEN, '2026-01-01');
+    assert.match(y, /^fecha: '\d{4}-\d{2}-\d{2}'$/m, `${nombre}: fecha entre comillas`);
+    assert.doesNotMatch(y, /[{,] y: /, `${nombre}: ninguna clave «y» sin comillas`);
+    const v11 = YAML.parse(y, { version: '1.1' }), v12 = YAML.parse(y);
+    assert.deepEqual(v11, v12, `${nombre}: el mismo objeto con YAML 1.1 y 1.2`);
+    assert.equal(typeof v11.fecha, 'string', nombre); assert.equal(v11.objetos.zona_fruta.y, v12.objetos.zona_fruta.y, nombre);
+    assert.deepEqual(problemas11(y), [], `${nombre}: nada que YAML 1.1 (PyYAML) lea distinto`);
+    assert.deepEqual(Object.keys(v11), ['fecha', 'robot', 'robot_id', 'frame', 'prefijo_frames', 'world_a_base_link', ...(v11.pose_en_world_doble ? ['pose_en_world_doble'] : []), 'pinza', 'mesa', 'pedido', 'platos', 'objetos', 'camaras'], `${nombre}: ninguna clave falsa`);
+  }
 });

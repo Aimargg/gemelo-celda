@@ -88,7 +88,7 @@ pasó a `ros-recarga`) y `ros-recarga`, medidos por el coordinador al aceptar T2
 | I4 nada a ROS | sin test todavía (DT8, T3.1) | — |
 | I5 un solo HTML | `unit/i5` | — |
 | I6 determinismo | `determinismo` (A, B, A' «gemelo»), `robot` (con el 203), `perfil` (con «curso»), `oclusion` (la oclusión de T4.2 solo lee `CACHE_PLAN`: ni planifica ni cambia `L`, `firmaVal` ni `D.planes`) | `determinismo-demo`, `matriz-curso` (órdenes inversos) |
-| I7 exportación | `exportar` (T1.5-1 con 203–206, T1.5-2 ida y vuelta), `datos` (YAML y tabla byte a byte), `ros` (parámetros y TF estáticas de ROS: reglas de rcl, mismo texto que posiciones.yaml, ida y vuelta, árbol TF, cuaterniones, cámaras frente a su cámara de render y origen; escena de colisión: validadores de CollisionObject y de .scene, escena = obstaculos(), .scene = YAML en su world; cámaras: validador de camera_info, píxeles frente a la cámara de render y usb_cam), `ros-referencias` (los ficheros de ROS byte a byte), `ros-panel` (lo que se descarga desde el panel es `ficherosRos()`, también en el .tar), `deuda-f2` (zonas de plan durante la demo y textos raros de una v10 en posiciones.yaml), `unit/marcos`, `unit/origen`, `unit/exportar`, `unit/exportar-escena`, `unit/rcl-params`, `unit/validadores-ros`, `unit/tar`; `distorsion` (el camera_info exportado y la escena no cambian con la distorsión: T4.5) | `cambio-robot` (prefijo en el YAML) |
+| I7 exportación | `exportar` (T1.5-1 con 203–206, T1.5-2 ida y vuelta), `datos` (YAML y tabla byte a byte), `ros` (parámetros y TF estáticas de ROS: reglas de rcl, mismo texto que posiciones.yaml, ida y vuelta, árbol TF, cuaterniones, cámaras frente a su cámara de render y origen; escena de colisión: validadores de CollisionObject y de .scene, escena = obstaculos(), .scene = YAML en su world; cámaras: validador de camera_info, píxeles frente a la cámara de render y usb_cam), `ros-referencias` (los ficheros de ROS byte a byte), `ros-panel` (lo que se descarga desde el panel es `ficherosRos()`, también en el .tar), `deuda-f2` (zonas de plan durante la demo y textos raros de una v10 en posiciones.yaml), `exportar` y `datos` con `yaml11.mjs` (posiciones.yaml igual en YAML 1.1 y 1.2, TD.3), `unit/marcos`, `unit/origen`, `unit/exportar`, `unit/exportar-escena`, `unit/rcl-params`, `unit/validadores-ros`, `unit/tar`; `distorsion` (el camera_info exportado y la escena no cambian con la distorsión: T4.5) | `cambio-robot` (prefijo en el YAML) |
 | I8 matriz | `matriz` (8 casos en orden directo) | — |
 
 ## Cierre del navegador (T2.0)
@@ -107,6 +107,8 @@ cambia: cada test cierra en su `finally`, después de sus comprobaciones. Con el
 - `e2e/`: Playwright + Chromium con SwiftShader sobre los dos destinos; `permitidos.json`, avisos de consola permitidos.
 - `fixtures/`: referencias generadas por el gemelo (`generar.mjs`, `npm run caracterizar`): matrices, escenas v8, cinemática
   del curso, `yaml/` (panel «Datos», T2.1) y `ros/<caso>/` (ficheros de ROS, T2.2–T2.5: `npm run caracterizar -- --ros`).
+  `yaml-antes-td3/` no se regenera: es el `posiciones.yaml` que exportaba el gemelo antes de TD.3 (9393f30), para probar que
+  un fichero antiguo se sigue importando igual (`exportar`, TD.3-C4).
 - `mocks/`: simulacros de Firestore (con las reglas) y del almacén de claude.ai. No se tocan.
 - `medidas/`: línea base y repetibilidad (`npm run medir`).
 - `navegador.mjs` (navegador y red cerrada), `servidor.mjs` (servidor local), `medir.mjs` (procedimientos compartidos por
@@ -114,4 +116,6 @@ cambia: cada test cierra en su `finally`, después de sus comprobaciones. Con el
   las reglas de `rcl_yaml_param_parser`, sobre `yaml@2.9.1` en modo 1.1 y 1.2: T2.2), `collision-object.mjs` (lista de
   `moveit_msgs/CollisionObject` para `set_message_fields`: T2.3), `scene-texto.mjs` (formato `.scene` de MoveIt: T2.3) y
   `camera-info.mjs` (camera_info de `camera_calibration_parsers`: T2.5), sin el código que genera los ficheros, y
-  `tar-sistema.mjs` (el tar del sistema como referencia del .tar del panel: lista, extrae y compara, T2.6).
+  `tar-sistema.mjs` (el tar del sistema como referencia del .tar del panel: lista, extrae y compara, T2.6) y `yaml11.mjs`
+  (lo que un lector YAML 1.1 como PyYAML leería distinto de 1.2: tipos de 1.1 con `yaml@2.9.1`, más los saltos de línea
+  U+0085, U+2028 y U+2029 y los caracteres no imprimibles, que `yaml@2.9.1` no aplica; TD.3, DT42).

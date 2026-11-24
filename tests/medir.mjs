@@ -83,8 +83,9 @@ export async function rosDe(page, casos = CASOS_YAML) {
   }
   return out;
 }
-// La línea «fecha:» del YAML es la del día en que se genera: se compara todo lo demás
-export const sinFecha = y => y.replace(/^fecha: \d{4}-\d{2}-\d{2}$/m, 'fecha: (sin comparar)');
+// La línea «fecha:» del YAML es la del día en que se genera: se compara todo lo demás. Solo la forma entre comillas (TD.3,
+// DT42: sin ellas YAML 1.1 la lee como timestamp), para que una fecha sin comillas haga fallar la comparación
+export const sinFecha = y => y.replace(/^fecha: '\d{4}-\d{2}-\d{2}'$/m, 'fecha: (sin comparar)');
 
 // Crea el código de una escena con codigoEscena() en una página recién cargada
 export async function codigoDe(page, escena) {

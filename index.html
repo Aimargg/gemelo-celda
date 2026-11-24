@@ -2102,7 +2102,9 @@ const EXPORTAR = (() => {
   const rad3 = a => r3(envolver(a));
   const fmt = (v, d = 1) => v.toFixed(d).replace('.', ',');
   const grados = a => `${fmt(a * R2D, 1).replace('-', '−')}°`; // gradosTxt de app.js
-  const P = p => `{x: ${r3(p.x)}, y: ${r3(p.y)}, z: ${r3(p.z)}}`;
+  // La clave «y» de los mapas en línea de posiciones.yaml, entre comillas: YAML 1.1 (PyYAML, el de los scripts del grupo) lee la
+  // y sin comillas como el booleano true (TD.3, DT42)
+  const P = p => `{x: ${r3(p.x)}, 'y': ${r3(p.y)}, z: ${r3(p.z)}}`;
 
   // ---------- Cabecera común: robot y calibración, frame y prefijo (las mismas líneas que posiciones.yaml) ----------
   function lineaRobot(m) {
@@ -2131,9 +2133,12 @@ const EXPORTAR = (() => {
   const yLista = vs => vs.length < 2 ? vs.join('') : `${vs.slice(0, -1).join(', ')} y ${vs.at(-1)}`;
 
   // ---------- posiciones.yaml (T1.5, T2.1): el mismo texto que escribía generarYaml ----------
-  // fecha: 'AAAA-MM-DD' (la única línea que cambia de un día a otro). Lo que viene de la disposición sin validar (robot_id,
-  // frame, prefijo_frames y su prefijo en las líneas de comentario) se escribe con el mismo escape que los ficheros de ROS
-  // (cad, comentario y limpio; DT35): una disposición de solo lectura de una versión más nueva puede traer cualquier texto.
+  // fecha: 'AAAA-MM-DD' (la única línea que cambia de un día a otro), entre comillas: sin ellas YAML 1.1 la lee como timestamp.
+  // El fichero se lee igual con YAML 1.1 (PyYAML) que con 1.2 (TD.3, DT42): la clave «y» de los mapas en línea va entre
+  // comillas (P), y la línea «# layout-json:» lleva JSON.stringify(L) con jsonYaml11 (los caracteres que 1.1 no admite,
+  // escapados). Lo que viene de la disposición sin validar (robot_id, frame, prefijo_frames y su prefijo en las líneas de
+  // comentario) se escribe con el mismo escape que los ficheros de ROS (cad, comentario y limpio; DT35): una disposición de solo
+  // lectura de una versión más nueva puede traer cualquier texto.
   function posiciones(m, O, fecha) {
     const c = m.ctx, og = k => O.yaml(k, c), ot = k => O.tipo(k, c);
     const R = m.robot, frame = R.frame, sup = `# ${og('disposicion')}`;
@@ -2147,26 +2152,26 @@ const EXPORTAR = (() => {
     y += `# Origen de cada valor, al final de su línea: ${O.LEYENDA}; lo que ha decidido el grupo, «${O.GRUPO}». Las cámaras dan el giro desde +y de ${limpio(frame)} hacia +x.\n`;
     for (const l of lineaCentro(m)) y += `# ${l}\n`;
     // La posición A/B es una elección del gemelo (DT34); la posición medida de cada base no se escribe en este fichero
-    y += `fecha: ${fecha}\nrobot: ${R.posicion}  # ${O.ELEGIDO}\nrobot_id: ${R.desconocido ? `${cad(R.idLayout)}  # de la disposición; el gemelo no lo conoce y usa la cinemática nominal` : `${cad(R.id)}  # ${O.ELEGIDO}`}\n`;
+    y += `fecha: '${fecha}'\nrobot: ${R.posicion}  # ${O.ELEGIDO}\nrobot_id: ${R.desconocido ? `${cad(R.idLayout)}  # de la disposición; el gemelo no lo conoce y usa la cinemática nominal` : `${cad(R.id)}  # ${O.ELEGIDO}`}\n`;
     const w = R.worldABase;
-    y += `frame: ${cad(frame)}\nprefijo_frames: ${cad(R.prefijo)}\nworld_a_base_link: {x: ${r3(w.x)}, y: ${r3(w.y)}, z: ${r3(w.z)}, yaw_rad: ${rad3(R.yaw)}}  # world del gemelo (ejes de la mesa): ${ot('orientacion_base_link')} · giro: mount_yaw − π del xacro del curso, ${og('orientacion_base_link')}\n`;
-    if (R.doble) y += `pose_en_world_doble: {frame: ${cad(frame)}, x: ${r3(R.doble.x)}, y: ${r3(R.doble.y)}, z: ${r3(R.doble.z)}, yaw_rad: ${rad3(R.doble.yaw)}}  # xacro del curso, ${R.doble.nombre}: ${og('pose_doble')}\n`;
+    y += `frame: ${cad(frame)}\nprefijo_frames: ${cad(R.prefijo)}\nworld_a_base_link: {x: ${r3(w.x)}, 'y': ${r3(w.y)}, z: ${r3(w.z)}, yaw_rad: ${rad3(R.yaw)}}  # world del gemelo (ejes de la mesa): ${ot('orientacion_base_link')} · giro: mount_yaw − π del xacro del curso, ${og('orientacion_base_link')}\n`;
+    if (R.doble) y += `pose_en_world_doble: {frame: ${cad(frame)}, x: ${r3(R.doble.x)}, 'y': ${r3(R.doble.y)}, z: ${r3(R.doble.z)}, yaw_rad: ${rad3(R.doble.yaw)}}  # xacro del curso, ${R.doble.nombre}: ${og('pose_doble')}\n`;
     y += `pinza: {modelo: ${m.pinza.modelo}, tcp_z_m: ${r3(m.pinza.tcpZ)}, carrera_m: ${r3(m.pinza.carrera)}}  # tcp_z: ${og('tcp_pinza')} · carrera: ${og('pinza')}\n`;
     const me = m.mesa;
-    y += `mesa: {ancho_m: ${r3(me.ancho)}, fondo_m: ${r3(me.fondo)}, alto_m: ${r3(me.alto)}, centro_en_base_link: {x: ${r3(me.x)}, y: ${r3(me.y)}}, yaw_rad: ${rad3(me.yaw)}}  # ${conGiro ? `medidas: ${og('mesa')} · centro_en_base_link y yaw_rad: ${giroSup}` : og('mesa')}\n`;
+    y += `mesa: {ancho_m: ${r3(me.ancho)}, fondo_m: ${r3(me.fondo)}, alto_m: ${r3(me.alto)}, centro_en_base_link: {x: ${r3(me.x)}, 'y': ${r3(me.y)}}, yaw_rad: ${rad3(me.yaw)}}  # ${conGiro ? `medidas: ${og('mesa')} · centro_en_base_link y yaw_rad: ${giroSup}` : og('mesa')}\n`;
     y += `pedido: ${m.pedido === 1 ? 'un_plato  # al centro de la bandeja' : 'dos_platos  # primero y segundo'} · ${O.ELEGIDO}\n`;
     const pl = m.platos;
     y += `platos: {sobre_caja: ${pl.sobreCaja}, caja_alto_m: ${r3(pl.cajaAlto)}, caja_lado_m: ${r3(pl.cajaLado)}, agarre: ${pl.agarre}, radio_agarre_m: ${r3(pl.radioAgarre)}}  # agarre: ${og('agarre_plato')} · resto: ${og('caja_plato')}\n`;
     const z = m.zona;
-    y += `objetos:\n  zona_fruta: {x: ${r3(z.x)}, y: ${r3(z.y)}, z: ${r3(z.z)}, yaw_rad: ${rad3(z.yaw)}, ancho_m: ${r3(z.ancho)}, fondo_m: ${r3(z.fondo)}}  ${sup}\n`;
+    y += `objetos:\n  zona_fruta: {x: ${r3(z.x)}, 'y': ${r3(z.y)}, z: ${r3(z.z)}, yaw_rad: ${rad3(z.yaw)}, ancho_m: ${r3(z.ancho)}, fondo_m: ${r3(z.fondo)}}  ${sup}\n`;
     for (const p of pl.lista) y += `  ${p.clave}: ${P(p)}  ${sup}\n`;
     const nUso = {}; // marcador_zona_<n> y marcador_entrega_<n>: n cuenta dentro de cada uso
-    for (const a of m.marcadores) { const u = usoDe(a); nUso[u] = (nUso[u] || 0) + 1; y += `  marcador_${u}_${nUso[u]}: {id: ${a.id}, diccionario: ${a.diccionario}, x: ${r3(a.x)}, y: ${r3(a.y)}, z: ${r3(a.z)}}  ${sup}\n`; }
-    const b = m.bandeja; y += `  bandeja_recepcion: {x: ${r3(b.x)}, y: ${r3(b.y)}, z: ${r3(b.z)}, yaw_rad: ${rad3(b.yaw)}}  ${sup}\n`;
+    for (const a of m.marcadores) { const u = usoDe(a); nUso[u] = (nUso[u] || 0) + 1; y += `  marcador_${u}_${nUso[u]}: {id: ${a.id}, diccionario: ${a.diccionario}, x: ${r3(a.x)}, 'y': ${r3(a.y)}, z: ${r3(a.z)}}  ${sup}\n`; }
+    const b = m.bandeja; y += `  bandeja_recepcion: {x: ${r3(b.x)}, 'y': ${r3(b.y)}, z: ${r3(b.z)}, yaw_rad: ${rad3(b.yaw)}}  ${sup}\n`;
     for (const zb of b.zonas) y += `  ${zb.clave}: ${P(zb.base)}  ${sup}\n`;
-    const pe = m.persona; y += `  persona: {x: ${r3(pe.x)}, y: ${r3(pe.y)}, yaw_rad: ${rad3(pe.yaw)}}  ${sup}\ncamaras:\n`;
+    const pe = m.persona; y += `  persona: {x: ${r3(pe.x)}, 'y': ${r3(pe.y)}, yaw_rad: ${rad3(pe.yaw)}}  ${sup}\ncamaras:\n`;
     for (const k of m.camaras) { const o = k.orient; y += `  camara_${k.clave}: {grupo: ${k.grupo}, modelo: ${k.modelo}, focal_mm: ${k.focal.toFixed(1)}, modo: ${k.modo}, hfov_rad: ${r3(k.hfov)}, posicion: ${P(k.pos)}, mira: ${P(k.mira)}, orientacion_rad: {giro: ${rad3(o.pan)}, inclinacion: ${rad3(o.tilt)}, alabeo: ${rad3(o.roll)}}, pinza_mesa: ${P(k.clamp)}}  # pose: ${ot('disposicion')} · modelo: ${og('camaras')} · focal y modo: elegidos · hfov: ${og('campo_vision')}\n`; }
-    y += `# layout-json: ${m.layoutJson}\n`;
+    y += `# layout-json: ${jsonYaml11(m.layoutJson)}\n`;
     return y;
   }
 
@@ -2180,6 +2185,11 @@ const EXPORTAR = (() => {
   const lista = vs => `[${vs.join(', ')}]`; // array homogéneo (sin listas de mapas: rcl no las admite)
   const xyz = p => lista([d3(p.x), d3(p.y), d3(p.z)]);
   const comentario = l => limpio(l.slice(0, -1)) + '\n'; // una línea de cabecera con texto de la disposición
+  // El JSON de la disposición en una línea de comentario que YAML 1.1 lea entera (TD.3, DT42): JSON.stringify no escapa U+2028
+  // ni U+2029, que YAML 1.1 (PyYAML) lee como salto de línea, ni U+0085 (también salto en 1.1), U+007F–U+009F, U+FFFE y U+FFFF
+  // (no imprimibles en YAML: PyYAML rechaza el fichero). Se escriben como \uXXXX, que JSON.parse lee como el mismo carácter:
+  // la disposición se recupera igual. Fuera de los textos, JSON.stringify no escribe ninguno de ellos.
+  const jsonYaml11 = j => String(j).replace(/[\u007f-\u009f\u2028\u2029\ufffe\uffff]/g, c => `\\u${c.charCodeAt(0).toString(16).padStart(4, '0')}`);
 
   // Huella de la disposición: FNV-1a de 32 bits de los bytes UTF-8 de JSON.stringify(L), en 8 cifras hexadecimales
   function huella(texto) {

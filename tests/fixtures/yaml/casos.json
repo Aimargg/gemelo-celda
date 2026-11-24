@@ -1,6 +1,6 @@
 {
   "descripcion": "Caracterización del panel «Datos» (T2.1, decisión 7): posiciones.yaml (<caso>.yaml) y las filas de la tabla de fuentes de cada caso de CASOS_YAML (tests/medir.mjs), en este orden y en una página recién cargada. El test (tests/e2e/datos.test.mjs) compara el YAML byte a byte salvo la línea «fecha:» y cada fila de la tabla (texto, fuente, etiqueta, clase y HTML).",
-  "fuente_src": "9e74d7a",
+  "fuente_src": "f1bd8bf",
   "comando": "npm run caracterizar -- --yaml",
   "casos": [
     {
