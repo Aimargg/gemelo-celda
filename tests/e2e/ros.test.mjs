@@ -33,6 +33,9 @@ function leerPagina() {
   const g = window.__g, L = g.L(), V = g.robot.root.position.constructor;
   g.bandeja.updateMatrixWorld(true);
   const zonas = Object.fromEntries(['zona_primero', 'zona_segundo', 'zona_centro'].map(k => { const p = g.zonasB[k].getWorldPosition(new V()); return [k, { x: p.x, y: p.y, z: p.z }]; }));
+  // DT44: el punto de la cara de la bandeja bajo cada zona dibujada (su posición en la bandeja con z = 0), el que se exporta, y
+  // la posición de la zona dibujada en la bandeja (el dibujo la eleva para que no parpadee; el planificador usa la dibujada)
+  const zonasCara = Object.fromEntries(['zona_primero', 'zona_segundo', 'zona_centro'].map(k => { const l = g.zonasB[k].position, p = g.bandeja.localToWorld(new V(l.x, l.y, 0)); return [k, { x: p.x, y: p.y, z: p.z, local: [l.x, l.y, l.z] }]; }));
   // Lo que dibuja el gemelo (T2.4): la cámara de render de cada cámara (su marco óptico en world, la referencia de T2.4-C3)
   // con las etiquetas de sus marcos TF, y cada marcador de entrega con su plano texturado (supuesto 2)
   const opticos = Object.fromEntries(Object.keys(g.CAMS).map(k => {
@@ -48,7 +51,7 @@ function leerPagina() {
   const marcadoresZona = g.OBJ.zona.children.filter(a => Number.isInteger(a.userData.id) && a.userData.lado > 0).map(dibujo);
   return {
     ficheros: g.ficherosRos(), otra: g.ficherosRos(), yaml: g.generarYaml(), L: JSON.parse(JSON.stringify(L)), base: g.BASES[L.robot], robotId: g.ROB.id,
-    bandeja: { x: g.bandeja.position.x, y: g.bandeja.position.y, z: g.bandeja.position.z, yaw: g.bandeja.rotation.z }, zonas, opticos, marcadores, marcadoresZona,
+    bandeja: { x: g.bandeja.position.x, y: g.bandeja.position.y, z: g.bandeja.position.z, yaw: g.bandeja.rotation.z }, zonas, zonasCara, opticos, marcadores, marcadoresZona,
   };
 }
 const texto = (r, nombre) => { const f = r.ficheros.find(x => x.nombre === nombre); assert.ok(f, `falta ${nombre}`); return f.texto; };
@@ -149,6 +152,16 @@ const cerca = (a, b, que) => {
   for (let i = 0; i < n; i++) assert.ok(Math.abs(e[i]) <= 0.5e-3 + 1e-9, `${que}: (${a.slice(0, n)}) frente a (${b}); ${(e[i] * 1000).toFixed(3)} mm en el eje ${'xyz'[i]} de base_link (±0,5 mm)`);
 };
 const mismoGiro = (a, b, que) => assert.ok(giro(a, b) <= 0.001 + 1e-9, `${que}: ${a} frente a ${b} (±0,001 rad)`);
+// DT44: la cadena tf/bandeja ∘ tf/zona_* frente al punto de la cara de la bandeja (r.zonasCara, en base_link), a la exactitud
+// del redondeo: la traslación de la zona en la bandeja se escribe exacta (−0,020, ±0,100 y z = 0: se comprueba) y solo se
+// redondean la traslación de la bandeja (±0,5 mm por eje) y su giro (±0,0005 rad, que mueven la zona su distancia al centro de
+// la bandeja por ese ángulo, en x e y: ≤ 0,05 mm en 10 cm). En total, ≤ 0,551 mm por eje (antes, 1,3 mm)
+function cadenaZona(b, z, cara, que) {
+  for (let i = 0; i < 2; i++) assert.ok(Math.abs(z.t[i] - cara.local[i]) <= 1e-9, `${que}: translation.${'xy'[i]} ${z.t[i]} frente a ${cara.local[i]} (su posición en la bandeja, exacta)`);
+  assert.equal(z.t[2], 0, `${que}: translation.z = 0 (la cara de la bandeja; la elevación del dibujo no se exporta)`);
+  const p = b.t.map((v, i) => v + aplicar(deQ(b.q), z.t)[i]), tol = [0, 1, 2].map(i => 0.5e-3 + (i < 2 ? 0.5e-3 * Math.hypot(z.t[0], z.t[1]) : 0) + 1e-9);
+  return { p, tol };
+}
 
 // ---------- T2.4: TF estáticas ----------
 // Aristas de la decisión 6 del brief, escritas aquí (no las da el código que exporta): [padre, hijo]
@@ -230,11 +243,11 @@ function comprobarCentro(r) {
   assert.deepEqual(problemasParams(tz), []);
   const z = leerTF(tz), b = leerTF(tb);
   assert.deepEqual([z.padre, z.hijo, b.padre], ['bandeja', 'zona_centro', `${r.c.prefijo}base_link`], 'zona_centro cuelga de bandeja (sin prefijo: un frame de la celda), y bandeja de <prefijo>base_link');
-  // la zona dibujada, en base_link
-  const w = r.zonas.zona_centro, ref = aplicar(tr(J), [w.x - base[0], w.y - base[1], w.z - base[2]]);
-  // la cadena bandeja ∘ zona_centro: dos redondeos de 1 mm y uno de 0,001 rad en 2 cm (como las otras zonas en T2.4-C5)
-  const Rb = deQ(b.q), pc = b.t.map((v, i) => v + aplicar(Rb, z.t)[i]);
-  for (let i = 0; i < 3; i++) assert.ok(Math.abs(pc[i] - ref[i]) <= 1.3e-3, `bandeja ∘ zona_centro: ${'xyz'[i]} ${pc[i]} frente a ${ref[i]}`);
+  // la zona en la cara de la bandeja (la que se exporta, DT44), en base_link
+  const w = r.zonasCara.zona_centro, ref = aplicar(tr(J), [w.x - base[0], w.y - base[1], w.z - base[2]]);
+  // la cadena bandeja ∘ zona_centro, a la exactitud del redondeo (cadenaZona; como las otras zonas en T2.4-C5)
+  const { p: pc, tol } = cadenaZona(b, z, w, 'zona_centro');
+  for (let i = 0; i < 3; i++) assert.ok(Math.abs(pc[i] - ref[i]) <= tol[i], `bandeja ∘ zona_centro: ${'xyz'[i]} ${pc[i]} frente a ${ref[i]} (±${(tol[i] * 1000).toFixed(3)} mm)`);
   // su pose en base_link escrita una vez (parámetros y posiciones.yaml): ±0,5 mm por eje de base_link
   const c = YAML.parse(p)['/**'].ros__parameters.celda;
   for (let i = 0; i < 3; i++) assert.ok(Math.abs(c.bandeja.zona_centro.xyz[i] - ref[i]) <= 0.5e-3 + 1e-9, `parametros bandeja.zona_centro.xyz[${i}] ${c.bandeja.zona_centro.xyz[i]} frente a ${ref[i]}`);
@@ -334,7 +347,7 @@ test('T2.2 y T2.4 con nominal, el 203 y el 203 con prefijo: parametros_celda.yam
         const P = L.persona, bL = [P.x + Math.cos(P.yaw) * L.bandeja.ade, P.y + Math.sin(P.yaw) * L.bandeja.ade, L.bandeja.alt];
         cerca(W(c.bandeja.xyz), bL, 'bandeja (disposición)'); cerca(W(c.bandeja.xyz), xyz(r.bandeja), 'bandeja (página)');
         mismoGiro(c.bandeja.yaw + yb, P.yaw, 'giro de la bandeja'); mismoGiro(r.bandeja.yaw, P.yaw, 'giro de la bandeja de la página');
-        for (const k of ['zona_primero', 'zona_segundo', 'zona_centro']) cerca(W(c.bandeja[k].xyz), xyz(r.zonas[k]), k);
+        for (const k of ['zona_primero', 'zona_segundo', 'zona_centro']) cerca(W(c.bandeja[k].xyz), xyz(r.zonasCara[k]), k); // en la cara de la bandeja (DT44)
         cerca(W([...c.persona.xy, 0]), [P.x, P.y], 'persona'); mismoGiro(c.persona.yaw + yb, P.yaw, 'giro de la persona');
         for (const [k, cam] of Object.entries(L.cams)) {
           const q = c.camaras[k]; cerca(W(q.xyz), xyz(cam.pos), `cámara ${k}`); cerca(W(q.mira), xyz(cam.mira), `mira de ${k}`); cerca(W(q.pinza_mesa), [cam.clamp.x, cam.clamp.y, MESA_H], `pinza de ${k}`);
@@ -434,13 +447,27 @@ test('T2.2 y T2.4 con nominal, el 203 y el 203 con prefijo: parametros_celda.yam
           // la TF del marcador gira como el dibujo, visto desde base_link
           assert.ok(angulo(deQ(porHijo[h].q), aBase(mk.m).R) <= 0.002, `${h}: giro de la TF y del dibujo`);
         }
-        // las zonas cuelgan de la bandeja: bandeja ∘ zona da la zona dibujada (dos redondeos de 1 mm y uno de 0,001 rad en
-        // 10 cm: 0,5 + 0,71 + 0,05 < 1,3 mm por eje)
-        const b = porHijo.bandeja, Rb = deQ(b.q);
+        // las zonas cuelgan de la bandeja: bandeja ∘ zona da la zona en la cara de la bandeja bajo la dibujada (DT44), a la
+        // exactitud del redondeo (cadenaZona: ≤ 0,551 mm por eje)
+        const b = porHijo.bandeja;
         for (const k of ['zona_primero', 'zona_segundo', 'zona_centro']) {
-          const z = porHijo[k], p = b.t.map((v, i) => v + aplicar(Rb, z.t)[i]), w = r.zonas[k], ref = aplicar(tr(J), [w.x - base[0], w.y - base[1], w.z - base[2]]);
-          for (let i = 0; i < 3; i++) assert.ok(Math.abs(p[i] - ref[i]) <= 1.3e-3, `${k}: ${'xyz'[i]} ${p[i]} frente a ${ref[i]}`);
+          const w = r.zonasCara[k], ref = aplicar(tr(J), [w.x - base[0], w.y - base[1], w.z - base[2]]), { p, tol } = cadenaZona(b, porHijo[k], w, k);
+          for (let i = 0; i < 3; i++) assert.ok(Math.abs(p[i] - ref[i]) <= tol[i], `${k}: ${'xyz'[i]} ${p[i]} frente a ${ref[i]} (±${(tol[i] * 1000).toFixed(3)} mm)`);
         }
+      });
+      await t.test(`${r.c.id} · TD.2-C1 (DT44): cada zona de la bandeja con la misma z en tf/bandeja ∘ tf/zona_*, parametros_celda.yaml y posiciones.yaml, y la misma x, y a menos de 1 mm`, st => {
+        const c = YAML.parse(p)['/**'].ros__parameters.celda, par = celdaDe(p), pos = hojas(r.yaml, docDe(r.yaml).contents), b = porHijo.bandeja; let peor = 0;
+        for (const k of ['zona_primero', 'zona_segundo', 'zona_centro']) {
+          const pa = c.bandeja[k].xyz, po = ['x', 'y', 'z'].map(e => pos.get(`objetos.${k}.${e}`).valor), { p: pc } = cadenaZona(b, porHijo[k], r.zonasCara[k], k);
+          assert.deepEqual(po, pa, `${k}: posiciones.yaml y parametros_celda.yaml, el mismo punto`);
+          // z: la misma, también en el texto (la de la bandeja más 0.000)
+          assert.ok(Math.abs(pc[2] - pa[2]) <= 1e-9, `${k}: z ${pc[2]} por tf/bandeja ∘ tf/${k} frente a ${pa[2]} en los parámetros`);
+          assert.equal(par.get(`bandeja.${k}.xyz[2]`).fuente, b.texto.get('translation.z').fuente, `${k}: z de los parámetros = z de tf/bandeja.yaml (texto)`);
+          // x, y: cada fichero redondea a 1 mm una vez, pero la cadena suma la traslación redondeada de la bandeja y la zona girada
+          // con el yaw redondeado: coinciden a menos de 1 mm, no dígito a dígito
+          for (let i = 0; i < 2; i++) { const e = Math.abs(pc[i] - pa[i]); assert.ok(e < 1e-3, `${k}: ${'xy'[i]} ${pc[i]} por la cadena frente a ${pa[i]} en los parámetros (${(e * 1000).toFixed(3)} mm)`); peor = Math.max(peor, e); }
+        }
+        st.diagnostic(`z idéntica en los tres ficheros; peor diferencia en x, y entre la cadena y los parámetros: ${(peor * 1000).toFixed(3)} mm`);
       });
       await t.test(`${r.c.id} · Común-C1: exportar dos veces da los mismos bytes y ningún fichero lleva fecha`, () => {
         assert.deepEqual(r.otra, r.ficheros);

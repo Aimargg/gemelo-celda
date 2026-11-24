@@ -5742,7 +5742,10 @@ function modeloExportacion() {
       ...zonaMarc.map((a, i) => { const q = marcZonaLocal(L.zona, i); return { id: a.userData.id, uso: 'zona', diccionario: 'DICT_4X4_50', lado: a.userData.lado, ...B(enZona(q)), yaw: yawABase(L.zona.yaw) }; }),
       ...L.arucoE.map((a, i) => ({ id: 4 + i, uso: 'entrega', diccionario: 'DICT_4X4_50', lado: 0.06, ...B(a), yaw: yawABase(0) })),
     ],
-    bandeja: { ...bt, yaw: yawABase(tp.yaw), zonas: ['zona_primero', 'zona_segundo', 'zona_centro'].map(k => ({ clave: k, base: B(enPlan(zonasB[k].position)), local: v(zonasB[k].position) })) }, // zona_centro siempre (DT36)
+    // las zonas, en la cara de la bandeja (z local = 0, DT44): la elevación de 0,5 mm del dibujo (para que no parpadee) no se
+    // exporta, como la de los marcadores; así tf/bandeja ∘ tf/zona_* y los parámetros dan la misma z. El planificador sigue
+    // usando la zona dibujada (zonasB), sin cambios
+    bandeja: { ...bt, yaw: yawABase(tp.yaw), zonas: ['zona_primero', 'zona_segundo', 'zona_centro'].map(k => { const enCara = { ...v(zonasB[k].position), z: 0 }; return { clave: k, base: B(enPlan(enCara)), local: enCara }; }) }, // zona_centro siempre (DT36)
     persona: { ...pe, yaw: yawABase(L.persona.yaw) },
     camaras,
     escena: escenaExportacion(B, mc, bt, yawABase(tp.yaw), camaras),

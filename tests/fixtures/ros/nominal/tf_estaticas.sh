@@ -32,11 +32,11 @@ ros2 run tf2_ros static_transform_publisher --x 0.116 --y -0.319 --z 0.000 --rol
 # base_link → bandeja: SUPUESTO (disposición propuesta, sin medir) · nominal: la sustituye la pose que publique Visión
 ros2 run tf2_ros static_transform_publisher --x 0.446 --y 0.051 --z 0.240 --roll 0.000 --pitch 0.000 --yaw 3.142 --frame-id base_link --child-frame-id bandeja --ros-args -r __node:=tf_bandeja &
 # bandeja → zona_primero: SUPUESTO (sin medir)
-ros2 run tf2_ros static_transform_publisher --x -0.020 --y 0.100 --z 0.001 --roll 0.000 --pitch 0.000 --yaw 0.000 --frame-id bandeja --child-frame-id zona_primero --ros-args -r __node:=tf_zona_primero &
+ros2 run tf2_ros static_transform_publisher --x -0.020 --y 0.100 --z 0.000 --roll 0.000 --pitch 0.000 --yaw 0.000 --frame-id bandeja --child-frame-id zona_primero --ros-args -r __node:=tf_zona_primero &
 # bandeja → zona_segundo: SUPUESTO (sin medir)
-ros2 run tf2_ros static_transform_publisher --x -0.020 --y -0.100 --z 0.001 --roll 0.000 --pitch 0.000 --yaw 0.000 --frame-id bandeja --child-frame-id zona_segundo --ros-args -r __node:=tf_zona_segundo &
+ros2 run tf2_ros static_transform_publisher --x -0.020 --y -0.100 --z 0.000 --roll 0.000 --pitch 0.000 --yaw 0.000 --frame-id bandeja --child-frame-id zona_segundo --ros-args -r __node:=tf_zona_segundo &
 # bandeja → zona_centro: SUPUESTO (sin medir)
-ros2 run tf2_ros static_transform_publisher --x -0.020 --y 0.000 --z 0.001 --roll 0.000 --pitch 0.000 --yaw 0.000 --frame-id bandeja --child-frame-id zona_centro --ros-args -r __node:=tf_zona_centro &
+ros2 run tf2_ros static_transform_publisher --x -0.020 --y 0.000 --z 0.000 --roll 0.000 --pitch 0.000 --yaw 0.000 --frame-id bandeja --child-frame-id zona_centro --ros-args -r __node:=tf_zona_centro &
 # base_link → camara_cenital: SUPUESTO (disposición propuesta, sin medir) · nominal: la sustituye la calibración
 ros2 run tf2_ros static_transform_publisher --x -0.264 --y -0.439 --z 0.410 --roll 0.000 --pitch 0.988 --yaw 1.534 --frame-id base_link --child-frame-id camara_cenital --ros-args -r __node:=tf_camara_cenital &
 # camara_cenital → camara_cenital_optical: FABRICANTE (convenio de REP-103)
